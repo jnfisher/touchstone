@@ -13,6 +13,7 @@ mod currency;
 mod error;
 mod format;
 mod num;
+mod numparse;
 mod rnd;
 mod text;
 mod val;
@@ -25,6 +26,7 @@ pub use num::{
     idiv_i16, iif, int, log, mul_i16, mul_i32, neg_i16, not, or, pow, round, round_half_even, sgn,
     sqr, sub_i16, sub_i32, vbool, vmod, xor,
 };
+pub use numparse::{cdbl_str, is_numeric};
 pub use rnd::Rnd;
 pub use text::{cstr, cstr_bool, left, len, mid, right, str_num};
 pub use val::val;

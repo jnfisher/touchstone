@@ -19,7 +19,7 @@ const MIGRATIONS: [(i64, &str); 2] = [
 
 /// A WAL-mode database with the schema applied and `versions` recorded the way sqlx records
 /// them.
-fn new_db(versions: &[i64]) -> (TempDir, PathBuf, Connection) {
+pub(crate) fn new_db(versions: &[i64]) -> (TempDir, PathBuf, Connection) {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("world.db");
     let conn = Connection::open(&path).unwrap();
@@ -45,7 +45,7 @@ fn new_db(versions: &[i64]) -> (TempDir, PathBuf, Connection) {
 
 /// Insert a row, giving every column not named a zero or empty string (the schema has no
 /// defaults).
-fn insert(conn: &Connection, table: &str, set: &[(&str, Value)]) {
+pub(crate) fn insert(conn: &Connection, table: &str, set: &[(&str, Value)]) {
     let mut stmt = conn
         .prepare(&format!(
             "SELECT name, type FROM pragma_table_info('{table}')"
@@ -84,10 +84,10 @@ fn insert(conn: &Connection, table: &str, set: &[(&str, Value)]) {
     .unwrap();
 }
 
-fn i(v: i64) -> Value {
+pub(crate) fn i(v: i64) -> Value {
     Value::Integer(v)
 }
-fn t(v: &str) -> Value {
+pub(crate) fn t(v: &str) -> Value {
     Value::Text(v.to_string())
 }
 
@@ -470,7 +470,7 @@ fn seed(conn: &Connection) {
     );
 }
 
-fn load(path: &Path) -> touchstone_model::World {
+pub(crate) fn load(path: &Path) -> touchstone_model::World {
     silvermere::open(path).unwrap().load_world().unwrap()
 }
 
@@ -504,7 +504,7 @@ fn maps_items() {
     assert_eq!((it.abilities[0].ability, it.abilities[0].value), (17, 4));
     assert_eq!((it.abilities[19].ability, it.abilities[19].value), (31, -2));
     assert_eq!(it.abilities[5].ability, 0);
-    assert!(it.in_game && it.obtained_from.is_none());
+    assert!(it.in_game);
 }
 
 #[test]

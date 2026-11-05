@@ -19,6 +19,8 @@
 	let error = $state<string>();
 	let search = $state('');
 	let shown = $state(0);
+	let gridWidth = $state<number>();
+	let detailHidden = $state(false);
 
 	// Each table is fetched when its tab first opens (rooms alone is several MB) and cached by the
 	// API client, so coming back to a tab is instant.
@@ -59,6 +61,15 @@
 			bind:value={search}
 			class="bg-background border-input placeholder:text-muted-foreground focus-visible:ring-ring h-8 w-56 rounded-md border px-3 text-sm outline-none focus-visible:ring-2"
 		/>
+		<button
+			type="button"
+			class="bg-background border-input hover:bg-accent h-8 rounded-md border px-3 text-sm"
+			aria-pressed={!detailHidden}
+			data-testid="toggle-detail"
+			onclick={() => (detailHidden = !detailHidden)}
+		>
+			{detailHidden ? 'Show details' : 'Hide details'}
+		</button>
 		{#if explorer.pending.length}
 			<span class="text-muted-foreground text-xs" data-testid="pending">
 				Needs a character, coming later: {explorer.pending.join(', ')}
@@ -72,7 +83,7 @@
 		{:else if !table}
 			<p class="text-muted-foreground" data-testid="loading">Loading {title.toLowerCase()}...</p>
 		{:else}
-			<SplitPane storageKey="touchstone.split.detail">
+			<SplitPane storageKey="touchstone.split.{slug}" autoWidth={gridWidth} bind:collapsed={detailHidden}>
 				{#snippet left()}
 					<DataGrid
 						{rows}
@@ -83,6 +94,7 @@
 						storageKey={slug}
 						onSelect={(r) => selection.set(slug, explorer.rowId(r))}
 						onCount={(n) => (shown = n)}
+						onWidth={(w) => (gridWidth = w)}
 					/>
 				{/snippet}
 				{#snippet right()}
@@ -95,7 +107,7 @@
 							{/if}
 						</DetailPane>
 					{:else}
-						<div class="text-muted-foreground bg-card h-full rounded-md border p-4 text-sm">
+						<div class="text-muted-foreground bg-card h-full rounded-md border p-3 text-[13px]">
 							Select a record to see its details.
 						</div>
 					{/if}

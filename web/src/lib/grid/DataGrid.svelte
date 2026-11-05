@@ -37,7 +37,8 @@
 		storageKey = 'default',
 		rowState,
 		onSelect,
-		onCount
+		onCount,
+		onWidth
 	}: {
 		rows: T[];
 		columnDefs: ColDef<T>[];
@@ -52,6 +53,8 @@
 		onSelect?: (row: T) => void;
 		/** Rows left after filtering. */
 		onCount?: (n: number) => void;
+		/** Total width of the columns plus scrollbar, once sized; the list pane's natural width. */
+		onWidth?: (w: number) => void;
 	} = $props();
 
 	let host: HTMLDivElement;
@@ -81,6 +84,7 @@
 			return { key, newWidth: fitWidth(header, values, measure) };
 		});
 		api.setColumnWidths(widths, true, 'api');
+		onWidth?.(widths.reduce((a, w) => a + w.newWidth, 0) + 20);
 	}
 
 	function currentWidths(): Widths {
