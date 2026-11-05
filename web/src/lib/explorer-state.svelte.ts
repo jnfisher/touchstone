@@ -8,3 +8,7 @@ export const selection = {
 		selected[slug] = id;
 	}
 };
+
+/** The Shops tab's charm box and buy/sell checks. One value for every shop, as in MME (its charm
+ * box mirrors the character's Charm); it starts at 0 and with "Show Buying" checked. */
+export const shopView = $state({ charm: 0, buying: true, selling: false });

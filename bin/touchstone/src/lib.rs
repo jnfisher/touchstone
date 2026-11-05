@@ -1,6 +1,7 @@
 //! The touchstone server: JSON API plus the web UI.
 
 mod api;
+pub mod calc;
 pub mod config;
 pub mod source;
 pub mod state;
