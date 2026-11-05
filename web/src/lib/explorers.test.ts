@@ -83,9 +83,45 @@ describe('explorer definitions', () => {
 	});
 
 	it('builds a detail pane with a titled first group', () => {
-		const g = explorerFor('weapons')!.detail(item({ name: 'Sword', abilities: slots([43, 9]) }), lk);
+		const w = item({ name: 'Sword', abilities: slots([43, 9]) });
+		const g = explorerFor('weapons')!.detail(w, lk);
 		expect(g[0].title).toBe('Sword');
-		expect(g.find((x) => x.title === 'Abilities')!.rows[0]).toEqual({ label: 'Ability 43', value: '9', long: false });
+		// The text is on its way: no raw numbers meanwhile.
+		expect(g.find((x) => x.title === 'Abilities')).toBeUndefined();
+	});
+
+	it('shows the server text for abilities, raw slots only if it failed', () => {
+		const w = item({ name: 'Sword', abilities: slots([22, 5], [43, 9]) });
+		const ex = explorerFor('weapons')!;
+		const raw = ex.detail(w, lk, { abilitiesFailed: true }).find((x) => x.title === 'Abilities')!;
+		expect(raw.rows[0]).toEqual({ label: 'Ability 22', value: '5', long: false });
+		const text = ex
+			.detail(w, lk, {
+				abilities: {
+					table: 'items',
+					number: 1,
+					lines: [
+						{ ability: 22, value: 5, name: 'Accuracy', text: 'Accuracy +5', detail: '+5' },
+						{ ability: 80, value: 0, name: 'Magical', text: 'Magical', detail: '' }
+					],
+					class_ok: ['Paladin']
+				}
+			})
+			.find((x) => x.title === 'Abilities')!;
+		expect(text.rows).toEqual([
+			{ label: 'Accuracy', value: '+5', long: false },
+			{ label: 'Magical', value: 'Yes', long: false },
+			{ label: 'Class OK', value: 'Paladin', long: true }
+		]);
+	});
+
+	it('adds the monster max damage row once it is known', () => {
+		const m = { number: 1, name: 'rat', attacks: [], mid_spells: [], drops: [], abilities: slots(), align: 0, type: 0 } as unknown as Monster;
+		const rows = (extra?: { maxDamage?: number }) =>
+			explorerFor('monsters')!.detail(m, lk, extra)[0].rows.map((r) => r.label);
+		expect(rows()).not.toContain('Max damage / round');
+		const withMax = explorerFor('monsters')!.detail(m, lk, { maxDamage: 1234 })[0].rows;
+		expect(withMax.find((r) => r.label === 'Max damage / round')!.value).toBe('1,234');
 	});
 });
 
