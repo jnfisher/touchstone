@@ -63,6 +63,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+      # The converted stock database the data tests read. The key is the pinned sha256 of the
+      # source .mdb (see tools/mdb-fetch.sh); a miss installs mdbtools and converts it.
+      - name: Stock database cache
+        id: mdb
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/touchstone/mdb
+          key: stock-mdb-eba20f06af8dc08df755eb6dcd9763b023794f12e809cbab6762236d64d7345f
+      - name: Convert the stock database
+        if: steps.mdb.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y --no-install-recommends mdbtools
+          tools/mdb-fetch.sh
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny

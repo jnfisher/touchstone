@@ -1,12 +1,19 @@
+mod api;
+mod common;
+
 mod health {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
+    use crate::common::Fixture;
+
     #[tokio::test]
     async fn health_answers() {
-        let res = touchstone::app()
+        let fx = Fixture::new();
+        let res = fx
+            .app()
             .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
             .await
             .unwrap();
@@ -19,7 +26,9 @@ mod health {
 
     #[tokio::test]
     async fn unknown_api_path_is_404() {
-        let res = touchstone::app()
+        let fx = Fixture::new();
+        let res = fx
+            .app()
             .oneshot(Request::get("/api/nope").body(Body::empty()).unwrap())
             .await
             .unwrap();

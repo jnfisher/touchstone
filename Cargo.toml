@@ -23,16 +23,20 @@ touchstone-model = { path = "crates/touchstone-model" }
 touchstone-rules = { path = "crates/touchstone-rules" }
 touchstone-vb6 = { path = "crates/touchstone-vb6" }
 anyhow = "1.0.104"
+arc-swap = "1.9.3"
 axum = "0.8.9"
 clap = { version = "4.6.7", features = ["derive"] }
 http-body-util = "0.1.3"
 mime_guess = "2.0.5"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 rust-embed = "8.11.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+tempfile = "3"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 toml = "1.1.8"
+tower-http = { version = "0.6.6", default-features = false, features = ["compression-gzip"] }
 tower = { version = "0.5.3", features = ["util"] }
 
 [profile.release]

@@ -1,18 +1,29 @@
 //! The touchstone server: JSON API plus the web UI.
 
+mod api;
 pub mod config;
+pub mod source;
+pub mod state;
 mod web;
+
+use std::sync::Arc;
 
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{Value, json};
+use tower_http::compression::CompressionLayer;
+
+pub use state::AppState;
 
 async fn health() -> Json<Value> {
     Json(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") }))
 }
 
-pub fn app() -> Router {
+pub fn app(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .merge(api::router(state))
         .merge(web::router())
+        // Whole tables are large and repetitive; gzip/brotli cut them by an order of magnitude.
+        .layer(CompressionLayer::new())
 }
