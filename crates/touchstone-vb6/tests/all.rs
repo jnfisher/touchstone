@@ -1,6 +1,4 @@
-mod smoke {
-    #[test]
-    fn crate_links() {
-        let _ = std::any::type_name::<()>();
-    }
-}
+#[path = "all/props.rs"]
+mod props;
+#[path = "all/table.rs"]
+mod table;
