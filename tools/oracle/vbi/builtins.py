@@ -509,13 +509,13 @@ def f_choose(it, idx, *args):
 
 
 def f_isnumeric(it, x):
-    if type(x) is bool or V.is_num(x):
+    if type(x) is bool or V.is_num(x) or x is EMPTY:
         return True
     if type(x) is str:
         try:
-            V.str_to_double(x)
+            V.parse_vb_number(x)
             return True
-        except VBError:
+        except (ValueError, OverflowError):
             return False
     return False
 

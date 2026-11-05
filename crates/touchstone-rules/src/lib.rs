@@ -4,6 +4,7 @@
 //! `docs/porting.md`) and is tested against the oracle's fixtures in `fixtures/rules/`.
 
 pub mod abilities;
+pub mod ability_text;
 pub mod accuracy;
 pub mod attack;
 pub mod exp;
@@ -11,6 +12,7 @@ pub mod exp_per_hour;
 pub mod game_text;
 pub mod item_value;
 pub mod monster_sim;
+pub mod spell_cast;
 pub mod spells;
 pub mod stats;
 pub mod textblock;

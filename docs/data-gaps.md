@@ -13,7 +13,16 @@ migration or a half-written import (`world_import.finished_at` NULL) is refused 
 
 Rules that must not trust a `none` field (all are values NMR computes from other tables, so a
 rules function that needs one derives it from the base data instead of reading the field):
-monster `avg_dmg*`, `avg_lair_exp`, `script_value`; the whole `Lairs` table; `Rooms.lair`.
+monster `avg_dmg*`, `avg_lair_exp`, `script_value`, `in_game`; `Lairs.avg_walk`, `avg_dmg*`.
+
+**Derived by T-014** (`touchstone_data::derive`, run inside `load_world()` on the same snapshot):
+the `Lairs` table and `Rooms.lair`, monster `summoned_by`, item `obtained_from`, spell
+`learnable`, `learned_from`, `casted_by` and `classes`. Match rates against the stock `.mdb` are
+in `docs/data-parity.md`. They are *partial* where marked below: the part that comes out of
+text-block scripts is not reproduced, so the text is a prefix-compatible subset of NMR's, never
+a different list. The derivations read each other (monsters, then items, then spells), so an
+item that only a script hands out reads as not obtainable and a spell it teaches loses that
+source.
 
 ## Items (`items`, `item_abilities`, `item_classes`, `item_races`, `item_negates`)
 
@@ -45,7 +54,7 @@ monster `avg_dmg*`, `avg_lair_exp`, `script_value`; the whole `Lairs` table; `Ro
 | `negate_spell[0..9]` | direct | `item_negates.spell` by slot |
 | `abilities[0..19]` | direct | `item_abilities.ability`, `.value` by slot |
 | `in_game` | none | always `true`: a row in the server's table is in the game |
-| `obtained_from` | none | `None`. NMR's text lists shops, monsters and rooms that yield the item; a feature that shows it must compute it from `shop_items`, `monster_items` and `room_placed_items` |
+| `obtained_from` | derived, partial | `Room m/r` (placed or hidden in the room; sorted by room number then map, as the `.mdb`), `Shop #n` / `Shop(sell) #n` (shop buys it, no quantity) / `Shop(nogen) #n` (stocked, never restocked) for shops in the game, `Monster #n(p%)` for monsters in the game, joined with `, ` in that order, cut to 1,996 characters with the last replaced by `+`. 66% of items match exactly. Of the 659 that differ, 588 differ only by entries the loader does not produce: `Textblock #n(p%)` (an item given by a text-block line, p from the line's cumulative percentage), `NPC #n` (given through a monster's ask tree) and `Item #n(p%)` (a chest that opens into it). Those need a reachability walk of the text-block scripts. The other 71 are mostly monsters that are in the game only through a script (so they read as not in the game here), a few monsters the `.mdb` lists with a different slot percentage than silvermere's drop table, and the rooms and shop 65 that exist only in silvermere's world (the 26 extra rooms) |
 | `references` | none | `None`; NMR's cross-reference text |
 
 Not mapped (no model field): descriptions, hidden descriptions, `level`, `energy`, the `cash_*`
@@ -93,7 +102,7 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | `drops[n]` | direct | `monster_items.item`, `.pct` by slot (`uses` is dropped). An empty slot is 0/0; the `.mdb` keeps a stale percentage on some empty slots (615 of them), which has no source and no meaning |
 | `abilities[n]` | direct | `monster_abilities.ability`, `.value` by slot |
 | `in_game` | none | always `true` |
-| `summoned_by` | none | `None`; NMR's text of the groups and lairs that spawn the monster |
+| `summoned_by` | derived, partial | `Room m/r` (the room's specific monster), then the rooms whose generation range covers the monster, joined with `,`: `Group: m/r` or, for a lair room, `[group-min-max][max]Group(lair): m/r`; then `Spell #n` for summon spells (ability 12; the monster is its value, or the spell's base value when that is 0); rooms and spells ordered by room number then map and spell number. Cut at 20,000 characters like the `.mdb`. 89% of monsters match. The 116 that differ: 101 only by `Textblock #n(p%)` entries (scripts that summon the monster, not reproduced); the other 15 by the order or set of `Spell #n` entries, the one room silvermere has beyond the `.mdb` (monsters 266 to 268) and the 20,000 cut (monster 229) |
 
 ## Spells (`spells`, `spell_abilities`)
 
@@ -117,8 +126,10 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | `min_inc_lvls`, `min_inc` | direct | `spells.minlvls`, `spells.mininc` |
 | `dur_inc_lvls`, `dur_inc` | direct | `spells.durlvls`, `spells.durinc` |
 | `abilities[n]` | direct | `spell_abilities.ability`, `.value` by slot |
-| `learnable` | none | `false`; NMR derives it from the scrolls and trainers that teach the spell |
-| `learned_from`, `casted_by`, `classes` | none | `None`; NMR's cross-reference text. `classes` could be derived from class magery later |
+| `learnable` | derived, partial | true when some item in the game teaches the spell (item ability 42, value = spell). 96.7% match; the 46 others are taught only by an NPC (a monster's ask script with `learnspell`) |
+| `learned_from` | derived, partial | `Item #n` for those items, by item number, joined with `, `. 96.6% match; the misses are the NPC-taught spells (`NPC #n`) and spells whose scroll the `.mdb` does not count as obtainable |
+| `classes` | derived, partial | `(*)` when a teaching item has no class restriction, else `(c,c)` of the classes the items name. The `.mdb` also gives `(12)`-style values for NPC-taught spells (the class line of the ask script); those are not reproduced. 96.7% match |
+| `casted_by` | derived, partial | `Monster #n` (mid spell, hit spell, spell attack, death or create spell; monsters in the game), then `Room m/r` (occupant spell), then `Spell #n` (spells with ability 151 naming it), joined with `, `, cut to 250 characters. 62% match: 317 of the 518 misses are only `Textblock`, `Item` or `NPC` entries (casts from scripts and item effects, not reproduced); most of the rest are the **order of the monsters**, which in the `.mdb` follows an NMR scan order the loader could not recover (the set is right, the loader sorts by monster number) |
 
 Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 
@@ -133,7 +144,7 @@ Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 | `npc` | direct | `rooms.specmon` |
 | `cmd` | direct | `rooms.cmdtext` |
 | `spell` | direct | `rooms.roomspell` |
-| `lair` | none | `None`; NMR's text of the monsters a lair room generates (`Max n: ...[group]`), which depends on its lair grouping rules |
+| `lair` | derived | for a lair room (`room_type` 3) with a generation range (`maxlevel` > 0): `(Max n): 1,2,[group-min-max-n]`, where `n` is `maxmonsters`, the list is the known monsters of type `mongroup` (-1 any) whose generation index is within `minlevel..maxlevel` (0 means no lower limit), ordered by generation index then number, and the bracket repeats `mongroup-minlevel-maxlevel` and `n`. At most 15 monsters of one type and generation index are listed (the stock data has one pool of 18 where NMR lists 15; no other pool reaches the limit, so this is inferred from that one case). A room's `genmonster` is ignored: rooms that set it list the pool all the same. 100% of the 26,694 rooms match |
 | `delay` | derived | `rooms.regendelay`, with 0 read as the default 5 (7,049 rooms) |
 | `placed` | derived | `room_placed_items.item` joined as `"7,8,"` (each followed by a comma, as MME writes it); `None` when empty |
 | `n`, `s`, `e`, `w`, `ne`, `nw`, `se`, `sw`, `u`, `d` | derived | from `room_exits` (slot = direction). No exit is `"0"` (also a hidden exit with all-zero parameters). Otherwise `map/room`: the same map, or `par1` for a map-change exit, followed by MME's suffix rebuilt from the exit kind and `par1..par4`: `(Door)` or `(Door [N picklocks/strength])`, `(Key: K ...)`, `(Item: N)`, `(Toll: N)`, `(Hidden/Passable)`, `(Hidden/Searchable)`, `(Hidden/Needs N Actions, any|specific order)`, `(Trap, N damage)`, `(Class: ..)`, `(Race: ..)`, `(Level: a to b)`, `(Ticket/Item: N)`, `(Cast: pre-a, post-b)`, `(Ability: ..)`, `(Spell Trap: N)`. The destination and these suffixes match the stock `.mdb`. Not rebuilt, and `(Other)` instead: text-triggered exits (`(Text: go path, ...)` takes its words from a text block), action exits (`Action [on the N exit ...]`), alignment-gated exits and timed exits; 547 of the 26,694 x 10 exit fields differ for this reason alone. A consumer parsing exits for pathing only needs the leading `map/room`, which is right for every field except those of the `Action` kind (MME prints no destination for them) |
@@ -178,7 +189,14 @@ Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 
 | Field | Status | Source / fill |
 |---|---|---|
-| `group_index`, `mob_list`, `mobs`, `total_lairs`, `avg_delay`, `avg_walk`, `avg_exp`, `avg_dmg`, `avg_dmg_phys`, `avg_dmg_spell`, `avg_hp`, `avg_ac`, `avg_dr`, `avg_mr`, `avg_dodge` | none | `World.lairs` is empty. NMR builds the table from room lair data, monster stats and walking distance; silvermere has no equivalent. Safe because nothing in the loader or the model indexes depends on it; features that read lairs show nothing for a live database until a card computes them |
+| `group_index` | derived | `mongroup-minlevel-maxlevel` of the lair rooms (see `Rooms.lair`); one row per distinct value, in text order with the hyphens ignored (`10-10-10` before `10-1-1`) |
+| `mob_list`, `mobs` | derived | the room pool without monsters that have a regeneration time (`regenhrs` > 0: NMR leaves uniques out of the table but not out of the room text); a group whose pool is then empty has no row (5 groups). 100% of 421 rows |
+| `total_lairs` | derived | lair rooms of the group |
+| `avg_delay` | derived | mean of those rooms' `delay`, rounded half to even |
+| `avg_exp`, `avg_hp`, `avg_ac`, `avg_dr`, `avg_mr` | derived | mean over the listed monsters of `exp * exp_multi`, `hp`, `armour_class`, `damage_resist`, `magic_res`, rounded half to even |
+| `avg_dodge` | derived | mean of the monsters' Dodge ability (34) value, 0 for monsters without it |
+| `avg_dmg`, `avg_dmg_phys`, `avg_dmg_spell` | derived from monster fields | mean of the monsters' `avg_dmg*`, rounded; **0 until the phase-3 rules fill the monsters' damage**, and then the lairs must be re-derived. Checked against the stock monsters' values the match is only about 92%: the `.mdb` rounds the monster values to one decimal and the lair averages come from the unrounded ones |
+| `avg_walk` | none | `0.0`. NMR's walking distance is not recoverable: for single-lair groups it takes values like 0, 2, 20, 84 and 150 that are not the distance to the nearest other lair, to the controlling room, or to any fixed room that was tried |
 
 ## TBInfo (`text_blocks`, `monsters`, `rooms`)
 
@@ -186,8 +204,8 @@ Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 |---|---|---|
 | `number` | direct | `text_blocks.number`, one row per block |
 | `link_to` | direct | `text_blocks.link` of the block's first part |
-| `action` | none | `None`; NMR's parsed ASK keywords/actions of the text |
-| `called_from` | derived | comma-joined `Monster #n` (monster `talktext`), `Room map/room` (room `cmdtext`) and `Textblock #n` (another block linking here); empty when nothing points at it. Item text references are not included (the model has no `textnum`). NMR also lists blocks referenced from inside another block's script (`Textblock #998(6%)`, `Textblock(rndm) #997`), which needs the script parser (T-014); about half of the blocks that have a caller differ for that reason. The `.mdb` has 3 blocks silvermere lacks (11, 60, 134) and silvermere has 944 the `.mdb` lacks (block 0 and the 10000 series). |
+| `action` | none | `None`; NMR's parsed ASK keywords/actions of the text. Not attempted by T-014: it needs the full text-block script parser (the same one `called_from` below and the `Textblock`/`NPC` entries above wait for) |
+| `called_from` | derived | comma-joined `Monster #n` (monster `talktext`), `Room map/room` (room `cmdtext`) and `Textblock #n` (another block linking here); empty when nothing points at it. Item text references are not included (the model has no `textnum`). NMR also lists blocks referenced from inside another block's script (`Textblock #998(6%)`, `Textblock(rndm) #997`), which needs the script parser (not done by T-014, see `action` above); about half of the blocks that have a caller differ for that reason. The `.mdb` has 3 blocks silvermere lacks (11, 60, 134) and silvermere has 944 the `.mdb` lacks (block 0 and the 10000 series). |
 
 ## Info
 

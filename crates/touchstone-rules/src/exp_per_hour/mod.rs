@@ -8,12 +8,18 @@ use touchstone_vb6::{Currency, Vb6Error};
 use crate::RulesError;
 
 mod helpers;
+mod model_a;
+mod model_b;
+mod model_c;
 mod model_d;
 
 pub use helpers::{
     SEC_PER_MEDI_TICK, SEC_PER_REGEN_TICK, SEC_PER_REST_TICK, SEC_PER_ROUND, ceph_b_saturate,
     ceph_b_smooth_step, ceph_c_ceil, clamp_dbl, max_dbl, min_dbl, safe_div,
 };
+pub use model_a::model_a;
+pub use model_b::model_b;
+pub use model_c::model_c;
 pub use model_d::{ceph_d_overkill_frac, model_d};
 
 /// The arguments of `CalcExpPerHour`, in MME's order and with MME's VB6 types (the model
