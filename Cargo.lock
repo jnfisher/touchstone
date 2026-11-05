@@ -983,6 +983,8 @@ dependencies = [
 name = "touchstone-vb6"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "thiserror",
  "touchstone-model",
 ]
 
