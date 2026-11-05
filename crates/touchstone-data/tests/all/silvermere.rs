@@ -168,7 +168,7 @@ fn seed(conn: &Connection) {
         "messages",
         &[
             ("number", i(3)),
-            ("text0", t("you poke")),
+            ("text0", t("The %s pokes you for %d damage!")),
             ("text1", t("pokes you")),
             ("text2", t("pokes")),
         ],
@@ -179,7 +179,8 @@ fn seed(conn: &Connection) {
         &[
             ("number", i(21)),
             ("name", t("test gremlin")),
-            ("montype", i(2)),
+            ("montype", i(9)),
+            ("grouprole", i(2)),
             ("level", i(3)),
             ("weapon", i(7)),
             ("dr", i(2)),
@@ -266,13 +267,15 @@ fn seed(conn: &Connection) {
             ("minval", i(4)),
             ("maxval", i(12)),
             ("diff", i(15)),
-            ("resstat", i(0)),
+            ("resstat", i(1)),
+            ("resmode", i(0)),
             ("target", i(8)),
             ("duration", i(2)),
             ("element", i(4)),
             ("magery", i(1)),
             ("magelvl", i(1)),
-            ("levelcap", i(6)),
+            // The high byte is padding (8224 = 0x2020 reads as 32 in MME).
+            ("levelcap", i(0x2006)),
             ("maxinc", i(1)),
             ("maxlvls", i(2)),
         ],
@@ -350,7 +353,7 @@ fn seed(conn: &Connection) {
             ("minlevel", i(1)),
             ("maxlevel", i(5)),
             ("markup", i(120)),
-            ("trainclass", i(2)),
+            ("trainclass", i(0x7100 + 2)),
         ],
     );
     insert(
@@ -382,6 +385,7 @@ fn seed(conn: &Connection) {
             ("room", i(10)),
             ("name", t("Test Hall")),
             ("light", i(-1)),
+            ("room_type", i(1)),
             ("shopnum", i(5)),
             ("specmon", i(21)),
             ("cmdtext", i(40)),
@@ -397,6 +401,9 @@ fn seed(conn: &Connection) {
             ("map", i(1)),
             ("room", i(11)),
             ("name", t("Test Closet")),
+            // Not a shop room, so MME records no shop; an unset delay reads as 5.
+            ("shopnum", i(5)),
+            ("regendelay", i(0)),
         ],
     );
     for (slot, target, kind, par1) in [(0, 11, 0, 0), (8, 12, 7, 2)] {
@@ -488,8 +495,8 @@ fn maps_items() {
         (3, 13, 5, 30, 1200)
     );
     assert!(it.gettable && it.not_droppable && !it.destroy_on_death && !it.retain_after_uses);
-    // charges -1 means "none", which MME stores as 0.
-    assert_eq!(it.use_count, 0);
+    // Expected value from the stock-parity run (T-015): MME keeps -1 for "no charges" too.
+    assert_eq!(it.use_count, -1);
     assert_eq!(w.get_item(8).unwrap().use_count, 5);
     assert_eq!(it.class_rest, [2, 5, 0, 0, 0, 0, 0, 0, 0, 0]);
     assert_eq!(it.race_rest[3], 4);
@@ -545,7 +552,8 @@ fn maps_monsters() {
     // Slot 1 is unused; slot 2 follows with a cumulative 100, so its own chance is 60.
     assert_eq!(m.attacks[1].name, "None");
     assert_eq!(m.attacks[2].true_pct, 60.0);
-    assert_eq!(m.attacks[2].name, "");
+    // A weapon attack whose message is empty is "Physical" in MME.
+    assert_eq!(m.attacks[2].name, "Physical");
     assert_eq!(m.mid_spells[1].spell, 77);
     assert_eq!((m.mid_spells[1].pct, m.mid_spells[1].lvl), (30, 4));
     assert_eq!((m.drops[4].item, m.drops[4].pct), (8, 15));
@@ -624,6 +632,13 @@ fn maps_rooms_shops_and_text() {
     // A map-change exit takes its map from par1.
     assert_eq!(w.get_room(1, 11).unwrap().s, "9/3");
     assert_eq!(w.get_room(1, 11).unwrap().placed, None);
+    assert_eq!(
+        (
+            w.get_room(1, 11).unwrap().shop,
+            w.get_room(1, 11).unwrap().delay
+        ),
+        (0, 5)
+    );
 
     let shop = w.get_shop(5).unwrap();
     assert_eq!(
@@ -807,4 +822,56 @@ fn an_empty_world_loads() {
     let w = load(&path);
     assert!(w.items.is_empty() && w.rooms.is_empty());
     assert_eq!(w.info.dat_file_version, "silvermere");
+}
+
+#[test]
+fn rebuilds_exit_and_attack_text() {
+    let (_d, path, conn) = new_db(&[1, 2]);
+    seed(&conn);
+    // Expected strings are the stock .mdb's, from the T-015 parity run.
+    for (slot, target, kind, pars) in [
+        (1, 20, 2, [593, 2, -80, 1]),
+        (2, 21, 7, [2, -300, 0, 1124]),
+        (3, 22, 6, [112, -3, 0, 0]),
+        (4, 23, 9, [30, 0, 0, 0]),
+        (5, 24, 6, [0, 0, 0, 0]),
+        (6, 25, 10, [752, 0, 753, 1]),
+    ] {
+        insert(
+            &conn,
+            "room_exits",
+            &[
+                ("room_id", i(1)),
+                ("slot", i(slot)),
+                ("direction", i(slot)),
+                ("target", i(target)),
+                ("exit_type", i(kind)),
+                ("par1", i(pars[0])),
+                ("par2", i(pars[1])),
+                ("par3", i(pars[2])),
+                ("par4", i(pars[3])),
+            ],
+        );
+    }
+    // A spell attack is named after its spell; a long hit message is cut.
+    insert(
+        &conn,
+        "monster_attacks",
+        &[
+            ("monster", i(21)),
+            ("slot", i(3)),
+            ("kind", i(2)),
+            ("accuracy", i(77)),
+            ("pct", i(100)),
+        ],
+    );
+    let w = load(&path);
+    let r = w.get_room(1, 10).unwrap();
+    assert_eq!(r.s, "1/20 (Key: 593 [or 81 picklocks])");
+    assert_eq!(r.e, "1/21 (Key: 1124 [or 301 picklocks/strength])");
+    assert_eq!(r.w, "1/22 (Hidden/Needs 3 Actions, any order)");
+    assert_eq!(r.ne, "1/23 (Trap, 30 damage)");
+    assert_eq!(r.nw, "0");
+    assert_eq!(r.se, "1/25 (Other)");
+    assert_eq!(w.get_monster(21).unwrap().attacks[3].name, "test bolt");
 }
