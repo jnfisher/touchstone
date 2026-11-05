@@ -416,6 +416,12 @@ class Compiler:
     def x_call(self, node, ctx):
         return self.call_expr(node.target, node.args, ctx, False)
 
+    @staticmethod
+    def is_own_name(low, b, ctx):
+        proc = getattr(ctx, "proc", None)
+        return (b[0] == "local" and proc is not None and proc.kind in ("function", "get") and proc.low == low
+                and low in ctx.module.proc_map)
+
     def call_expr(self, target, args, ctx, is_stmt):
         it = self.it
         argfns = [self.carg(a, ctx) for _, a in args]
@@ -424,6 +430,9 @@ class Compiler:
         if tk == "name":
             low = target.low
             b = self.resolve(low, ctx)
+            if args and self.is_own_name(low, b, ctx):
+                # F(args) inside Function F is a recursive call, F alone is the return variable
+                b = ("proc", ctx.module.proc_map[low], ctx.module)
             k = b[0]
             if k in ("local", "clsvar", "global"):
                 base = self.name_value(target, ctx)
