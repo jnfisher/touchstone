@@ -1,0 +1,25 @@
+# touchstone.toml: every key, with its default. Run: touchstone serve --config touchstone.toml
+
+# Address and port to listen on. No authentication: keep it on a LAN or Tailscale.
+bind = "0.0.0.0:8370"
+
+# Where touchstone keeps its own files (saved characters, converted databases).
+data_dir = "data"
+
+[source]
+# "mdb": an MMUD Explorer database. "silvermere": a running silvermere/Quicksilver game's SQLite
+# file, read live and reloaded when the game changes it. The source is required.
+kind = "mdb"
+
+# mdb: either an already converted .sqlite (see tools/mdb-fetch.sh), or a .mdb, which is converted
+# on start into <data_dir>/converted/ with mdbtools (apt install mdbtools) and python3, using
+# tools/mdb2sqlite.py. silvermere: the game's database file; touchstone must be able to read the
+# file and its -shm sibling (run as the game's user, or share its group).
+path = "/srv/mud/data-v1.11p.sqlite"
+
+# silvermere only: seconds between checks for changed game data. Default 10.
+# reload_interval_secs = 10
+
+# mdb only, and only for a .mdb path: where mdb2sqlite.py is when it is not in a tools/ directory
+# next to the binary, its parent, or the working directory.
+# converter = "/opt/touchstone/tools/mdb2sqlite.py"

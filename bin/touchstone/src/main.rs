@@ -32,12 +32,20 @@ async fn main() -> anyhow::Result<()> {
                 Some(p) => Config::load(&p)?,
                 None => Config::default(),
             };
+            let started = touchstone::source::start(&cfg)?;
+            if let (Some(live), Some(src)) = (started.live, &cfg.source) {
+                touchstone::source::spawn_reload(
+                    live,
+                    started.state.clone(),
+                    touchstone::source::reload_interval(src),
+                );
+            }
             let addr = bind.unwrap_or(cfg.bind);
             let listener = tokio::net::TcpListener::bind(&addr)
                 .await
                 .with_context(|| format!("binding {addr}"))?;
             eprintln!("touchstone listening on http://{addr}");
-            axum::serve(listener, touchstone::app())
+            axum::serve(listener, touchstone::app(started.state))
                 .with_graceful_shutdown(async {
                     let _ = tokio::signal::ctrl_c().await;
                 })
