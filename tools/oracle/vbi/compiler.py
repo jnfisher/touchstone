@@ -82,7 +82,7 @@ class Compiler:
             cp.param_index[p.low] = i
             code = it.type_code(p.typespec, module)
             cp.param_codes.append(code)
-            ctx.locals[p.low] = code
+            ctx.locals[p.low] = ("array:" + code) if p.is_array else code
         if proc.kind in ("function", "get"):
             cp.ret_code = it.type_code(proc.rettype, module) if proc.rettype else "variant"
             if proc.ret_is_array:
@@ -416,6 +416,12 @@ class Compiler:
     def x_call(self, node, ctx):
         return self.call_expr(node.target, node.args, ctx, False)
 
+    @staticmethod
+    def is_own_name(low, b, ctx):
+        proc = getattr(ctx, "proc", None)
+        return (b[0] == "local" and proc is not None and proc.kind in ("function", "get") and proc.low == low
+                and low in ctx.module.proc_map)
+
     def call_expr(self, target, args, ctx, is_stmt):
         it = self.it
         argfns = [self.carg(a, ctx) for _, a in args]
@@ -424,6 +430,9 @@ class Compiler:
         if tk == "name":
             low = target.low
             b = self.resolve(low, ctx)
+            if args and self.is_own_name(low, b, ctx):
+                # F(args) inside Function F is a recursive call, F alone is the return variable
+                b = ("proc", ctx.module.proc_map[low], ctx.module)
             k = b[0]
             # Inside a Function, Name(args) is a recursive call, not an index into the return value.
             if (k == "local" and ctx.proc is not None and low == ctx.proc.low and args
@@ -493,6 +502,8 @@ class Compiler:
     def deref(v):
         if v is OMIT:
             return MISSING
+        if isinstance(v, _RefCell):
+            return v.v
         return v.get() if isinstance(v, REFTYPES) else v
 
     def index_value(self, arr, vals, name):

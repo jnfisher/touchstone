@@ -28,6 +28,8 @@ pub struct SourceInfo {
 
 /// Everything derived from one load of the data.
 pub struct Loaded {
+    /// Kept for the computed endpoints, which look rows up by MME record number.
+    pub world: World,
     pub tables: Vec<TableJson>,
     pub info: InfoJson,
 }
@@ -55,7 +57,7 @@ pub struct VersionJson {
 
 impl Loaded {
     pub fn build(
-        world: &World,
+        world: World,
         source: SourceInfo,
         data_version: Option<i64>,
         load_count: u64,
@@ -94,21 +96,23 @@ impl Loaded {
             });
         }
         let v = &world.info;
+        let version = VersionJson {
+            nmr_version: v.nmr_version.clone(),
+            dat_file_version: v.dat_file_version.clone(),
+            date: v.date.clone(),
+            time: v.time.clone(),
+            custom: v.custom.clone(),
+        };
         let counts = tables.iter().map(|t| (t.name.to_owned(), t.rows)).collect();
         Ok(Self {
+            world,
             tables,
             info: InfoJson {
                 source,
                 loaded_at: iso_now(),
                 data_version,
                 load_count,
-                version: VersionJson {
-                    nmr_version: v.nmr_version.clone(),
-                    dat_file_version: v.dat_file_version.clone(),
-                    date: v.date.clone(),
-                    time: v.time.clone(),
-                    custom: v.custom.clone(),
-                },
+                version,
                 counts,
             },
         })

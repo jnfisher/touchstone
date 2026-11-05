@@ -247,6 +247,73 @@ export const TABLE_NAMES: readonly TableName[] = [
 	'lairs'
 ];
 
+/** `GET /api/shops/{n}/prices`: each stocked item's buy and sell price, or a trainer's levels. */
+export interface ShopPriceRow {
+	slot: number;
+	item: number;
+	name: string;
+	max: number;
+	regen: string;
+	copper_buy: number;
+	buy: string;
+	buy_short: string;
+	copper_sell: number;
+	sell: string;
+	sell_short: string;
+}
+export interface TrainLevel {
+	level: number;
+	copper: number;
+	cost: string;
+}
+export interface ShopPrices {
+	shop: number;
+	name: string;
+	shop_type: number;
+	min_lvl: number;
+	max_lvl: number;
+	markup: number;
+	class_rest: number;
+	charm: number;
+	/** MME's charm label for buying; empty at charm 0. */
+	buy_note: string;
+	sell_note: string;
+	training: boolean;
+	items: ShopPriceRow[];
+	levels: TrainLevel[];
+}
+
+/** `GET /api/exp`: exp needed to reach each level and the cost to train to it. */
+export interface ExpRow {
+	level: number;
+	exp: number;
+	exp_text: string;
+	train_copper: number;
+	train_cost: string;
+}
+export interface ExpTable {
+	race: number;
+	class: number;
+	markup: number;
+	rows: ExpRow[];
+}
+export interface ExpQuery {
+	race: number;
+	class: number;
+	from?: number;
+	to?: number;
+	markup?: number;
+}
+
+/** The query string of an exp request; omitted fields take the server's defaults. */
+export function expPath(q: ExpQuery): string {
+	const p = new URLSearchParams({ race: String(q.race), class: String(q.class) });
+	if (q.from !== undefined) p.set('from', String(q.from));
+	if (q.to !== undefined) p.set('to', String(q.to));
+	if (q.markup !== undefined) p.set('markup', String(q.markup));
+	return `/api/exp?${p}`;
+}
+
 type FetchFn = typeof fetch;
 interface Entry {
 	etag: string | null;
@@ -299,6 +366,19 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		},
 		async revalidate<T extends TableName>(name: T): Promise<TableTypes[T][]> {
 			return (await shared(`/api/${name}`, true)) as TableTypes[T][];
+		},
+		/** Computed values depend on the inputs, so these are fetched every time and not cached. */
+		async shopPrices(shop: number, charm: number): Promise<ShopPrices> {
+			const path = `/api/shops/${shop}/prices?charm=${charm}`;
+			const res = await fetchFn(path);
+			if (!res.ok) throw new ApiError(res.status, path);
+			return (await res.json()) as ShopPrices;
+		},
+		async expTable(q: ExpQuery): Promise<ExpTable> {
+			const path = expPath(q);
+			const res = await fetchFn(path);
+			if (!res.ok) throw new ApiError(res.status, path);
+			return (await res.json()) as ExpTable;
 		},
 		async info(): Promise<Info> {
 			return (await shared('/api/info', false)) as Info;
