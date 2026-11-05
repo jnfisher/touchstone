@@ -150,6 +150,8 @@ fn run(op: &str, a: &Value) -> Out {
             a.as_array().unwrap().iter().map(text).collect::<String>(),
         )),
         "Val" => num(val(s(a, 0))),
+        "IsNumeric" => Ok(Value::from(vbool(is_numeric(s(a, 0))))),
+        "CDblStr" => f_out(cdbl_str(s(a, 0))),
         "Left" => left(s(a, 0), i32a(a, 1))
             .map(Value::from)
             .map_err(Vb6Error::code),

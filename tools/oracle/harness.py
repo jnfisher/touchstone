@@ -232,8 +232,38 @@ class Env:
             it.bind_proc(n, zero)
         it.bind_proc("HandleError", handle_error)
         it.procs.pop("handleerror", None)
+        # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
+        # matching is done here with Python's re (ASCII classes, as in VBScript).
+        it.bind_proc("RegExpFindv2", self._regexp_find)
+        it.procs.pop("regexpfindv2", None)
         it.bind_proc("EnsureDatabaseConnection", false)
         it.procs.pop("ensuredatabaseconnection", None)
+
+    def _regexp_find(self, it, look_in, pattern, match_case=True, multiline=False, allow_empty=False):
+        """modSyntaxsFunc RegExpFindv2: every match with its non-empty submatches (empty ones too when
+        allowed). No match gives one element with empty text and a one-element empty submatch array."""
+        def val(x, default):
+            x = x.v if hasattr(x, "v") and not isinstance(x, (str, int, float)) else x
+            return default if x is V.MISSING else x
+        look_in, pattern = V.c_str(val(look_in, "")), V.c_str(val(pattern, ""))
+        flags = re.ASCII | (0 if val(match_case, True) else re.IGNORECASE) | (re.MULTILINE if val(multiline, False) else 0)
+        keep = -1 if val(allow_empty, False) else 0
+        found = list(re.finditer(pattern, look_in, flags))
+        factory = lambda: it.new_udt("regexmatches")
+        arr = VBArray("regexmatches", None, factory)
+        arr.dynamic = True
+        arr.allocate([(0, max(len(found), 1) - 1)])
+        for i, m in enumerate(found or [None]):
+            u = arr.get((i,))
+            subs = []
+            if m is not None:
+                u.set_field("sfullmatch", m.group(0))
+                subs = [g or "" for g in m.groups() if len(g or "") > keep]
+            sm = u.fields["ssubmatches"]
+            sm.allocate([(0, max(len(subs), 1) - 1)])
+            for j, t in enumerate(subs):
+                sm.set((j,), t)
+        return arr
 
     # -- per-case state
     def reset(self, rnd=None):
@@ -297,7 +327,12 @@ class Env:
         for name, val in spec.get("fields", {}).items():
             cur = u.fields[name.lower()]
             if isinstance(cur, VBArray):
-                if val:
+                if val and cur.bounds is not None and not getattr(cur, "dynamic", False):
+                    # fixed array (`nMAPlusSkill(1 To 3)`): keep its bounds, fill from the lower one
+                    lo = cur.bounds[0][0]
+                    for i, x in enumerate(val):
+                        cur.set((lo + i,), decode(x))
+                elif val:
                     cur.allocate([(0, len(val) - 1)])
                     for i, x in enumerate(val):
                         cur.set((i,), decode(x))
