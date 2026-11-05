@@ -1,6 +1,7 @@
 mod api;
 mod calc;
 mod common;
+mod detail;
 
 mod health {
     use axum::body::Body;

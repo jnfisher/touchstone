@@ -3,7 +3,7 @@
 // Column order and headers follow modMain's Add*2LV row builders; record filters follow the
 // Filter* procedures in frmMain with MME's default "only in-game" setting.
 import type { ClassRec, Item, Monster, Race, Room, Shop, Spell, TableName, TableTypes } from './api';
-import type { AbilitySlot } from './api';
+import type { Abilities, AbilitySlot } from './api';
 import * as E from './enums';
 import type { SectionSlug } from './sections';
 
@@ -34,6 +34,16 @@ export interface DetailGroup {
 	rows: DetailRow[];
 }
 
+/** Server-computed values the detail pane waits for; each is absent until it arrives. */
+export interface DetailExtra {
+	/** MME's ability text for the record. */
+	abilities?: Abilities;
+	/** The text could not be fetched; the raw slots are shown instead. */
+	abilitiesFailed?: boolean;
+	/** `GetMaxDamage` for a monster. */
+	maxDamage?: number;
+}
+
 /** Name lookups for cross references in the detail pane; any table may still be loading. */
 export interface Lookups {
 	items?: Map<number, string>;
@@ -57,7 +67,7 @@ export interface Explorer<K extends TableName = TableName> {
 	defaultSort?: { col: string; dir: 'asc' | 'desc' };
 	/** Columns MME shows that need the rules engine or a character; not faked here. */
 	pending: string[];
-	detail(rec: TableTypes[K], lk: Lookups): DetailGroup[];
+	detail(rec: TableTypes[K], lk: Lookups, extra?: DetailExtra): DetailGroup[];
 }
 
 // ---------- helpers ----------
@@ -99,6 +109,21 @@ function abilityRows(slots: AbilitySlot[]): DetailRow[] {
 		.filter((s) => s.ability !== 0)
 		.map((s) => row(`Ability ${s.ability}`, s.value));
 }
+/**
+ * The Abilities group: MME's text ("Accuracy" / "+5") once the server has answered, the raw slots
+ * only if it could not. While the text is on its way the group is left out rather than flashing
+ * numbers.
+ */
+function abilityGroup(slots: AbilitySlot[], extra: DetailExtra | undefined): DetailGroup[] {
+	const ab = extra?.abilities;
+	if (!ab) {
+		const raw = extra?.abilitiesFailed ? abilityRows(slots) : [];
+		return raw.length ? [group('Abilities', raw)] : [];
+	}
+	const rows = ab.lines.map((l) => row(l.name, l.detail || 'Yes', l.detail.length > 36));
+	if (ab.class_ok.length) rows.push(row('Class OK', ab.class_ok.join(', '), true));
+	return rows.length ? [group('Abilities', rows)] : [];
+}
 function listRefs(label: string, nums: number[], map: Map<number, string> | undefined): DetailRow[] {
 	const set = nums.filter((n) => n !== 0);
 	return set.length ? [row(label, set.map((n) => ref(map, n)).join(', '), true)] : [];
@@ -131,7 +156,7 @@ const acText = (r: Item, round: boolean) =>
 	`${round ? Math.ceil(r.armour_class / 10) : r.armour_class / 10}/${r.damage_resist / 10}`;
 const acKey = (r: Item) => r.armour_class * 100000 + r.damage_resist;
 
-function itemDetail(r: Item, lk: Lookups): DetailGroup[] {
+function itemDetail(r: Item, lk: Lookups, extra?: DetailExtra): DetailGroup[] {
 	const isWeapon = r.item_type === 1;
 	const isArmour = r.item_type === 0 && r.worn !== 0;
 	const stats = [
@@ -172,8 +197,7 @@ function itemDetail(r: Item, lk: Lookups): DetailGroup[] {
 		...listRefs('Negates spells', r.negate_spell, lk.spells)
 	];
 	if (restrictions.length) out.push(group('Restrictions', restrictions));
-	const abil = abilityRows(r.abilities);
-	if (abil.length) out.push(group('Abilities', abil));
+	out.push(...abilityGroup(r.abilities, extra));
 	const where = [
 		...(r.obtained_from ? [row('Obtained from', r.obtained_from, true)] : []),
 		...(r.references ? [row('References', r.references, true)] : [])
@@ -293,7 +317,7 @@ const spells: Explorer<'spells'> = {
 	title: spellName,
 	defaultSort: { col: 'name', dir: 'asc' },
 	pending: ['Dmg', 'Dmg/M', 'Heal', 'Heal/M', 'Detail'],
-	detail: (s) => {
+	detail: (s, _lk, extra) => {
 		const out = [
 			group(spellName(s), [
 				row('Number', s.number),
@@ -317,8 +341,7 @@ const spells: Explorer<'spells'> = {
 				row('Duration grows', `+${s.dur_inc} per ${s.dur_inc_lvls} levels`)
 			])
 		];
-		const abil = abilityRows(s.abilities);
-		if (abil.length) out.push(group('Abilities', abil));
+		out.push(...abilityGroup(s.abilities, extra));
 		const where = [
 			...(s.learned_from ? [row('Learned from', s.learned_from, true)] : []),
 			...(s.casted_by ? [row('Cast by', s.casted_by, true)] : []),
@@ -374,7 +397,7 @@ const monsters: Explorer<'monsters'> = {
 	title: monName,
 	defaultSort: { col: 'name', dir: 'asc' },
 	pending: ['Acc (Maj/Mx)', 'Damage', 'Exp/(Dmg+HP)', 'Lairs', 'Mobs/Spwn', 'Spell Atk.'],
-	detail: (m, lk) => {
+	detail: (m, lk, extra) => {
 		const out = [
 			group(monName(m), [
 				row('Number', m.number),
@@ -393,6 +416,9 @@ const monsters: Explorer<'monsters'> = {
 				row('Charm level', m.charm_lvl),
 				row('Follow %', m.follow_pct),
 				row('Game limit', m.game_limit),
+				...(extra?.maxDamage === undefined
+					? []
+					: [row('Max damage / round', putCommas(extra.maxDamage))]),
 				row('Stored avg damage', m.avg_dmg),
 				row('Stored lair exp', putCommas(m.avg_lair_exp)),
 				row('Weapon', ref(lk.items, m.weapon)),
@@ -418,8 +444,8 @@ const monsters: Explorer<'monsters'> = {
 		if (mid.length) out.push(group('Spells', mid));
 		const drops = m.drops.filter((d) => d.item !== 0).map((d) => row(ref(lk.items, d.item), `${d.pct}%`));
 		if (drops.length) out.push(group('Drops', drops));
-		const abil = abilityRows(m.abilities);
-		if (abil.length) out.push(group('Abilities', abil));
+		// Guarded-by (146) is a row of its own in MME; the server leaves it out of the text.
+		out.push(...abilityGroup(m.abilities, extra));
 		if (m.summoned_by) out.push(group('Locations', [row('Summoned by', m.summoned_by, true)]));
 		return out;
 	}
@@ -498,7 +524,7 @@ const races: Explorer<'races'> = {
 	title: (r) => r.name,
 	defaultSort: { col: 'num', dir: 'asc' },
 	pending: ['Abilities'],
-	detail: (r) => {
+	detail: (r, _lk, extra) => {
 		const out = [
 			group(r.name, [
 				row('Number', r.number),
@@ -515,8 +541,7 @@ const races: Explorer<'races'> = {
 				row('Charm', range(r.m_chm, r.x_chm))
 			])
 		];
-		const abil = abilityRows(r.abilities);
-		if (abil.length) out.push(group('Abilities', abil));
+		out.push(...abilityGroup(r.abilities, extra));
 		return out;
 	}
 };
@@ -549,7 +574,7 @@ const classes: Explorer<'classes'> = {
 	title: (c) => c.name,
 	defaultSort: { col: 'num', dir: 'asc' },
 	pending: ['Abilities'],
-	detail: (c) => {
+	detail: (c, _lk, extra) => {
 		const out = [
 			group(c.name, [
 				row('Number', c.number),
@@ -562,8 +587,7 @@ const classes: Explorer<'classes'> = {
 			])
 		];
 		// Ability 59 only marks the class as usable, which MME leaves out of its Abilities text.
-		const abil = abilityRows(c.abilities.filter((a) => a.ability !== 59));
-		if (abil.length) out.push(group('Abilities', abil));
+		out.push(...abilityGroup(c.abilities.filter((a) => a.ability !== 59), extra));
 		return out;
 	}
 };
