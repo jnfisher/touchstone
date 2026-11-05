@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, createApi, expPath } from './api';
+import { abilitiesPath, ApiError, createApi, expPath, maxDamagePath, spellEffectPath } from './api';
 
 function res(status: number, body: unknown, etag?: string) {
 	return new Response(status === 304 ? null : JSON.stringify(body), {
@@ -75,6 +75,22 @@ describe('computed endpoints', () => {
 			'/api/shops/3/prices?charm=50',
 			'/api/shops/3/prices?charm=60'
 		]);
+	});
+
+	it('builds the detail-pane paths', () => {
+		expect(abilitiesPath('items', 7)).toBe('/api/abilities/items/7');
+		expect(spellEffectPath(4)).toBe('/api/spells/4/effect');
+		expect(spellEffectPath(4, 12)).toBe('/api/spells/4/effect?level=12');
+		expect(maxDamagePath(9)).toBe('/api/monsters/9/max-damage');
+	});
+
+	it('fetches spell numbers fresh for each level', async () => {
+		const f = vi.fn(async (_p: string) => res(200, { number: 4, duration: 96 }));
+		const api = createApi(f as unknown as typeof fetch);
+		await api.spellEffect(4, 12);
+		await api.spellEffect(4, 13);
+		expect(f.mock.calls.map((c) => c[0])).toEqual(['/api/spells/4/effect?level=12', '/api/spells/4/effect?level=13']);
+		await expect(createApi((async () => res(404, {})) as unknown as typeof fetch).monsterMaxDamage(1)).rejects.toBeInstanceOf(ApiError);
 	});
 
 	it('reports a failed exp request', async () => {
