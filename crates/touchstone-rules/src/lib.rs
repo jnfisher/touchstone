@@ -5,6 +5,7 @@
 
 pub mod abilities;
 pub mod accuracy;
+pub mod attack;
 pub mod exp;
 pub mod exp_per_hour;
 pub mod game_text;
