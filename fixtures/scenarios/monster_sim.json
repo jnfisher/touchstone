@@ -1,0 +1,2691 @@
+{
+ "family": "monster_sim",
+ "description": "clsMonsterAttackSim: RunSim with a fixed Rnd state per case, GetMaxDamage, resist helpers.",
+ "notes": [
+  "RunSim calls Randomize with no argument; the oracle leaves the generator alone, so each case starts the Rnd sequence from inputs.rnd (24-bit LCG state, 327680 when absent) and a port must not reseed.",
+  "sCombatLog uses CR LF. Currency outputs are {cur: value*10000, s: display}."
+ ],
+ "tolerance": {
+  "default": 0
+ },
+ "cases": [
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {}
+    }
+   },
+   "steps": [],
+   "read": {
+    "hit_min": "sim.HIT_MIN",
+    "hit_cap": "sim.HIT_CAP",
+    "spell_cap": "sim.SPELL_HIT_CAP",
+    "dodge_cap": "sim.DODGE_CAP",
+    "dodge_soft": "sim.DODGE_SOFTCAP",
+    "evil": "sim.bMobIsEvil",
+    "spell_type0": "sim.nAtkSpellType[0]"
+   },
+   "id": "defaults"
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 30
+      },
+      "nEnergyPerRound": 1000,
+      "nUserAC": 30,
+      "bCombatLogMaxRoundOnly": true,
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 5
+      }
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-maxround-only",
+   "rnd": 555
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 30
+      },
+      "nEnergyPerRound": 1000,
+      "nUserAC": 30,
+      "bHideEnergyInfo": true,
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 3
+      }
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-hide-energy",
+   "rnd": 555
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 30
+      },
+      "nEnergyPerRound": 1000,
+      "nUserAC": 30,
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 0
+      }
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-no-log",
+   "rnd": 555
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 30
+      },
+      "nEnergyPerRound": 1000,
+      "nUserAC": 30,
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 30
+      }
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-log-full",
+   "rnd": 555
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 0
+      },
+      "nEnergyPerRound": 1000,
+      "nUserAC": 30
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-zero-rounds",
+   "rnd": 555
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 30
+      },
+      "nEnergyPerRound": 0,
+      "nUserAC": 30
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-zero-energy",
+   "rnd": 555
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 30
+      },
+      "nEnergyPerRound": 1000,
+      "nUserAC": 30,
+      "HIT_MIN": -5,
+      "HIT_CAP": 150,
+      "SPELL_HIT_CAP": -1,
+      "DODGE_CAP": 300,
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 1
+      }
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-clamped-caps",
+   "rnd": 555
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "nNumberOfRounds": {
+       "t": "i32",
+       "v": 10
+      }
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    },
+    {
+     "call": "sim.GetMaxDamage",
+     "as": "maxdmg"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-nothing-to-sim",
+   "rnd": 1
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Claw",
+       "",
+       "",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       500,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       100,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       3,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       12,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       70,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nEnergyPerRound": 1000,
+      "nUserAC": 20,
+      "bDynamicCalc": true,
+      "nDynamicCalcDifference": {
+       "t": "cur",
+       "v": 0.05
+      },
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 1
+      },
+      "bUseCPU": true
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-dynamic-0",
+   "rnd": 9000
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ],
+      "nEnergyPerRound": 1000,
+      "nUserAC": 20,
+      "bDynamicCalc": true,
+      "nDynamicCalcDifference": {
+       "t": "cur",
+       "v": 0.02
+      },
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 1
+      },
+      "bUseCPU": true
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-dynamic-1",
+   "rnd": 9001
+  },
+  {
+   "objects": {
+    "sim": {
+     "class": "clsMonsterAttackSim",
+     "props": {
+      "sAtkName": [
+       "Venom bite",
+       "",
+       "",
+       "",
+       ""
+      ],
+      "sAtkHitSpellName": [
+       "poison",
+       "",
+       "",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       500,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       100,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       4,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       10,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       95,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkHitSpellMin": [
+       5,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkHitSpellMax": [
+       9,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkHitSpellType": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMRdmgResist": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkResist": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkDuration": [
+       3,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nEnergyPerRound": 1000,
+      "nUserAC": 20,
+      "bDynamicCalc": true,
+      "nDynamicCalcDifference": {
+       "t": "cur",
+       "v": 0.05
+      },
+      "nCombatLogMaxRounds": {
+       "t": "i32",
+       "v": 1
+      },
+      "bUseCPU": true
+     }
+    }
+   },
+   "steps": [
+    {
+     "call": "sim.RunSim"
+    }
+   ],
+   "read": {
+    "attempts": "sim.nTotalAttacks",
+    "total": "sim.nTotalDamage",
+    "maxround": "sim.nMaxRoundDamage",
+    "avg": "sim.nAverageDamage",
+    "avg_phys": "sim.nAverageDamagePhys",
+    "avg_spell": "sim.nAverageDamageSpell",
+    "max_energy": "sim.nMaxEnergyPerRound",
+    "rounds": "sim.nNumberOfRounds",
+    "attempted": "sim.nStatAtkAttempted[0..4]",
+    "hits": "sim.nStatAtkHits[0..4]",
+    "resisted": "sim.nStatAtkDmgResisted[0..4]",
+    "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+    "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+    "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+    "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+    "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+    "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+    "log": "sim.sCombatLog",
+    "rnd_after": "%rnd"
+   },
+   "id": "mode-dynamic-2",
+   "rnd": 9002
+  }
+ ],
+ "grids": [
+  {
+   "name": "resist_dmg",
+   "axes": {
+    "dmg": [
+     1,
+     7,
+     20,
+     100
+    ],
+    "mr": [
+     0,
+     30,
+     49,
+     50,
+     75,
+     100,
+     150,
+     200
+    ],
+    "am": [
+     0,
+     1
+    ]
+   },
+   "case": {
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim"
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.CalcResistedDamage",
+      "args": [
+       "$dmg",
+       "$mr",
+       "$am"
+      ],
+      "as": "result"
+     }
+    ]
+   }
+  },
+  {
+   "name": "spell_resisted",
+   "axes": {
+    "rt": [
+     0,
+     1,
+     2
+    ],
+    "am": [
+     0,
+     1
+    ],
+    "mr": [
+     0,
+     50,
+     120,
+     196,
+     250
+    ],
+    "rnd": [
+     11,
+     1048583
+    ]
+   },
+   "case": {
+    "rnd": "$rnd",
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim"
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.IsSpellResisted",
+      "args": [
+       "$rt",
+       "$mr",
+       "$am"
+      ],
+      "as": "result"
+     }
+    ],
+    "read": {
+     "rnd_after": "%rnd"
+    }
+   }
+  },
+  {
+   "name": "diminishing",
+   "axes": {
+    "v": [
+     -30.0,
+     0.0,
+     1.0,
+     10.0,
+     55.0,
+     300.0
+    ],
+    "sc": [
+     4.0,
+     0.0,
+     2.5
+    ]
+   },
+   "case": {
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim"
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.Apply_GMUD_DiminishingReturns",
+      "args": [
+       "$v",
+       "$sc"
+      ],
+      "as": "result"
+     }
+    ]
+   }
+  },
+  {
+   "name": "phys",
+   "axes": {
+    "mob": [
+     {
+      "sAtkName": [
+       "Claw",
+       "",
+       "",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       500,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       100,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       3,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       12,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       70,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "sAtkName": [
+       "Bite",
+       "Claw",
+       "Slam",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       1,
+       1,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       300,
+       400,
+       700,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       40,
+       70,
+       100,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       2,
+       4,
+       10,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       6,
+       9,
+       30,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       40,
+       90,
+       150,
+       0,
+       0
+      ]
+     },
+     {
+      "sAtkName": [
+       "Venom bite",
+       "",
+       "",
+       "",
+       ""
+      ],
+      "sAtkHitSpellName": [
+       "poison",
+       "",
+       "",
+       "",
+       ""
+      ],
+      "nAtkType": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkEnergy": [
+       500,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkChance": [
+       100,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMin": [
+       4,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMax": [
+       10,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkSuccess": [
+       95,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkHitSpellMin": [
+       5,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkHitSpellMax": [
+       9,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkHitSpellType": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkMRdmgResist": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkResist": [
+       1,
+       0,
+       0,
+       0,
+       0
+      ],
+      "nAtkDuration": [
+       3,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    ],
+    "ac": [
+     0,
+     25,
+     120
+    ],
+    "dr": [
+     0,
+     8
+    ],
+    "dodge": [
+     0,
+     40
+    ],
+    "dbac": [
+     false,
+     true
+    ],
+    "rnd": [
+     777,
+     99999
+    ]
+   },
+   "case": {
+    "rnd": "$rnd",
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim",
+      "props": {
+       "$merge": [
+        "$mob",
+        {
+         "nNumberOfRounds": {
+          "t": "i32",
+          "v": 40
+         },
+         "nEnergyPerRound": 1000,
+         "nCombatLogMaxRounds": {
+          "t": "i32",
+          "v": 2
+         },
+         "nUserAC": "$ac",
+         "nUserDR": "$dr",
+         "nUserDodge": "$dodge",
+         "bDodgeBeforeAC": "$dbac"
+        }
+       ]
+      }
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.RunSim"
+     }
+    ],
+    "read": {
+     "attempts": "sim.nTotalAttacks",
+     "total": "sim.nTotalDamage",
+     "maxround": "sim.nMaxRoundDamage",
+     "avg": "sim.nAverageDamage",
+     "avg_phys": "sim.nAverageDamagePhys",
+     "avg_spell": "sim.nAverageDamageSpell",
+     "max_energy": "sim.nMaxEnergyPerRound",
+     "rounds": "sim.nNumberOfRounds",
+     "attempted": "sim.nStatAtkAttempted[0..4]",
+     "hits": "sim.nStatAtkHits[0..4]",
+     "resisted": "sim.nStatAtkDmgResisted[0..4]",
+     "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+     "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+     "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+     "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+     "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+     "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+     "log": "sim.sCombatLog",
+     "rnd_after": "%rnd"
+    }
+   }
+  },
+  {
+   "name": "spell",
+   "axes": {
+    "st": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "mr": [
+     0,
+     100
+    ],
+    "am": [
+     0,
+     1
+    ],
+    "dur": [
+     0,
+     4
+    ],
+    "resist": [
+     1,
+     2
+    ]
+   },
+   "case": {
+    "rnd": 4242,
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim",
+      "props": {
+       "$merge": [
+        {
+         "sAtkName": [
+          "Fireball",
+          "",
+          "",
+          "",
+          ""
+         ],
+         "nAtkType": [
+          2,
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkEnergy": [
+          600,
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkChance": [
+          100,
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkMin": [
+          10,
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkMax": [
+          30,
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkSuccess": [
+          85,
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkMRdmgResist": [
+          1,
+          0,
+          0,
+          0,
+          0
+         ]
+        },
+        {
+         "nAtkSpellType": [
+          "$st",
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkDuration": [
+          "$dur",
+          0,
+          0,
+          0,
+          0
+         ],
+         "nAtkResist": [
+          "$resist",
+          0,
+          0,
+          0,
+          0
+         ],
+         "nNumberOfRounds": {
+          "t": "i32",
+          "v": 25
+         },
+         "nEnergyPerRound": 1200,
+         "nCombatLogMaxRounds": {
+          "t": "i32",
+          "v": 3
+         },
+         "nUserMR": "$mr",
+         "nUserAntiMagic": "$am",
+         "nUserRFIR": 30,
+         "nUserRCOL": 10,
+         "nUserRSTO": 50,
+         "nUserRLIT": -20,
+         "nUserRWAT": 90
+        }
+       ]
+      }
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.RunSim"
+     }
+    ],
+    "read": {
+     "attempts": "sim.nTotalAttacks",
+     "total": "sim.nTotalDamage",
+     "maxround": "sim.nMaxRoundDamage",
+     "avg": "sim.nAverageDamage",
+     "avg_phys": "sim.nAverageDamagePhys",
+     "avg_spell": "sim.nAverageDamageSpell",
+     "max_energy": "sim.nMaxEnergyPerRound",
+     "rounds": "sim.nNumberOfRounds",
+     "attempted": "sim.nStatAtkAttempted[0..4]",
+     "hits": "sim.nStatAtkHits[0..4]",
+     "resisted": "sim.nStatAtkDmgResisted[0..4]",
+     "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+     "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+     "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+     "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+     "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+     "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+     "log": "sim.sCombatLog",
+     "rnd_after": "%rnd"
+    }
+   }
+  },
+  {
+   "name": "between",
+   "axes": {
+    "chance": [
+     30,
+     100
+    ],
+    "dur": [
+     0,
+     5
+    ],
+    "st": [
+     1,
+     4
+    ],
+    "rt": [
+     0,
+     2
+    ],
+    "mrd": [
+     0,
+     1
+    ]
+   },
+   "case": {
+    "rnd": 31337,
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim",
+      "props": {
+       "sBetweenRoundName": [
+        "Curse",
+        "",
+        "",
+        "",
+        ""
+       ],
+       "nBetweenRoundMin": [
+        4,
+        0,
+        0,
+        0,
+        0
+       ],
+       "nBetweenRoundMax": [
+        11,
+        0,
+        0,
+        0,
+        0
+       ],
+       "nBetweenRoundChance": [
+        "$chance",
+        0,
+        0,
+        0,
+        0
+       ],
+       "nBetweenRoundDuration": [
+        "$dur",
+        0,
+        0,
+        0,
+        0
+       ],
+       "nBetweenRoundSpellType": [
+        "$st",
+        0,
+        0,
+        0,
+        0
+       ],
+       "nBetweenRoundResistType": [
+        "$rt",
+        0,
+        0,
+        0,
+        0
+       ],
+       "nBetweenRoundResistDmgMR": [
+        "$mrd",
+        0,
+        0,
+        0,
+        0
+       ],
+       "nNumberOfRounds": {
+        "t": "i32",
+        "v": 30
+       },
+       "nEnergyPerRound": 500,
+       "nCombatLogMaxRounds": {
+        "t": "i32",
+        "v": 3
+       },
+       "nUserMR": 80,
+       "nUserRFIR": 25,
+       "nUserAntiMagic": 1
+      }
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.RunSim"
+     }
+    ],
+    "read": {
+     "attempts": "sim.nTotalAttacks",
+     "total": "sim.nTotalDamage",
+     "maxround": "sim.nMaxRoundDamage",
+     "avg": "sim.nAverageDamage",
+     "avg_phys": "sim.nAverageDamagePhys",
+     "avg_spell": "sim.nAverageDamageSpell",
+     "max_energy": "sim.nMaxEnergyPerRound",
+     "rounds": "sim.nNumberOfRounds",
+     "attempted": "sim.nStatAtkAttempted[0..4]",
+     "hits": "sim.nStatAtkHits[0..4]",
+     "resisted": "sim.nStatAtkDmgResisted[0..4]",
+     "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+     "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+     "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+     "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+     "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+     "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+     "log": "sim.sCombatLog",
+     "rnd_after": "%rnd"
+    }
+   }
+  },
+  {
+   "name": "gmud",
+   "axes": {
+    "vw": [
+     0,
+     100,
+     400
+    ],
+    "evil": [
+     false,
+     true
+    ],
+    "soft": [
+     0,
+     40
+    ],
+    "pe": [
+     0,
+     30
+    ]
+   },
+   "case": {
+    "rnd": 2468,
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim",
+      "props": {
+       "$merge": [
+        {
+         "sAtkName": [
+          "Bite",
+          "Claw",
+          "Slam",
+          "",
+          ""
+         ],
+         "nAtkType": [
+          1,
+          1,
+          1,
+          0,
+          0
+         ],
+         "nAtkEnergy": [
+          300,
+          400,
+          700,
+          0,
+          0
+         ],
+         "nAtkChance": [
+          40,
+          70,
+          100,
+          0,
+          0
+         ],
+         "nAtkMin": [
+          2,
+          4,
+          10,
+          0,
+          0
+         ],
+         "nAtkMax": [
+          6,
+          9,
+          30,
+          0,
+          0
+         ],
+         "nAtkSuccess": [
+          40,
+          90,
+          150,
+          0,
+          0
+         ]
+        },
+        {
+         "bGreaterMUD": true,
+         "nUserVileWard": "$vw",
+         "bMobIsEvil": "$evil",
+         "DODGE_SOFTCAP": "$soft",
+         "nUserProtEvil": "$pe",
+         "nUserAC": 60,
+         "nUserDodge": 70,
+         "nNumberOfRounds": {
+          "t": "i32",
+          "v": 40
+         },
+         "nEnergyPerRound": 1000,
+         "nCombatLogMaxRounds": {
+          "t": "i32",
+          "v": 1
+         }
+        }
+       ]
+      }
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.RunSim"
+     }
+    ],
+    "read": {
+     "attempts": "sim.nTotalAttacks",
+     "total": "sim.nTotalDamage",
+     "maxround": "sim.nMaxRoundDamage",
+     "avg": "sim.nAverageDamage",
+     "avg_phys": "sim.nAverageDamagePhys",
+     "avg_spell": "sim.nAverageDamageSpell",
+     "max_energy": "sim.nMaxEnergyPerRound",
+     "rounds": "sim.nNumberOfRounds",
+     "attempted": "sim.nStatAtkAttempted[0..4]",
+     "hits": "sim.nStatAtkHits[0..4]",
+     "resisted": "sim.nStatAtkDmgResisted[0..4]",
+     "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+     "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+     "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+     "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+     "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+     "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+     "log": "sim.sCombatLog",
+     "rnd_after": "%rnd"
+    }
+   }
+  }
+ ],
+ "samples": [
+  {
+   "name": "run_random",
+   "seed": 20240611,
+   "count": 130,
+   "draw": {
+    "type": {
+     "choice": [
+      0,
+      1,
+      1,
+      1,
+      2
+     ],
+     "n": 5
+    },
+    "energy": {
+     "choice": [
+      0,
+      100,
+      250,
+      500,
+      800,
+      1000
+     ],
+     "n": 5
+    },
+    "chance": {
+     "int": [
+      10,
+      100
+     ],
+     "n": 5
+    },
+    "mn": {
+     "int": [
+      0,
+      12
+     ],
+     "n": 5
+    },
+    "span": {
+     "int": [
+      0,
+      25
+     ],
+     "n": 5
+    },
+    "succ": {
+     "int": [
+      0,
+      160
+     ],
+     "n": 5
+    },
+    "hsmin": {
+     "int": [
+      0,
+      8
+     ],
+     "n": 5
+    },
+    "hsspan": {
+     "int": [
+      0,
+      10
+     ],
+     "n": 5
+    },
+    "hstype": {
+     "choice": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "n": 5
+    },
+    "dur": {
+     "choice": [
+      0,
+      0,
+      0,
+      2,
+      3,
+      5
+     ],
+     "n": 5
+    },
+    "res": {
+     "choice": [
+      0,
+      1,
+      2
+     ],
+     "n": 5
+    },
+    "mrd": {
+     "choice": [
+      0,
+      1
+     ],
+     "n": 5
+    },
+    "stype": {
+     "choice": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "n": 5
+    },
+    "ac": {
+     "int": [
+      0,
+      200
+     ]
+    },
+    "dr": {
+     "int": [
+      0,
+      25
+     ]
+    },
+    "dodge": {
+     "int": [
+      0,
+      90
+     ]
+    },
+    "mr": {
+     "int": [
+      0,
+      220
+     ]
+    },
+    "am": {
+     "choice": [
+      0,
+      1
+     ]
+    },
+    "dbac": {
+     "choice": [
+      false,
+      true
+     ]
+    },
+    "evil": {
+     "choice": [
+      false,
+      true
+     ]
+    },
+    "pe": {
+     "int": [
+      0,
+      40
+     ]
+    },
+    "rf": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rc": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rs": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rl": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rw": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "gm": {
+     "choice": [
+      false,
+      false,
+      true
+     ]
+    },
+    "vw": {
+     "int": [
+      0,
+      500
+     ]
+    },
+    "soft": {
+     "choice": [
+      0,
+      30,
+      50
+     ]
+    },
+    "bmin": {
+     "int": [
+      0,
+      6
+     ],
+     "n": 5
+    },
+    "bspan": {
+     "int": [
+      0,
+      10
+     ],
+     "n": 5
+    },
+    "bch": {
+     "choice": [
+      0,
+      0,
+      20,
+      60,
+      100
+     ],
+     "n": 5
+    },
+    "bdur": {
+     "choice": [
+      0,
+      0,
+      3,
+      5
+     ],
+     "n": 5
+    },
+    "bst": {
+     "choice": [
+      1,
+      3,
+      4,
+      6
+     ],
+     "n": 5
+    },
+    "brt": {
+     "choice": [
+      0,
+      1,
+      2
+     ],
+     "n": 5
+    },
+    "bmr": {
+     "choice": [
+      0,
+      1
+     ],
+     "n": 5
+    },
+    "rounds": {
+     "int": [
+      8,
+      90
+     ]
+    },
+    "epr": {
+     "choice": [
+      300,
+      700,
+      1000,
+      1500,
+      2500
+     ]
+    },
+    "rnd": {
+     "int": [
+      1,
+      16777215
+     ]
+    }
+   },
+   "case": {
+    "rnd": "$rnd",
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim",
+      "props": {
+       "$merge": [
+        {
+         "nAtkType": "$type",
+         "nAtkEnergy": "$energy",
+         "nAtkChance": "$chance",
+         "nAtkMin": "$mn",
+         "nAtkMax": {
+          "$add": [
+           "$mn",
+           "$span"
+          ]
+         },
+         "nAtkSuccess": "$succ",
+         "nAtkHitSpellMin": "$hsmin",
+         "nAtkHitSpellMax": {
+          "$add": [
+           "$hsmin",
+           "$hsspan"
+          ]
+         },
+         "nAtkHitSpellType": "$hstype",
+         "nAtkDuration": "$dur",
+         "nAtkResist": "$res",
+         "nAtkMRdmgResist": "$mrd",
+         "nAtkSpellType": "$stype",
+         "nUserAC": "$ac",
+         "nUserDR": "$dr",
+         "nUserDodge": "$dodge",
+         "nUserMR": "$mr",
+         "nUserAntiMagic": "$am",
+         "bDodgeBeforeAC": "$dbac",
+         "bMobIsEvil": "$evil",
+         "nUserProtEvil": "$pe",
+         "nUserRFIR": "$rf",
+         "nUserRCOL": "$rc",
+         "nUserRSTO": "$rs",
+         "nUserRLIT": "$rl",
+         "nUserRWAT": "$rw",
+         "bGreaterMUD": "$gm",
+         "nUserVileWard": "$vw",
+         "DODGE_SOFTCAP": "$soft",
+         "nBetweenRoundMin": "$bmin",
+         "nBetweenRoundMax": {
+          "$add": [
+           "$bmin",
+           "$bspan"
+          ]
+         },
+         "nBetweenRoundChance": "$bch",
+         "nBetweenRoundDuration": "$bdur",
+         "nBetweenRoundSpellType": "$bst",
+         "nBetweenRoundResistType": "$brt",
+         "nBetweenRoundResistDmgMR": "$bmr",
+         "nEnergyPerRound": "$epr",
+         "nCombatLogMaxRounds": {
+          "t": "i32",
+          "v": 2
+         }
+        },
+        {
+         "nNumberOfRounds": "$rounds"
+        }
+       ]
+      }
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.RunSim"
+     }
+    ],
+    "read": {
+     "attempts": "sim.nTotalAttacks",
+     "total": "sim.nTotalDamage",
+     "maxround": "sim.nMaxRoundDamage",
+     "avg": "sim.nAverageDamage",
+     "avg_phys": "sim.nAverageDamagePhys",
+     "avg_spell": "sim.nAverageDamageSpell",
+     "max_energy": "sim.nMaxEnergyPerRound",
+     "rounds": "sim.nNumberOfRounds",
+     "attempted": "sim.nStatAtkAttempted[0..4]",
+     "hits": "sim.nStatAtkHits[0..4]",
+     "resisted": "sim.nStatAtkDmgResisted[0..4]",
+     "dodged": "sim.nStatAtkAttemptDodgedOrResisted[0..4]",
+     "atk_total": "sim.nStatAtkTotalDamage[0..4]",
+     "hs_resisted": "sim.nStatHitSpell_AtkDmgResisted[0..4]",
+     "hs_total": "sim.nStatHitSpell_AtkTotalDamage[0..4]",
+     "br_resisted": "sim.nStatBetweenRound_AtkDmgResisted[0..4]",
+     "br_total": "sim.nStatBetweenRound_AtkTotalDamage[0..4]",
+     "log": "sim.sCombatLog",
+     "rnd_after": "%rnd"
+    }
+   }
+  },
+  {
+   "name": "maxdmg_random",
+   "seed": 777001,
+   "count": 70,
+   "draw": {
+    "type": {
+     "choice": [
+      0,
+      1,
+      1,
+      1,
+      2
+     ],
+     "n": 5
+    },
+    "energy": {
+     "choice": [
+      0,
+      100,
+      250,
+      500,
+      800,
+      1000
+     ],
+     "n": 5
+    },
+    "chance": {
+     "int": [
+      10,
+      100
+     ],
+     "n": 5
+    },
+    "mn": {
+     "int": [
+      0,
+      12
+     ],
+     "n": 5
+    },
+    "span": {
+     "int": [
+      0,
+      25
+     ],
+     "n": 5
+    },
+    "succ": {
+     "int": [
+      0,
+      160
+     ],
+     "n": 5
+    },
+    "hsmin": {
+     "int": [
+      0,
+      8
+     ],
+     "n": 5
+    },
+    "hsspan": {
+     "int": [
+      0,
+      10
+     ],
+     "n": 5
+    },
+    "hstype": {
+     "choice": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "n": 5
+    },
+    "dur": {
+     "choice": [
+      0,
+      0,
+      0,
+      2,
+      3,
+      5
+     ],
+     "n": 5
+    },
+    "res": {
+     "choice": [
+      0,
+      1,
+      2
+     ],
+     "n": 5
+    },
+    "mrd": {
+     "choice": [
+      0,
+      1
+     ],
+     "n": 5
+    },
+    "stype": {
+     "choice": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "n": 5
+    },
+    "ac": {
+     "int": [
+      0,
+      200
+     ]
+    },
+    "dr": {
+     "int": [
+      0,
+      25
+     ]
+    },
+    "dodge": {
+     "int": [
+      0,
+      90
+     ]
+    },
+    "mr": {
+     "int": [
+      0,
+      220
+     ]
+    },
+    "am": {
+     "choice": [
+      0,
+      1
+     ]
+    },
+    "dbac": {
+     "choice": [
+      false,
+      true
+     ]
+    },
+    "evil": {
+     "choice": [
+      false,
+      true
+     ]
+    },
+    "pe": {
+     "int": [
+      0,
+      40
+     ]
+    },
+    "rf": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rc": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rs": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rl": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "rw": {
+     "int": [
+      -30,
+      90
+     ]
+    },
+    "gm": {
+     "choice": [
+      false,
+      false,
+      true
+     ]
+    },
+    "vw": {
+     "int": [
+      0,
+      500
+     ]
+    },
+    "soft": {
+     "choice": [
+      0,
+      30,
+      50
+     ]
+    },
+    "bmin": {
+     "int": [
+      0,
+      6
+     ],
+     "n": 5
+    },
+    "bspan": {
+     "int": [
+      0,
+      10
+     ],
+     "n": 5
+    },
+    "bch": {
+     "choice": [
+      0,
+      0,
+      20,
+      60,
+      100
+     ],
+     "n": 5
+    },
+    "bdur": {
+     "choice": [
+      0,
+      0,
+      3,
+      5
+     ],
+     "n": 5
+    },
+    "bst": {
+     "choice": [
+      1,
+      3,
+      4,
+      6
+     ],
+     "n": 5
+    },
+    "brt": {
+     "choice": [
+      0,
+      1,
+      2
+     ],
+     "n": 5
+    },
+    "bmr": {
+     "choice": [
+      0,
+      1
+     ],
+     "n": 5
+    },
+    "rounds": {
+     "int": [
+      8,
+      90
+     ]
+    },
+    "epr": {
+     "choice": [
+      300,
+      700,
+      1000,
+      1500,
+      2500
+     ]
+    },
+    "rnd": {
+     "int": [
+      1,
+      16777215
+     ]
+    }
+   },
+   "case": {
+    "objects": {
+     "sim": {
+      "class": "clsMonsterAttackSim",
+      "props": {
+       "nAtkType": "$type",
+       "nAtkEnergy": "$energy",
+       "nAtkChance": "$chance",
+       "nAtkMin": "$mn",
+       "nAtkMax": {
+        "$add": [
+         "$mn",
+         "$span"
+        ]
+       },
+       "nAtkSuccess": "$succ",
+       "nAtkHitSpellMin": "$hsmin",
+       "nAtkHitSpellMax": {
+        "$add": [
+         "$hsmin",
+         "$hsspan"
+        ]
+       },
+       "nAtkHitSpellType": "$hstype",
+       "nAtkDuration": "$dur",
+       "nAtkResist": "$res",
+       "nAtkMRdmgResist": "$mrd",
+       "nAtkSpellType": "$stype",
+       "nUserAC": "$ac",
+       "nUserDR": "$dr",
+       "nUserDodge": "$dodge",
+       "nUserMR": "$mr",
+       "nUserAntiMagic": "$am",
+       "bDodgeBeforeAC": "$dbac",
+       "bMobIsEvil": "$evil",
+       "nUserProtEvil": "$pe",
+       "nUserRFIR": "$rf",
+       "nUserRCOL": "$rc",
+       "nUserRSTO": "$rs",
+       "nUserRLIT": "$rl",
+       "nUserRWAT": "$rw",
+       "bGreaterMUD": "$gm",
+       "nUserVileWard": "$vw",
+       "DODGE_SOFTCAP": "$soft",
+       "nBetweenRoundMin": "$bmin",
+       "nBetweenRoundMax": {
+        "$add": [
+         "$bmin",
+         "$bspan"
+        ]
+       },
+       "nBetweenRoundChance": "$bch",
+       "nBetweenRoundDuration": "$bdur",
+       "nBetweenRoundSpellType": "$bst",
+       "nBetweenRoundResistType": "$brt",
+       "nBetweenRoundResistDmgMR": "$bmr",
+       "nEnergyPerRound": "$epr",
+       "nCombatLogMaxRounds": {
+        "t": "i32",
+        "v": 2
+       }
+      }
+     }
+    },
+    "steps": [
+     {
+      "call": "sim.GetMaxDamage",
+      "as": "max_damage"
+     }
+    ],
+    "read": {
+     "energy": "sim.nEnergyPerRound"
+    }
+   }
+  }
+ ]
+}

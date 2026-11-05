@@ -152,6 +152,7 @@ class Interpreter:
         self.externals = {}       # low -> value / ExtObject bound by a harness
         self.ext_procs = {}       # low -> python callable(interp, args)
         self.new_hooks = {}       # low typename -> factory() for `New X` of external classes
+        self.intrinsic_hooks = {}  # low name -> fn(it, *args) for intrinsics the oracle leaves unbound (MsgBox ...)
         self.rnd = V.Rnd()
         self.randomize_hook = None
         self.err = ErrObject()
