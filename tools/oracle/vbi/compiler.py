@@ -595,6 +595,9 @@ class Compiler:
             if ce is None:
                 raise VBError(438)
             return ce.get(it)
+        if low == "value" and not args and (V.is_num(o) or isinstance(o, str) or o is NULL):
+            # The recordset shim hands back a field's value itself, so `rs.Fields(x).Value` is the value.
+            return o
         raise VBError(424 if not V.is_num(o) and not isinstance(o, str) else 438)
 
     @staticmethod
