@@ -16,15 +16,20 @@ embed-web = ["dep:rust-embed", "dep:mime_guess"]
 touchstone-data.workspace = true
 touchstone-rules.workspace = true
 anyhow.workspace = true
+arc-swap.workspace = true
 axum.workspace = true
 clap.workspace = true
 mime_guess = { workspace = true, optional = true }
 rust-embed = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "time"] }
 toml.workspace = true
+tower-http.workspace = true
+touchstone-model.workspace = true
 
 [dev-dependencies]
+rusqlite.workspace = true
+tempfile.workspace = true
 http-body-util.workspace = true
 tower.workspace = true
