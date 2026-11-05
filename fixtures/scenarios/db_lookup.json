@@ -1,0 +1,185 @@
+{
+ "family": "db_lookup",
+ "database": true,
+ "description": "Recordset-backed lookups over the stock database: SpellIsInGame, GetSpellName, GetItemName; CalcEncum reads frmMain.lblDatVer.",
+ "notes": [
+  "Recordsets start on the first record with no index set, as DB.OpenRecordset does; every case gets fresh recordsets."
+ ],
+ "tolerance": {
+  "default": 0
+ },
+ "grids": [
+  {
+   "name": "in_game",
+   "axes": {
+    "n": [
+     0,
+     1,
+     2,
+     3,
+     5,
+     10,
+     25,
+     50,
+     100,
+     200,
+     400,
+     700,
+     1000,
+     1300,
+     1398,
+     1399,
+     5000,
+     -1
+    ],
+    "nmr": [
+     1.7,
+     1.8
+    ],
+    "kai": [
+     false,
+     true
+    ]
+   },
+   "case": {
+    "globals": {
+     "nNMRVer": "$nmr",
+     "bDisableKaiAutolearn": "$kai"
+    },
+    "proc": "SpellIsInGame",
+    "args": [
+     "$n"
+    ]
+   }
+  },
+  {
+   "name": "spell_name",
+   "axes": {
+    "n": [
+     0,
+     1,
+     5,
+     40,
+     333,
+     1000,
+     1398,
+     2000
+    ],
+    "nonum": [
+     false,
+     true
+    ]
+   },
+   "case": {
+    "proc": "GetSpellName",
+    "args": [
+     "$n",
+     "$nonum"
+    ]
+   }
+  },
+  {
+   "name": "item_name",
+   "axes": {
+    "n": [
+     0,
+     1,
+     9,
+     12,
+     50,
+     300,
+     999,
+     1500,
+     2047,
+     2048,
+     4000,
+     -3
+    ],
+    "nonum": [
+     false,
+     true
+    ]
+   },
+   "case": {
+    "proc": "GetItemName",
+    "args": [
+     "$n",
+     "$nonum"
+    ]
+   }
+  },
+  {
+   "name": "encum",
+   "axes": {
+    "str": [
+     -1,
+     0,
+     50,
+     100,
+     101,
+     150,
+     200
+    ],
+    "bonus": [
+     0,
+     15
+    ],
+    "ver": [
+     "v1.11p",
+     "v1.11i"
+    ]
+   },
+   "case": {
+    "forms": {
+     "frmMain": {
+      "lblDatVer": {
+       "Caption": "$ver"
+      }
+     }
+    },
+    "proc": "CalcEncum",
+    "args": [
+     "$str",
+     "$bonus"
+    ]
+   }
+  }
+ ],
+ "samples": [
+  {
+   "name": "in_game_random",
+   "seed": 99,
+   "count": 60,
+   "draw": {
+    "n": {
+     "int": [
+      1,
+      1400
+     ]
+    },
+    "nmr": {
+     "choice": [
+      1.7,
+      1.8
+     ]
+    },
+    "kai": {
+     "choice": [
+      false,
+      true
+     ]
+    }
+   },
+   "case": {
+    "globals": {
+     "nNMRVer": "$nmr",
+     "bDisableKaiAutolearn": "$kai"
+    },
+    "proc": "SpellIsInGame",
+    "args": [
+     "$n"
+    ]
+   }
+  }
+ ]
+}

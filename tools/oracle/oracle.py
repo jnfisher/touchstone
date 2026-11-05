@@ -4,6 +4,8 @@
     python3 -I tools/oracle/oracle.py parse            # parse MME's formula modules, report errors
     python3 -I tools/oracle/oracle.py report [--json]  # unbound names and procedures that run without shims
     python3 -I tools/oracle/oracle.py call PROC [ARG...]   # call one procedure with simple arguments
+    python3 -I tools/oracle/oracle.py gen FAMILY|--all [--out DIR]   # write fixtures/rules/<family>.json
+    python3 -I tools/oracle/oracle.py check [FAMILY...]    # regenerate into a temp dir, diff with the committed fixtures
 
 MME source comes from the cache that tools/mme-fetch.sh fills (never from the repository).
 """
@@ -191,6 +193,59 @@ def cmd_call(args):
     return 0
 
 
+def cmd_gen(args):
+    import time
+    import harness
+    fams = harness.families() if args.all else [args.family]
+    if not fams or fams == [None]:
+        print("name a family or use --all; known: %s" % ", ".join(harness.families()))
+        return 2
+    out = args.out or harness.rules_dir()
+    os.makedirs(out, exist_ok=True)
+    for fam in fams:
+        t = time.time()
+        data = harness.build_fixture(fam)
+        with open(os.path.join(out, fam + ".json"), "wb") as f:
+            f.write(data)
+        print("%s: %d bytes in %.1fs -> %s" % (fam, len(data), time.time() - t, out))
+    return 0
+
+
+def cmd_check(args):
+    import difflib
+    import tempfile
+    import time
+    import harness
+    fams = args.families or harness.families()
+    bad = 0
+    t0 = time.time()
+    with tempfile.TemporaryDirectory() as tmp:
+        for fam in fams:
+            data = harness.build_fixture(fam)
+            with open(os.path.join(tmp, fam + ".json"), "wb") as f:
+                f.write(data)
+            committed = os.path.join(harness.rules_dir(), fam + ".json")
+            if not os.path.exists(committed):
+                print("%s: MISSING fixtures/rules/%s.json" % (fam, fam))
+                bad += 1
+                continue
+            old = open(committed, "rb").read()
+            if old == data:
+                print("%s: current" % fam)
+                continue
+            bad += 1
+            print("%s: STALE" % fam)
+            diff = difflib.unified_diff(old.decode().splitlines(), data.decode().splitlines(),
+                                        "committed", "regenerated", lineterm="", n=0)
+            for i, line in enumerate(diff):
+                if i >= 40:
+                    print("  ... (diff truncated)")
+                    break
+                print("  " + line[:200])
+    print("checked %d families in %.1fs" % (len(fams), time.time() - t0))
+    return 1 if bad else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -201,8 +256,14 @@ def main(argv=None):
     c = sub.add_parser("call")
     c.add_argument("proc")
     c.add_argument("args", nargs="*")
+    g = sub.add_parser("gen")
+    g.add_argument("family", nargs="?")
+    g.add_argument("--all", action="store_true")
+    g.add_argument("--out")
+    k = sub.add_parser("check")
+    k.add_argument("families", nargs="*")
     a = ap.parse_args(argv)
-    return {"parse": cmd_parse, "report": cmd_report, "call": cmd_call}[a.cmd](a)
+    return {"parse": cmd_parse, "report": cmd_report, "call": cmd_call, "gen": cmd_gen, "check": cmd_check}[a.cmd](a)
 
 
 if __name__ == "__main__":

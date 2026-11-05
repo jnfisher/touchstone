@@ -589,7 +589,12 @@ def f_doevents(it):
 
 
 def _unbound(name):
+    """An intrinsic the oracle does not run. A harness can provide it through
+    `Interpreter.intrinsic_hooks[name.lower()] = fn(it, *args)` (MsgBox, CreateObject, ...)."""
     def f(it, *a):
+        hook = it.intrinsic_hooks.get(name.lower())
+        if hook is not None:
+            return hook(it, *a)
         raise OracleUnbound(name)
     f.vb_unbound = name
     return f
