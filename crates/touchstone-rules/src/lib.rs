@@ -3,9 +3,14 @@
 //! Each module ports one formula family (see `docs/inventory.md` section 4 and
 //! `docs/porting.md`) and is tested against the oracle's fixtures in `fixtures/rules/`.
 
+pub mod abilities;
 pub mod exp;
 pub mod exp_per_hour;
+pub mod game_text;
+pub mod item_value;
 pub mod monster_sim;
+pub mod stats;
+pub mod textblock;
 
 /// Which game rules a calculation follows.
 ///

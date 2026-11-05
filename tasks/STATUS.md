@@ -10,16 +10,22 @@ Kept by the orchestrator only.
 | T-010 | World model types | sonnet | T-001, T-002 | done |
 | T-011 | `.mdb` loader and data fixtures | sonnet | T-010 | done |
 | T-012 | Live silvermere/Quicksilver adapter | sonnet | T-010 | done |
-| T-013 | Serve the World with live reload | sonnet | T-011, T-012 | in progress |
+| T-013 | Serve the World with live reload | sonnet | T-011, T-012 | done |
 | T-020 | VB6 semantics and touchstone-vb6 | sonnet | T-001 | done |
-| T-021 | Oracle interpreter | sonnet | T-002, T-020 | in progress |
-| T-022 | Oracle shims and first fixtures | sonnet | T-021, T-011 | todo |
+| T-021 | Oracle interpreter | sonnet | T-002, T-020 | done |
+| T-022 | Oracle shims and first fixtures | sonnet | T-021, T-011 | done |
 | T-014 | Derived (NMR) fields for live sources | sonnet | T-015 | todo |
-| T-015 | Stock parity check, .mdb vs silvermere | sonnet | T-013 | todo |
-| P4-00 | Explorers with raw columns | sonnet | T-013 | todo |
-| P3-13 | Monster attack simulator | sonnet | T-022 | todo |
-| P3-01 | Exp tables and training cost | sonnet | T-022 | todo |
-| P3-20 | Exp/hr helpers and Model D | sonnet | T-022 | todo |
+| T-015 | Stock parity check, .mdb vs silvermere | sonnet | T-013 | done |
+| P4-00 | Explorers with raw columns | sonnet | T-013 | done |
+| P3-13 | Monster attack simulator | sonnet | T-022 | in progress |
+| P3-01 | Exp tables and training cost | sonnet | T-022 | in progress |
+| P3-20 | Exp/hr helpers and Model D | sonnet | T-022 | in progress |
+| P3-02 | Stats, vitals, CP and movement | sonnet | T-022 | todo |
+| P3-03 | Ability effects and lookups | sonnet | T-022 | todo |
+| P3-05 | Item value and shop price | sonnet | T-022 | todo |
+| P3-06 | Textblock and room-command parsing | sonnet | T-022 | todo |
+| P3-38 | Game-text inventory parser | sonnet | T-022 | todo |
+| P4-04 | Grid polish: column sizing, copy, find | sonnet | P4-00 | todo |
 | T-050 | Release and Pi packaging | sonnet | T-013 | todo |
 
 ## Backlog
