@@ -82,7 +82,7 @@ class Compiler:
             cp.param_index[p.low] = i
             code = it.type_code(p.typespec, module)
             cp.param_codes.append(code)
-            ctx.locals[p.low] = code
+            ctx.locals[p.low] = ("array:" + code) if p.is_array else code
         if proc.kind in ("function", "get"):
             cp.ret_code = it.type_code(proc.rettype, module) if proc.rettype else "variant"
             if proc.ret_is_array:
@@ -497,6 +497,8 @@ class Compiler:
     def deref(v):
         if v is OMIT:
             return MISSING
+        if isinstance(v, _RefCell):
+            return v.v
         return v.get() if isinstance(v, REFTYPES) else v
 
     def index_value(self, arr, vals, name):

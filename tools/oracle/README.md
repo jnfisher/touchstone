@@ -96,6 +96,10 @@ value; `{"$add"|"$sub"|"$mul"|"$min"|"$max": [x, y]}` work elementwise on lists;
 `samples`: `{"name", "seed", "count", "draw": {v: {"int": [lo, hi]} | {"choice": [..]}, "n": k for lists}, "case"}`,
 drawn with splitmix64 so they never depend on the Python version.
 
+Scenario extras: `"modules": ["modItemParse.bas"]` loads more MME files beside the six always loaded;
+a call argument `{"udt": "TypeName", "fields": {...}}` builds a Type value (a list fills a dynamic array,
+`[]` leaves it unallocated). `Not Not arr` evaluates to 0/1 for unallocated/allocated arrays.
+
 ### Fixture file
 
 One line per case. `header`: family, `mme_sha`, `generator_version`, scenario and database sha256,

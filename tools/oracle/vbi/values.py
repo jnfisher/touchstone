@@ -666,6 +666,10 @@ def logic(op, a, b):
 def not_(a):
     if type(a) is bool:
         return not a
+    if hasattr(a, "bounds") and hasattr(a, "elemtype"):
+        # the `(Not Not arr) <> 0` idiom: Not Not of an array is its descriptor address, nonzero only
+        # when allocated; model the address as 1.
+        return mk_i32(~(0 if a.bounds is None else 1))
     x = to_boolnum(a)
     small = type(x) in (U8, I16)
     n = ~int_value(x)
