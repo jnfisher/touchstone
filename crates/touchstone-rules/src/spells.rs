@@ -21,7 +21,7 @@ use touchstone_model::Spell;
 use touchstone_vb6 as vb;
 use touchstone_vb6::{Currency, Vb6Error};
 
-use crate::{Profile, RulesError};
+use crate::Profile;
 
 type Res<T> = Result<T, Vb6Error>;
 
