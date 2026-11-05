@@ -165,37 +165,8 @@ pub fn spell_does_damage(spells: &[Spell], number: i32, not_duration: bool) -> b
     end_cast > 0 && spell_does_damage(spells, end_cast, false)
 }
 
-/// Port of modSyntaxsFunc RoundUpTo5.
-///
-/// # Errors
-/// Overflow near the top of the Long range.
-fn round_up_to_5(n: i32) -> Res<i32> {
-    let r = vb::vmod(f64::from(n), 5.0)?;
-    if r == 0 {
-        Ok(n)
-    } else if n >= 0 {
-        vb::add_i32(n, 5 - r)
-    } else {
-        vb::sub_i32(n, r)
-    }
-}
-
-/// Port of modMMudDatabase GetMaxLevel: 255, or the average level to max all stats (`gAvgLevelMaxAllStats`)
-/// rounded up to a multiple of 5 when that is higher.
-///
-/// # Errors
-/// VB6 error 6 when the average does not fit a Long (MME has no handler there).
-pub fn get_max_level(avg_level_max_all_stats: f64) -> Result<i32, RulesError> {
-    let vb6 = |e: Vb6Error| RulesError::Vb6(i32::try_from(e.code()).unwrap_or(0));
-    let mut max = 255;
-    if avg_level_max_all_stats > 0.0 {
-        let n = round_up_to_5(vb::clng(avg_level_max_all_stats).map_err(vb6)?).map_err(vb6)?;
-        if n > 255 {
-            max = n;
-        }
-    }
-    Ok(max)
-}
+// GetMaxLevel (and its RoundUpTo5 helper) is ported once, in `exp`; re-exported for callers here.
+pub use crate::exp::get_max_level;
 
 // ---------------------------------------------------------------------------------------------
 // Damage and duration at a cast level
