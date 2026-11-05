@@ -52,12 +52,12 @@
 			});
 	});
 
-	const th = 'text-muted-foreground bg-card sticky top-0 px-2 py-1 text-xs font-medium';
+	const th = 'text-muted-foreground bg-card sticky top-0 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap';
 </script>
 
-<section class="mt-5" data-testid="exp-table">
-	<h3 class="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">Exp table</h3>
-	<div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+<section class="mt-4" data-testid="exp-table">
+	<h3 class="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase">Exp table</h3>
+	<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
 		<label class="flex items-center gap-2">
 			<span>{otherLabel}</span>
 			<select
@@ -84,8 +84,8 @@
 	{#if error}
 		<p class="text-destructive text-sm" role="alert">Could not load the exp table: {error}</p>
 	{:else}
-		<div class="max-h-96 overflow-y-auto rounded-md border">
-			<table class="w-full text-sm">
+		<div class="max-h-96 overflow-auto rounded-md border">
+			<table class="w-max min-w-full">
 				<thead>
 					<tr>
 						<th class={th + ' text-right'}>Level</th>
@@ -96,9 +96,9 @@
 				<tbody>
 					{#each rows as r (r.level)}
 						<tr class="border-t">
-							<td class="px-2 py-0.5 text-right tabular-nums">{r.level}</td>
-							<td class="px-2 py-0.5 text-right tabular-nums">{r.exp_text}</td>
-							<td class="px-2 py-0.5">{r.train_cost}</td>
+							<td class="px-2 py-0.5 text-right whitespace-nowrap tabular-nums">{r.level}</td>
+							<td class="px-2 py-0.5 text-right whitespace-nowrap tabular-nums">{r.exp_text}</td>
+							<td class="px-2 py-0.5 whitespace-nowrap tabular-nums">{r.train_cost}</td>
 						</tr>
 					{/each}
 				</tbody>

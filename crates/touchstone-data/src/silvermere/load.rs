@@ -114,7 +114,7 @@ pub(super) fn load(conn: &Connection) -> Result<World> {
     let monsters = monsters(conn, &messages, &spell_names(conn)?)?;
     let shops = shops(conn, &rooms_raw)?;
     let tbinfo = tbinfo(conn, &monsters, &rooms_raw)?;
-    let parts = WorldParts {
+    let mut parts = WorldParts {
         info: info(conn)?,
         items,
         monsters,
@@ -123,10 +123,11 @@ pub(super) fn load(conn: &Connection) -> Result<World> {
         shops,
         classes: classes(conn)?,
         races: races(conn)?,
-        // Lairs are NMR's computed summary of the room/monster data; silvermere has no table.
+        // Lairs are NMR's computed summary of the room/monster data; `derive` fills them.
         lairs: Vec::<Lair>::new(),
         tbinfo,
     };
+    crate::derive::run(conn, &mut parts)?;
     Ok(World::new(parts)?)
 }
 

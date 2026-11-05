@@ -36,7 +36,7 @@
 
 <Tooltip.Provider>
 	<div class="flex h-screen flex-col">
-		<header class="flex items-center justify-between border-b px-4 py-2">
+		<header class="flex items-center justify-between border-b px-4 py-1.5">
 			<h1 class="text-lg font-semibold">touchstone</h1>
 			<Tooltip.Root>
 				<Tooltip.Trigger>
@@ -50,9 +50,9 @@
 			</Tooltip.Root>
 		</header>
 
-		<nav class="border-b px-4 py-1">
+		<nav class="overflow-x-auto border-b px-4 py-1" data-testid="tabs">
 			<Tabs.Root value={current} onValueChange={(v) => void goto(`/${v}`)}>
-				<Tabs.List>
+				<Tabs.List class="w-max">
 					{#each SECTIONS as s, i (s.slug)}
 						<Tabs.Trigger value={s.slug}>
 							{s.label} <span class="text-muted-foreground text-xs">F{i + 1}</span>
@@ -62,7 +62,7 @@
 			</Tabs.Root>
 		</nav>
 
-		<main class="min-h-0 flex-1 p-4">
+		<main class="min-h-0 flex-1 p-2 sm:p-4">
 			{@render children()}
 		</main>
 	</div>

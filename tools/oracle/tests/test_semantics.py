@@ -110,6 +110,10 @@ def apply_op(op, args):
         return out
     if op == "Val":
         return V.val(a[0])
+    if op == "IsNumeric":
+        return _b(c["isnumeric"](it, a[0]))
+    if op == "CDblStr":
+        return V.str_to_double(a[0])
     if op in ("Left", "Right"):
         return c[op.lower()](it, a[0], I32(a[1]))
     if op == "Mid":
