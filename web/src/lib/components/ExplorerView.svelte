@@ -78,6 +78,7 @@
 						getRowId={(r) => String(explorer.rowId(r))}
 						selectedId={selectedId === undefined ? undefined : String(selectedId)}
 						quickFilter={search}
+						storageKey={slug}
 						onSelect={(r) => selection.set(slug, explorer.rowId(r))}
 						onCount={(n) => (shown = n)}
 					/>
