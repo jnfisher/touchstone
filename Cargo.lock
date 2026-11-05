@@ -1086,6 +1086,8 @@ dependencies = [
 name = "touchstone-rules"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "thiserror",
  "touchstone-model",
  "touchstone-vb6",
 ]
