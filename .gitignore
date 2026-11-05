@@ -6,3 +6,4 @@ web/.svelte-kit/
 *.sqlite
 /touchstone.toml
 /data/
+web/scripts/screenshots/
