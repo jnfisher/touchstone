@@ -274,15 +274,44 @@ class Env:
     def get(self, obj, prop, idx):
         return self.it.compiler.member_get(obj, prop.lower(), idx, "obj", prop)
 
+    def make_udt(self, spec):
+        """{"udt": "TypeName", "fields": {name: value | [values]}}: a Type instance for a call
+        argument; a non-empty list allocates that field's dynamic array (0-based), [] leaves it unallocated."""
+        u = self.it.new_udt(spec["udt"].lower())
+        for name, val in spec.get("fields", {}).items():
+            cur = u.fields[name.lower()]
+            if isinstance(cur, VBArray):
+                if val:
+                    cur.allocate([(0, len(val) - 1)])
+                    for i, x in enumerate(val):
+                        cur.set((i,), decode(x))
+            else:
+                u.set_field(name.lower(), decode(val))
+        return u
+
     def call(self, objs, step, results):
         target = step["call"]
         args = []
         refs = []
         for a in step.get("args", []):
-            if isinstance(a, dict) and "ref" in a:
+            if isinstance(a, dict) and str(a.get("ref", "")).startswith("array:"):
+                # ByRef array argument: {"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]};
+                # without bounds the array starts unallocated, as a bare `Dim x() As T` does.
+                code = a["ref"][6:].lower()
+                factory = (lambda c=code: self.it.new_udt(c)) if code in self.it.udts else None
+                arr = VBArray(code, None, factory)
+                arr.dynamic = True
+                if a.get("bounds"):
+                    arr.allocate([tuple(b) for b in a["bounds"]])
+                cell = Var(arr, a["ref"].lower())
+                args.append(cell)
+                refs.append(cell)
+            elif isinstance(a, dict) and "ref" in a:
                 cell = Var(decode(a["value"]), a["ref"])
                 args.append(cell)
                 refs.append(cell)
+            elif isinstance(a, dict) and "udt" in a:
+                args.append(self.make_udt(a))
             else:
                 args.append(decode(a))
         if "." in target:
@@ -291,6 +320,12 @@ class Env:
         else:
             self.it.ensure_ready()
             proc = self.it.find_proc(target)
+            if proc is None:
+                # Private procedures are only in their module's map; cases may still call them.
+                for m in self.it.modules.values():
+                    if not m.is_class and target.lower() in m.proc_map:
+                        proc = m.proc_map[target.lower()][0]
+                        break
             if proc is None:
                 raise OracleFatal("unknown procedure %s" % target)
             r = self.it.call_proc(proc, None, args, [None] * len(args))
@@ -378,7 +413,7 @@ def build_fixture(family, mme=None, sdir=None):
     scn = json.loads(raw)
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
-    env = Env(mme, database)
+    env = Env(mme, database, MODULES + list(scn.get("modules", [])))  # "modules": extra MME files a family needs
     setup = {"globals": scn.get("globals", {}), "forms": scn.get("forms", {})}
     header = {
         "family": family,

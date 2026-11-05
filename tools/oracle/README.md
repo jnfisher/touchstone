@@ -87,12 +87,18 @@ A **case** (`id` is filled in for grids/samples):
 
 Values: JSON numbers (small ints are Integer, larger Long, with a point Double), strings, booleans;
 typed values as `{"t": "cur|single|i16|i32|byte|f64|str|null|empty", "v": ..}`. A call argument
-`{"ref": "long", "value": 0}` is passed ByRef; its final value lands in `outputs["<as>.refs"]`.
+`{"ref": "long", "value": 0}` is passed ByRef; its final value lands in `outputs["<as>.refs"]`. A ByRef array argument is
+`{"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]}` (no bounds: unallocated); it lands in `.refs` as a flat
+list, row-major.
 Objects are class-module instances created fresh per case; properties given as lists are indexed
 Property Lets. `grids`: `{"name", "axes": {a: [..]}, "case": {..}}` (`"$a"` is replaced by the axis
 value; `{"$add"|"$sub"|"$mul"|"$min"|"$max": [x, y]}` work elementwise on lists; `{"$merge": [obj, ..]}`).
 `samples`: `{"name", "seed", "count", "draw": {v: {"int": [lo, hi]} | {"choice": [..]}, "n": k for lists}, "case"}`,
 drawn with splitmix64 so they never depend on the Python version.
+
+Scenario extras: `"modules": ["modItemParse.bas"]` loads more MME files beside the six always loaded;
+a call argument `{"udt": "TypeName", "fields": {...}}` builds a Type value (a list fills a dynamic array,
+`[]` leaves it unallocated). `Not Not arr` evaluates to 0/1 for unallocated/allocated arrays.
 
 ### Fixture file
 

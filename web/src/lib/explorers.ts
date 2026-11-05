@@ -435,7 +435,7 @@ const shopOk = (s: Shop) => {
 const shops: Explorer<'shops'> = {
 	slug: 'shops',
 	table: 'shops',
-	needs: ['items', 'classes'],
+	needs: ['classes'],
 	include: (s) => s.in_game && shopOk(s),
 	columns: [
 		numberCol<Shop>(),
@@ -457,13 +457,7 @@ const shops: Explorer<'shops'> = {
 				row('In game', yes(s.in_game))
 			])
 		];
-		const stock = s.stock
-			.filter((x) => x.item !== 0)
-			.map((x) =>
-				row(ref(lk.items, x.item), `max ${x.max}, restock ${x.amount} per ${x.time}, ${x.pct}% chance`)
-			);
-		// Charm-adjusted prices need the character's charm, so only the base list is shown.
-		if (stock.length) out.push(group('Stock', stock));
+		// The stock list with charm-adjusted prices comes from the server (ShopPrices).
 		if (s.assigned_to) out.push(group('Locations', [row('Assigned to', s.assigned_to, true)]));
 		return out;
 	}
