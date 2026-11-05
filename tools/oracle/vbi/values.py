@@ -160,31 +160,95 @@ def as_float(v):
     raise mismatch()
 
 
+def parse_vb_number(s):
+    """CDbl's string grammar under the US locale; also the rule behind IsNumeric.
+
+    Returns a float, raises ValueError when the text is not a number and OverflowError when it is
+    one but does not fit a Double (or a Long, for &H/&O literals). Accepted: outer whitespace, one
+    sign (leading, after a currency sign, or trailing) or parentheses meaning negative, a leading
+    "$", digits with "," thousands separators in the integer part, a decimal point, and an E/D
+    exponent. &H/&O literals take no sign and no separators.
+    """
+    t = s.strip(" \t\r\n\x0b\x0c\xa0")
+    if t == "":
+        raise ValueError(s)
+    u = t.lower()
+    if u.startswith("&h") or u.startswith("&o"):
+        hexa = u[1] == "h"
+        d = u[2:]
+        if d.endswith("&"):
+            d = d[:-1]
+            long_form = True
+        else:
+            long_form = False
+        digits = "0123456789abcdef" if hexa else "01234567"
+        if d == "" or any(c not in digits for c in d):
+            raise ValueError(s)
+        n = int(d, 16 if hexa else 8)
+        sig = d.lstrip("0")
+        if hexa and len(sig) <= 4 and not long_form:
+            n = n - 0x10000 if n > 0x7FFF else n
+        else:
+            if n > 0xFFFFFFFF:
+                raise OverflowError(s)
+            n = n - 0x100000000 if n > 0x7FFFFFFF else n
+        return float(n)
+    neg = False
+    signs = 0
+    if u.startswith("(") and u.endswith(")"):
+        neg, signs, u = True, 1, u[1:-1].strip(" ")
+    if u[:1] in ("+", "-"):
+        neg, signs, u = u[0] == "-", signs + 1, u[1:].lstrip(" ")
+    if u.startswith("$"):
+        u = u[1:].lstrip(" ")
+        if u[:1] in ("+", "-"):
+            neg, signs, u = u[0] == "-", signs + 1, u[1:].lstrip(" ")
+    if u[-1:] in ("+", "-"):
+        neg, signs, u = u[-1] == "-", signs + 1, u[:-1].rstrip(" ")
+    if signs > 1 or u == "":
+        raise ValueError(s)
+    i, n = 0, len(u)
+    mant = 0
+    while i < n and (u[i] in "0123456789" or (u[i] == "," and i > 0 and u[i - 1] in "0123456789,")):
+        mant += u[i] != ","
+        i += 1
+    ipart = u[:i].replace(",", "")
+    fpart = ""
+    if i < n and u[i] == ".":
+        j = i + 1
+        while j < n and u[j] in "0123456789":
+            j += 1
+        fpart = u[i + 1:j]
+        mant += len(fpart)
+        i = j
+    if mant == 0:
+        raise ValueError(s)
+    exp = ""
+    if i < n and u[i] in "ed":
+        j = i + 1
+        if j < n and u[j] in "+-":
+            j += 1
+        k = j
+        while k < n and u[k] in "0123456789":
+            k += 1
+        if k == j:
+            raise ValueError(s)
+        exp = "e" + u[i + 1:k]
+        i = k
+    if i != n:
+        raise ValueError(s)
+    v = float((ipart or "0") + "." + (fpart or "0") + exp)
+    if v in (float("inf"), float("-inf")):
+        raise OverflowError(s)
+    return -v if neg else v
+
+
 def str_to_double(s):
     """Full-string numeric conversion used by implicit coercion (type mismatch if not numeric)."""
-    t = s.strip().replace("\xa0", " ")
-    if t == "":
-        raise mismatch()
-    u = t.lower()
     try:
-        if u.startswith("&h"):
-            d = u[2:].rstrip("&")
-            n = int(d, 16)
-            if len(d.lstrip("0")) <= 4 and not u.endswith("&"):
-                n = n - 0x10000 if n > 0x7FFF else n
-            else:
-                n = n - 0x100000000 if n > 0x7FFFFFFF else n
-            return float(n)
-        if u.startswith("&o"):
-            return float(int(u[2:].rstrip("&"), 8))
-        if "," in t:
-            # thousands separators are accepted by CDbl in the en-US locale
-            t = t.replace(",", "")
-        if u in ("nan", "inf", "-inf", "infinity", "+inf", "-infinity"):
-            raise ValueError
-        if "_" in t:
-            raise ValueError
-        return float(t.replace("d", "e").replace("D", "e"))
+        return parse_vb_number(s)
+    except OverflowError:
+        raise VBError(6)
     except ValueError:
         raise mismatch()
 
