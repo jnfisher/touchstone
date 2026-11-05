@@ -1,0 +1,8 @@
+target/
+web/node_modules/
+web/build/
+web/.svelte-kit/
+*.mdb
+*.sqlite
+/touchstone.toml
+/data/
