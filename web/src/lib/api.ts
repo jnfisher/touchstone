@@ -1,0 +1,313 @@
+/** Types matching the server's JSON (snake_case field names of the `touchstone-model` structs). */
+
+export interface AbilitySlot {
+	ability: number;
+	value: number;
+}
+
+export interface Item {
+	number: number;
+	name: string;
+	limit: number;
+	encum: number;
+	item_type: number;
+	use_count: number;
+	price: number;
+	currency: number;
+	min: number;
+	max: number;
+	armour_class: number;
+	damage_resist: number;
+	weapon_type: number;
+	armour_type: number;
+	worn: number;
+	accy: number;
+	gettable: boolean;
+	str_req: number;
+	speed: number;
+	not_droppable: boolean;
+	destroy_on_death: boolean;
+	retain_after_uses: boolean;
+	class_rest: number[];
+	race_rest: number[];
+	negate_spell: number[];
+	abilities: AbilitySlot[];
+	in_game: boolean;
+	obtained_from: string | null;
+	references: string | null;
+}
+
+export interface MonsterAttack {
+	name: string;
+	att_type: number;
+	acc: number;
+	pct: number;
+	true_pct: number;
+	min: number;
+	max: number;
+	energy: number;
+	hit_spell: number;
+}
+
+export interface Monster {
+	number: number;
+	name: string | null;
+	weapon: number;
+	armour_class: number;
+	damage_resist: number;
+	follow_pct: number;
+	magic_res: number;
+	bs_defense: number;
+	exp: number;
+	exp_multi: number;
+	hp: number;
+	energy: number;
+	avg_dmg: number;
+	avg_dmg_phys: number;
+	avg_dmg_spell: number;
+	greet_txt: number;
+	hp_regen: number;
+	charm_lvl: number;
+	type: number;
+	undead: number;
+	align: number;
+	regen_time: number;
+	game_limit: number;
+	avg_lair_exp: number;
+	script_value: number;
+	r: number;
+	p: number;
+	g: number;
+	s: number;
+	c: number;
+	death_spell: number;
+	create_spell: number;
+	attacks: MonsterAttack[];
+	mid_spells: { spell: number; pct: number; lvl: number }[];
+	drops: { item: number; pct: number }[];
+	abilities: AbilitySlot[];
+	in_game: boolean;
+	summoned_by: string | null;
+}
+
+export interface Spell {
+	number: number;
+	name: string | null;
+	short: string | null;
+	req_level: number;
+	energy_cost: number;
+	mana_cost: number;
+	min_base: number;
+	max_base: number;
+	diff: number;
+	type_of_resists: number;
+	targets: number;
+	dur: number;
+	att_type: number;
+	magery: number;
+	magery_lvl: number;
+	cap: number;
+	max_inc_lvls: number;
+	max_inc: number;
+	min_inc_lvls: number;
+	min_inc: number;
+	dur_inc_lvls: number;
+	dur_inc: number;
+	abilities: AbilitySlot[];
+	learnable: boolean;
+	learned_from: string | null;
+	casted_by: string | null;
+	classes: string | null;
+}
+
+export interface Room {
+	map_number: number;
+	room_number: number;
+	name: string | null;
+	light: number;
+	shop: number;
+	npc: number;
+	cmd: number;
+	spell: number;
+	lair: string | null;
+	delay: number;
+	placed: string | null;
+	n: string;
+	s: string;
+	e: string;
+	w: string;
+	ne: string;
+	nw: string;
+	se: string;
+	sw: string;
+	u: string;
+	d: string;
+}
+
+export interface Shop {
+	number: number;
+	name: string;
+	shop_type: number;
+	min_lvl: number;
+	max_lvl: number;
+	markup_pct: number;
+	class_rest: number;
+	stock: { item: number; max: number; time: number; amount: number; pct: number }[];
+	in_game: boolean;
+	assigned_to: string | null;
+}
+
+export interface ClassRec {
+	number: number;
+	name: string;
+	min_hits: number;
+	max_hits: number;
+	exp_table: number;
+	magery_type: number;
+	magery_lvl: number;
+	weapon_type: number;
+	armour_type: number;
+	combat_lvl: number;
+	abilities: AbilitySlot[];
+}
+
+export interface Race {
+	number: number;
+	name: string;
+	m_int: number;
+	m_wil: number;
+	m_str: number;
+	m_hea: number;
+	m_agl: number;
+	m_chm: number;
+	x_int: number;
+	x_wil: number;
+	x_str: number;
+	x_hea: number;
+	x_agl: number;
+	x_chm: number;
+	hp_per_lvl: number;
+	exp_table: number;
+	base_cp: number;
+	abilities: AbilitySlot[];
+}
+
+export interface Lair {
+	group_index: string;
+	mob_list: string;
+	mobs: number;
+	total_lairs: number;
+	avg_delay: number;
+	avg_walk: number;
+	avg_exp: number;
+	avg_dmg: number;
+	avg_dmg_phys: number;
+	avg_dmg_spell: number;
+	avg_hp: number;
+	avg_ac: number;
+	avg_dr: number;
+	avg_mr: number;
+	avg_dodge: number;
+}
+
+export interface Info {
+	counts: Record<string, number>;
+	data_version: number | null;
+	load_count: number;
+	loaded_at: string;
+	source: { kind: string; path: string };
+	version: {
+		custom: string;
+		dat_file_version: string;
+		date: string;
+		nmr_version: string;
+		time: string;
+	};
+}
+
+export interface TableTypes {
+	items: Item;
+	monsters: Monster;
+	spells: Spell;
+	rooms: Room;
+	shops: Shop;
+	classes: ClassRec;
+	races: Race;
+	lairs: Lair;
+}
+export type TableName = keyof TableTypes;
+export const TABLE_NAMES: readonly TableName[] = [
+	'items',
+	'monsters',
+	'spells',
+	'rooms',
+	'shops',
+	'classes',
+	'races',
+	'lairs'
+];
+
+type FetchFn = typeof fetch;
+interface Entry {
+	etag: string | null;
+	data: unknown;
+}
+
+export class ApiError extends Error {
+	constructor(
+		readonly status: number,
+		path: string
+	) {
+		super(`GET ${path} failed: HTTP ${status}`);
+	}
+}
+
+/**
+ * Fetches whole tables once and keeps them. `table()` never refetches; `revalidate()` sends the
+ * stored ETag and keeps the cached data on a 304. Concurrent callers share one request.
+ */
+export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
+	const cache = new Map<string, Entry>();
+	const inflight = new Map<string, Promise<unknown>>();
+
+	async function load(path: string, revalidate: boolean): Promise<unknown> {
+		const prev = cache.get(path);
+		const headers: Record<string, string> = {};
+		if (revalidate && prev?.etag) headers['If-None-Match'] = prev.etag;
+		const res = await fetchFn(path, { headers });
+		if (res.status === 304 && prev) return prev.data;
+		if (!res.ok) throw new ApiError(res.status, path);
+		const data: unknown = await res.json();
+		cache.set(path, { etag: res.headers.get('etag'), data });
+		return data;
+	}
+
+	function shared(path: string, revalidate: boolean): Promise<unknown> {
+		const running = inflight.get(path);
+		if (running) return running;
+		const p = load(path, revalidate).finally(() => inflight.delete(path));
+		inflight.set(path, p);
+		return p;
+	}
+
+	return {
+		async table<T extends TableName>(name: T): Promise<TableTypes[T][]> {
+			const path = `/api/${name}`;
+			const hit = cache.get(path);
+			if (hit) return hit.data as TableTypes[T][];
+			return (await shared(path, false)) as TableTypes[T][];
+		},
+		async revalidate<T extends TableName>(name: T): Promise<TableTypes[T][]> {
+			return (await shared(`/api/${name}`, true)) as TableTypes[T][];
+		},
+		async info(): Promise<Info> {
+			return (await shared('/api/info', false)) as Info;
+		},
+		/** Test hook: whether the table is already held. */
+		has(name: TableName): boolean {
+			return cache.has(`/api/${name}`);
+		}
+	};
+}
+
+export const api = createApi();
