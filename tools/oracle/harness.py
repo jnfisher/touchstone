@@ -304,6 +304,12 @@ class Env:
             self.it.ensure_ready()
             proc = self.it.find_proc(target)
             if proc is None:
+                # Private procedures are only in their module's map; cases may still call them.
+                for m in self.it.modules.values():
+                    if not m.is_class and target.lower() in m.proc_map:
+                        proc = m.proc_map[target.lower()][0]
+                        break
+            if proc is None:
                 raise OracleFatal("unknown procedure %s" % target)
             r = self.it.call_proc(proc, None, args, [None] * len(args))
         if "as" in step:
