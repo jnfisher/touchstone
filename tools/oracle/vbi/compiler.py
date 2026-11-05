@@ -340,7 +340,7 @@ class Compiler:
             t = node.target
             if t.kind == "name":
                 b = self.resolve(t.low, ctx)
-                if b[0] in ("local", "clsvar", "global"):
+                if b[0] in ("local", "clsvar", "global") and node.args:
                     base = self.cx(t, ctx)
                     args = [self.cx(a, ctx) for _, a in node.args]
 

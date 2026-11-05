@@ -329,7 +329,23 @@ class Interpreter:
         cell = self.globals.get(name.lower())
         if cell is None:
             raise KeyError(name)
-        cell.set(value)
+        self.assign_python(cell, value)
+
+    def assign_python(self, cell, value):
+        """Store a Python value (scalar, list for an array, dict for a Type) into a variable cell."""
+        cur = cell.v
+        if isinstance(cur, VBArray) and isinstance(value, (list, tuple)):
+            if not cur.bounds:
+                cur.allocate([(cur.lbound(1) if cur.bounds else 0, len(value) - 1)])
+            lo = cur.lbound(1)
+            for i, x in enumerate(value):
+                cur.set((lo + i,), self.from_python(x))
+            return
+        if isinstance(cur, UDTInstance) and isinstance(value, dict):
+            for k, x in value.items():
+                cur.set_field(k.lower(), self.from_python(x))
+            return
+        cell.set(self.from_python(value))
 
     def get_global(self, name):
         self.ensure_ready()
@@ -358,9 +374,9 @@ class Interpreter:
 
     @staticmethod
     def from_python(a):
-        if isinstance(a, bool):
+        if type(a) is bool:
             return a
-        if isinstance(a, int):
+        if type(a) is int:
             if -32768 <= a <= 32767:
                 return V.I16(a)
             return V.mk_i32(a)

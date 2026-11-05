@@ -524,6 +524,10 @@ class Parser:
         if self.expr_starts():
             args = self.parse_arg_list_noparen()
             return self.make_call_stmt(e, args, line)
+        if e.kind == "call" and len(e.args) == 1 and e.args[0][0] is None and e.args[0][1] is not None \
+                and e.args[0][1].kind != "paren":
+            # without `Call`, `Sub (x)` makes the parentheses an expression: the argument goes ByVal
+            e = Node("call", e.line, target=e.target, args=[(None, Node("paren", e.line, e=e.args[0][1]))])
         return self.make_call_stmt(e, [], line)
 
     def skip_rest_of_line_ok(self):
@@ -1043,7 +1047,7 @@ class Parser:
         return args
 
     def parse_arg_expr(self):
-        if self.is_kw("byval") and self.peek().kind != "op":
+        if self.is_kw("byval") and not (self.peek().kind == "op" and self.peek().low in (",", ")", "=")):
             t = self.next()
             return Node("paren", t.line, e=self.parse_expr())
         return self.parse_expr()

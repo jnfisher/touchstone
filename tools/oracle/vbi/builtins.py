@@ -542,7 +542,7 @@ def f_isobject(it, x):
 
 def f_typename(it, x):
     if isinstance(x, VBArray):
-        return V.type_name_of(x.elemtype if False else EMPTY) if False else "Variant()"
+        return "Variant()"
     if isinstance(x, UDTInstance):
         return x.defn.name
     if isinstance(x, ClsInstance):
@@ -591,11 +591,21 @@ def f_doevents(it):
 def _unbound(name):
     def f(it, *a):
         raise OracleUnbound(name)
+    f.vb_unbound = name
     return f
 
 
 def f_cvar(it, x):
     return x
+
+
+def f_lenb(it, x):
+    return I32(len(_s(x)) * 2)
+
+
+def f_cdec(it, x):
+    # Decimal is not modelled; Double carries the same value for the ranges MME uses
+    return V.c_dbl(x)
 
 
 def f_cdate(it, x):
@@ -612,7 +622,7 @@ BUILTINS = {
     "randomize": f_randomize, "hex": f_hex, "oct": f_oct,
     "cint": lambda it, x: V.c_int(x), "clng": lambda it, x: V.c_long(x), "csng": lambda it, x: V.c_sng(x),
     "cdbl": f_cdbl, "ccur": lambda it, x: V.c_cur(x), "cbool": lambda it, x: V.c_bool(x),
-    "cbyte": lambda it, x: V.c_byte(x), "cstr": f_cstr, "cvar": f_cvar, "cdate": f_cdate,
+    "cbyte": lambda it, x: V.c_byte(x), "cstr": f_cstr, "cvar": f_cvar, "cdate": f_cdate, "lenb": f_lenb, "cdec": f_cdec,
     "left": f_left, "right": f_right, "mid": f_mid, "len": f_len, "instr": f_instr, "instrrev": f_instrrev,
     "replace": f_replace, "trim": f_trim, "ltrim": f_ltrim, "rtrim": f_rtrim, "ucase": f_ucase,
     "lcase": f_lcase, "space": f_space, "string": f_string, "chr": f_chr, "chrw": f_chrw, "asc": f_asc,
