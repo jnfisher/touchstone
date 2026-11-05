@@ -294,7 +294,19 @@ class Env:
         args = []
         refs = []
         for a in step.get("args", []):
-            if isinstance(a, dict) and "ref" in a:
+            if isinstance(a, dict) and str(a.get("ref", "")).startswith("array:"):
+                # ByRef array argument: {"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]};
+                # without bounds the array starts unallocated, as a bare `Dim x() As T` does.
+                code = a["ref"][6:].lower()
+                factory = (lambda c=code: self.it.new_udt(c)) if code in self.it.udts else None
+                arr = VBArray(code, None, factory)
+                arr.dynamic = True
+                if a.get("bounds"):
+                    arr.allocate([tuple(b) for b in a["bounds"]])
+                cell = Var(arr, a["ref"].lower())
+                args.append(cell)
+                refs.append(cell)
+            elif isinstance(a, dict) and "ref" in a:
                 cell = Var(decode(a["value"]), a["ref"])
                 args.append(cell)
                 refs.append(cell)
