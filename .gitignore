@@ -6,4 +6,6 @@ web/.svelte-kit/
 *.sqlite
 /touchstone.toml
 /data/
+__pycache__/
+*.pyc
 web/scripts/screenshots/
