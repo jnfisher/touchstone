@@ -2,6 +2,11 @@
 
 mod fixture;
 
+mod abilities;
 mod exp;
 mod exp_per_hour;
+mod game_text;
+mod item_value;
 mod monster_sim;
+mod stats;
+mod textblock;
