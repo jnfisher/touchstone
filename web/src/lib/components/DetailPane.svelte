@@ -1,7 +1,8 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { DetailGroup } from '$lib/explorers';
 
-	let { groups }: { groups: DetailGroup[] } = $props();
+	let { groups, children }: { groups: DetailGroup[]; children?: Snippet } = $props();
 </script>
 
 <div class="bg-card h-full overflow-y-auto rounded-md border p-4" data-testid="detail">
@@ -22,4 +23,5 @@
 			</dl>
 		</section>
 	{/each}
+	{@render children?.()}
 </div>

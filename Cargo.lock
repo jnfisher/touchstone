@@ -1058,6 +1058,7 @@ dependencies = [
  "touchstone-data",
  "touchstone-model",
  "touchstone-rules",
+ "touchstone-vb6",
  "tower",
  "tower-http",
 ]

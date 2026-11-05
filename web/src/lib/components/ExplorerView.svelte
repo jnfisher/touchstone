@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { api, type TableName, type TableTypes } from '$lib/api';
 	import DetailPane from '$lib/components/DetailPane.svelte';
+	import ExpTable from '$lib/components/ExpTable.svelte';
+	import ShopPrices from '$lib/components/ShopPrices.svelte';
 	import SplitPane from '$lib/components/SplitPane.svelte';
 	import { selection } from '$lib/explorer-state.svelte';
 	import { buildLookups, listRows, parseNmr, type AnyExplorer, type Lookups } from '$lib/explorers';
@@ -85,7 +87,13 @@
 				{/snippet}
 				{#snippet right()}
 					{#if selected}
-						<DetailPane {groups} />
+						<DetailPane {groups}>
+							{#if slug === 'shops'}
+								<ShopPrices shop={Number(explorer.rowId(selected))} />
+							{:else if slug === 'races' || slug === 'classes'}
+								<ExpTable kind={slug === 'races' ? 'race' : 'class'} number={Number(explorer.rowId(selected))} />
+							{/if}
+						</DetailPane>
 					{:else}
 						<div class="text-muted-foreground bg-card h-full rounded-md border p-4 text-sm">
 							Select a record to see its details.
