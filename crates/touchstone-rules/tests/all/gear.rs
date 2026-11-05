@@ -52,8 +52,9 @@ fn world(data: &Value) -> World {
                 worn: i(&r["w"]),
                 accy: i(&r["acc"]),
                 gettable: true,
-                str_req: 0,
-                speed: 0,
+                // gear.json's rows carry no speed or strength requirement; gear2.json's do
+                str_req: r["sr"].as_i64().unwrap_or(0) as i32,
+                speed: r["sp"].as_i64().unwrap_or(0) as i32,
                 not_droppable: false,
                 destroy_on_death: false,
                 retain_after_uses: false,
@@ -115,7 +116,8 @@ fn world(data: &Value) -> World {
             magery_lvl: 0,
             weapon_type: i(&r["wt"]),
             armour_type: i(&r["at"]),
-            combat_lvl: 0,
+            // gear.json's rows carry no combat level; gear2.json's do
+            combat_lvl: r["cl"].as_i64().unwrap_or(0) as i32,
             abilities: pairs(&r["ab"]),
         })
         .collect();
@@ -254,7 +256,11 @@ fn handled_error(case: &Value, source: &str) -> Option<i32> {
     })
 }
 
-fn run_calc(world: &World, header: &Value, case: &Value) -> Result<(), String> {
+fn gear_input<'a>(
+    world: &'a World,
+    header: &'a Value,
+    case: &Value,
+) -> Result<GearInput<'a>, String> {
     let f = Forms::new(header, case);
     let mut base_stats = [0.0; 6];
     for (k, b) in base_stats.iter_mut().enumerate() {
@@ -269,7 +275,7 @@ fn run_calc(world: &World, header: &Value, case: &Value) -> Result<(), String> {
     let mut eq = [0; EQUIP_SLOTS];
     let mut carried_equipped = equipped(case);
     std::mem::swap(&mut eq, &mut carried_equipped);
-    let input = GearInput {
+    Ok(GearInput {
         profile: Profile::Stock,
         world,
         dat_ver_caption: header["setup"]["forms"]["frmMain"]["lblDatVer"]["Caption"]
@@ -285,7 +291,11 @@ fn run_calc(world: &World, header: &Value, case: &Value) -> Result<(), String> {
         adjustments,
         bless_slots: f.bless_slots(),
         martial_arts: case["inputs"]["globals"]["nGlobalAttackTypeMME"].as_i64() == Some(4),
-    };
+    })
+}
+
+fn run_calc(world: &World, header: &Value, case: &Value) -> Result<(), String> {
+    let input = gear_input(world, header, case)?;
     let got = calc_gear_stats(&input).map_err(|e| format!("{e:?}"))?;
     let out = &case["outputs"];
     let want_err = handled_error(case, "CalcCharacterStats");
@@ -494,6 +504,109 @@ fn gear_cases_match_the_oracle() {
     let mut fails = Vec::new();
     for case in &fx.cases {
         if let Err(e) = run(&w, &fx.header, case) {
+            fails.push(format!("{}: {e}", case["id"].as_str().unwrap()));
+        }
+    }
+    assert!(
+        fails.is_empty(),
+        "{} of {} cases differ; first ones:\n{}",
+        fails.len(),
+        fx.cases.len(),
+        fails
+            .iter()
+            .take(15)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+/// The second-half inputs: quest boxes, quest options, the global filter and the attack type.
+fn second_input(header: &Value, case: &Value) -> SecondHalfInput {
+    let f = Forms::new(header, case);
+    let mut q = SecondHalfInput::default();
+    for x in 0..12 {
+        q.quests[x] = f.elem("chkCharQuests", x)["Value"].as_i64() == Some(1);
+    }
+    for (k, o) in q.quest_options.iter_mut().enumerate() {
+        *o = f.elem("cmbCharQuestOpts", k)["ListIndex"]
+            .as_i64()
+            .unwrap_or(-1) as i32;
+    }
+    q.global_filter = f.ctl("chkGlobalFilter")["Value"].as_i64().unwrap_or(0) as i32;
+    q.attack_type = case["inputs"]["globals"]["nGlobalAttackTypeMME"]
+        .as_i64()
+        .unwrap_or(0) as i32;
+    q
+}
+
+fn run_calc_both_halves(world: &World, header: &Value, case: &Value) -> Result<(), String> {
+    let input = gear_input(world, header, case)?;
+    let got =
+        calc_character_stats(&input, &second_input(header, case)).map_err(|e| format!("{e:?}"))?;
+    let out = &case["outputs"];
+    let want_err = handled_error(case, "CalcCharacterStats");
+    if got.error != want_err {
+        return Err(format!("error: got {:?}, want {want_err:?}", got.error));
+    }
+    for (k, w) in out["stat"].as_array().unwrap().iter().enumerate() {
+        if got.caption(k) != w.as_str().unwrap() {
+            return Err(format!("stat[{k}]: got {}, want {w}", got.caption(k)));
+        }
+    }
+    for (k, w) in out["lbltags"].as_array().unwrap().iter().enumerate() {
+        let g = got.stat_tag[k].map(vb::cstr).unwrap_or_default();
+        if g != w.as_str().unwrap() {
+            return Err(format!("lbltag[{k}]: got {g:?}, want {w}"));
+        }
+    }
+    for (k, w) in out["tags"].as_array().unwrap().iter().enumerate() {
+        let g = vb::cstr(got.stat_with_bonus[k]);
+        if g != w.as_str().unwrap() {
+            return Err(format!("tag[{k}]: got {g}, want {w}"));
+        }
+    }
+    let ints: [(&str, i32); 7] = [
+        ("AccyItems", got.accy_items),
+        ("AccyAbils", got.accy_abils),
+        ("AccyOther", got.accy_other),
+        ("PlusDodge", got.plus_dodge),
+        ("PlusMR", got.plus_mr),
+        ("AttackAccyAdj", got.attack_accy_adj),
+        ("QnDbonus", got.qnd_bonus),
+    ];
+    for (name, g) in ints {
+        if i(&out[name]) != g {
+            return Err(format!("{name}: got {g}, want {}", out[name]));
+        }
+    }
+    // txtCharHPRegen / txtCharManaRegen are only assigned when the procedure got that far
+    if want_err.is_none() {
+        for (name, g) in [("hpregen", got.hp_regen), ("manaregen", got.mana_regen)] {
+            if vb::val(out[name].as_str().unwrap()) != g {
+                return Err(format!("{name}: got {g}, want {}", out[name]));
+            }
+        }
+        let p = out["probe"].as_array().unwrap();
+        let g = [got.encum_pct.to_string(), vb::cstr(got.walk_speed)];
+        for k in 0..2 {
+            if p[k].as_str().unwrap() != g[k] {
+                return Err(format!("probe[{k}]: got {}, want {}", g[k], p[k]));
+            }
+        }
+    }
+    Ok(())
+}
+
+// Expected values come from fixtures/rules/gear2.json: CalcCharacterStats run whole by the oracle,
+// cut at the call to RefreshMagic.
+#[test]
+fn gear2_cases_match_the_oracle() {
+    let fx = fixture::load("gear2");
+    let w = world(&fx.header["data"]);
+    let mut fails = Vec::new();
+    for case in &fx.cases {
+        if let Err(e) = run_calc_both_halves(&w, &fx.header, case) {
             fails.push(format!("{}: {e}", case["id"].as_str().unwrap()));
         }
     }

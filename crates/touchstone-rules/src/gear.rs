@@ -4,9 +4,10 @@
 //! controls and globals hold) and returns a [`CharStats`] (what `lblInvenCharStat(0..46)`,
 //! `txtCharStats(i).Tag` and the `nGlobalChar*` globals hold afterwards).
 //!
-//! The split with P3-18 is at the section banner `'stealth`: this module ends where the equipped
-//! items loop, the hit-magic fold-in and the shadow AC are done, and P3-18 starts at stealth, quest
-//! bonuses, accuracy, crits, MR and dodge, which continue on the same [`CharStats`].
+//! The split with P3-18 is at the section banner `'stealth`: [`calc_gear_stats`] ends where the
+//! equipped items loop, the hit-magic fold-in and the shadow AC are done. The second half (stealth,
+//! quest bonuses, accuracy, crits, MR, dodge, speed; card P3-18) is [`calc_character_stats`], in
+//! the `second` submodule, and continues on the same [`CharStats`].
 //!
 //! Conventions of the port:
 //!
@@ -33,6 +34,9 @@ use crate::abilities::get_ability_stat_slot;
 use crate::spells::{MinMaxRequest, get_current_spell_min_max};
 use crate::stats::{calc_encum, get_race_hp_bonus};
 use crate::{Profile, RulesError};
+
+mod second;
+pub use second::{SecondHalfInput, calc_character_stats};
 
 type Res<T> = Result<T, Vb6Error>;
 
@@ -197,6 +201,17 @@ pub struct CharStats {
     pub bless_spells: [i32; BLESS_SLOTS],
     /// The VB6 run-time error that ended the calculation early, if any.
     pub error: Option<i32>,
+    /// `Val(lblInvenCharStat(i).Tag)`; `None` while the tag is empty (second half, P3-18).
+    pub stat_tag: [Option<f64>; STAT_COUNT],
+    /// `nGlobalAttackAccyAdj`: the accuracy a bash or smash attack gives up (second half).
+    pub attack_accy_adj: i32,
+    /// `nGlobalCharQnDbonus`: the crit bonus from Quick and Deadly (second half).
+    pub qnd_bonus: i32,
+    /// Local `nWalkSpeed`: seconds per step, `Round(CalcMovementSpeed / 1000)` (second half).
+    pub walk_speed: f64,
+    /// `Val(txtCharHPRegen.Text)` and `Val(txtCharManaRegen.Text)` after the procedure (second half).
+    pub hp_regen: f64,
+    pub mana_regen: f64,
 }
 
 impl CharStats {
@@ -224,6 +239,12 @@ impl CharStats {
             bless: Box::new([0.0; BLESS_COUNT]),
             bless_spells: [0; BLESS_SLOTS],
             error: None,
+            stat_tag: [None; STAT_COUNT],
+            attack_accy_adj: 0,
+            qnd_bonus: 0,
+            walk_speed: 0.0,
+            hp_regen: 0.0,
+            mana_regen: 0.0,
         }
     }
 
