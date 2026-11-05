@@ -3,6 +3,7 @@
 mod fixture;
 
 mod abilities;
+mod accuracy;
 mod exp;
 mod exp_per_hour;
 mod game_text;
