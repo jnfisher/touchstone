@@ -9,6 +9,7 @@ use crate::RulesError;
 
 mod helpers;
 mod model_a;
+mod model_b;
 mod model_c;
 mod model_d;
 
@@ -17,6 +18,7 @@ pub use helpers::{
     ceph_b_smooth_step, ceph_c_ceil, clamp_dbl, max_dbl, min_dbl, safe_div,
 };
 pub use model_a::model_a;
+pub use model_b::model_b;
 pub use model_c::model_c;
 pub use model_d::{ceph_d_overkill_frac, model_d};
 
