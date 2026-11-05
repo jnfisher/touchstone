@@ -65,7 +65,7 @@ def db_path():
 # ----------------------------------------------------------------------------- value coding
 
 def decode(x):
-    """Scenario JSON -> VB value. Typed form: {"t": "cur|single|i16|i32|byte|f64|str|empty|null", "v": ...}."""
+    """Scenario JSON -> VB value. Typed form: {"t": "cur|single|i16|i32|byte|f64|str|empty|null|missing", "v": ...}; "missing" leaves an Optional argument out."""
     if isinstance(x, dict) and "t" in x:
         t, v = x["t"], x.get("v")
         if t == "cur":
@@ -86,6 +86,8 @@ def decode(x):
             return EMPTY
         if t == "null":
             return NULL
+        if t == "missing":
+            return V.MISSING
         raise ValueError("unknown typed value %r" % (x,))
     if isinstance(x, bool):
         return x
