@@ -111,7 +111,7 @@ pub(super) fn load(conn: &Connection) -> Result<World> {
     let messages = message_texts(conn)?;
     let rooms_raw = rooms(conn)?;
     let items = items(conn)?;
-    let monsters = monsters(conn, &messages)?;
+    let monsters = monsters(conn, &messages, &spell_names(conn)?)?;
     let shops = shops(conn, &rooms_raw)?;
     let tbinfo = tbinfo(conn, &monsters, &rooms_raw)?;
     let parts = WorldParts {
@@ -184,8 +184,8 @@ fn items(conn: &Connection) -> Result<Vec<Item>> {
             limit: r.i("limit_copies")?,
             encum: r.i("weight")?,
             item_type: r.i("item_type")?,
-            // charges is -1 for "none"; MME's UseCount is 0 then.
-            use_count: r.i("charges")?.max(0),
+            // Both keep -1 for "no charges" (checked against the stock database).
+            use_count: r.i("charges")?,
             price: r.i("cost")?,
             currency: r.i("currency")?,
             min: r.i("mindmg")?,
@@ -213,15 +213,70 @@ fn items(conn: &Connection) -> Result<Vec<Item>> {
     })
 }
 
-/// `messages.text1` (the line the target sees) by message number: MME's attack names read
+/// `messages.text0` (the line the attacker's target is shown, a format string such as
+/// "The %s slashes you for %d damage!") by message number; `attack_name` reduces it to MME's
 /// "slashes you".
 fn message_texts(conn: &Connection) -> Result<HashMap<i64, String>> {
-    let mut stmt = conn.prepare("SELECT number, text1 FROM messages")?;
+    let mut stmt = conn.prepare("SELECT number, text0 FROM messages")?;
     let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
     Ok(rows.collect::<std::result::Result<_, _>>()?)
 }
 
-fn monsters(conn: &Connection, messages: &HashMap<i64, String>) -> Result<Vec<Monster>> {
+/// Spell names by number, for spell attacks (MME names those after the spell).
+fn spell_names(conn: &Connection) -> Result<HashMap<i64, String>> {
+    let mut stmt = conn.prepare("SELECT number, name FROM spells")?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+
+/// MME's attack name: "None" for kind 0, the spell's name for a spell attack, the hit message
+/// without its "The %s " lead and " for %d damage!" tail for a weapon attack ("Physical" when it
+/// has no message), "Unknown" for any other kind.
+fn attack_name(
+    kind: i64,
+    accuracy: i64,
+    hitmsg: i64,
+    messages: &HashMap<i64, String>,
+    spells: &HashMap<i64, String>,
+) -> String {
+    match kind {
+        0 => "None".to_string(),
+        2 => spells.get(&accuracy).cloned().unwrap_or_default(),
+        1 | 3 => {
+            let text = messages.get(&hitmsg).map_or("", String::as_str);
+            // Everything up to the monster's own name is dropped ("The %s ", "A corpse held by %s ").
+            let text = text.split_once("%s ").map_or(text, |(_, rest)| rest);
+            let damage_tail = [" for %d damage!", " for %d damage.", " for %s damage!"]
+                .into_iter()
+                .find_map(|t| text.strip_suffix(t));
+            let name = match damage_tail {
+                Some(head) => head,
+                // A message without a damage figure is named by its verb.
+                None => text.split(' ').next().unwrap_or(""),
+            };
+            if name.is_empty() {
+                "Physical".to_string()
+            } else if name.chars().count() > 49 {
+                // The one long message in the stock data is cut to 46 characters plus "...".
+                format!("{}...", name.chars().take(46).collect::<String>())
+            } else {
+                name.to_string()
+            }
+        }
+        _ => "Unknown".to_string(),
+    }
+}
+
+/// An empty string is a NULL in the stock `.mdb` for the optional text columns.
+fn nonempty(s: String) -> Option<String> {
+    (!s.is_empty()).then_some(s)
+}
+
+fn monsters(
+    conn: &Connection,
+    messages: &HashMap<i64, String>,
+    spells: &HashMap<i64, String>,
+) -> Result<Vec<Monster>> {
     let mut abil = children(conn, "monster_abilities", "monster", "ability", "value")?;
     let mut mid = HashMap::<i64, Vec<(i64, i64, i64, i64)>>::new();
     {
@@ -269,7 +324,7 @@ fn monsters(conn: &Connection, messages: &HashMap<i64, String>) -> Result<Vec<Mo
             let key = i64::from(number);
             Ok(Monster {
                 number,
-                name: Some(r.s("name")?),
+                name: nonempty(r.s("name")?),
                 weapon: r.i("weapon")?,
                 armour_class: r.i("ac")?,
                 damage_resist: r.i("dr")?,
@@ -287,7 +342,8 @@ fn monsters(conn: &Connection, messages: &HashMap<i64, String>) -> Result<Vec<Mo
                 greet_txt: r.i("talktext")?,
                 hp_regen: r.i("hpregen")?,
                 charm_lvl: r.i("charmlvl")?,
-                r#type: r.i("montype")?,
+                // MME's Type is the follower role (solo, leader, follower, stationary), not montype.
+                r#type: r.i("grouprole")?,
                 undead: r.i("undead")?,
                 align: r.i("alignment")?,
                 regen_time: r.i("regenhrs")?,
@@ -301,7 +357,7 @@ fn monsters(conn: &Connection, messages: &HashMap<i64, String>) -> Result<Vec<Mo
                 c: r.i("cash_copper")?,
                 death_spell: r.i("deathspell")?,
                 create_spell: r.i("createspell")?,
-                attacks: monster_attacks(attacks.remove(&key), messages)?,
+                attacks: monster_attacks(attacks.remove(&key), messages, spells)?,
                 mid_spells: {
                     let mut out = [MidSpell::default(); 5];
                     for (slot, spell, pct, lvl) in mid.remove(&key).into_iter().flatten() {
@@ -337,6 +393,7 @@ type MonsterAttackRow = [i64; 9];
 fn monster_attacks(
     rows: Option<Vec<MonsterAttackRow>>,
     messages: &HashMap<i64, String>,
+    spells: &HashMap<i64, String>,
 ) -> Result<[MonsterAttack; 5]> {
     const T: &str = "monster_attacks";
     // MME names an unused slot "None".
@@ -358,7 +415,7 @@ fn monster_attacks(
         let true_pct = f64::from((pct - prev_pct).max(0));
         prev_pct = pct.max(prev_pct);
         out[slot_index(T, v[0], 5)?] = MonsterAttack {
-            name: messages.get(&v[6]).cloned().unwrap_or_default(),
+            name: attack_name(v[1], v[2], v[6], messages, spells),
             att_type: to_i32(T, "kind", v[1])?,
             acc: to_i32(T, "accuracy", v[2])?,
             pct,
@@ -382,21 +439,23 @@ fn spells(conn: &Connection) -> Result<Vec<Spell>> {
             let number = r.i("number")?;
             Ok(Spell {
                 number,
-                name: Some(r.s("name")?),
-                short: Some(r.s("shortnm")?),
+                name: nonempty(r.s("name")?),
+                short: nonempty(r.s("shortnm")?),
                 req_level: r.i("level")?,
                 energy_cost: r.i("energy")?,
                 mana_cost: r.i("mana")?,
                 min_base: r.i("minval")?,
                 max_base: r.i("maxval")?,
                 diff: r.i("diff")?,
-                type_of_resists: r.i("resstat")?,
+                // MME's TypeOfResists is silvermere's resmode (0 magic, 1 stat, 2 other), not resstat.
+                type_of_resists: r.i("resmode")?,
                 targets: r.i("target")?,
                 dur: r.i("duration")?,
                 att_type: r.i("element")?,
                 magery: r.i("magery")?,
                 magery_lvl: r.i("magelvl")?,
-                cap: r.i("levelcap")?,
+                // A byte in MME; silvermere keeps the 16-bit field, whose high byte is padding.
+                cap: r.i("levelcap")? & 0xFF,
                 max_inc_lvls: r.i("maxlvls")?,
                 max_inc: r.i("maxinc")?,
                 min_inc_lvls: r.i("minlvls")?,
@@ -472,44 +531,117 @@ struct RoomRow {
     cmdtext: i32,
 }
 
-/// `EXIT_*` codes with their own text in MME's exit column.
+/// `EXIT_*` codes (silvermere's `exit_type`) whose text MME builds from the four parameters.
+const EXIT_KEY: i64 = 2;
+const EXIT_ITEM: i64 = 3;
+const EXIT_TOLL: i64 = 4;
+const EXIT_HIDDEN: i64 = 6;
 const EXIT_DOOR: i64 = 7;
 const EXIT_MAPCHANGE: i64 = 8;
+const EXIT_TRAP: i64 = 9;
+const EXIT_DOOR_ALT: i64 = 11;
+const EXIT_CLASS: i64 = 13;
+const EXIT_RACE: i64 = 14;
+const EXIT_LEVEL: i64 = 15;
+const EXIT_TICKET: i64 = 17;
+const EXIT_CAST: i64 = 22;
+const EXIT_ABILITY: i64 = 23;
+const EXIT_SPELLTRAP: i64 = 24;
 
-fn exit_text(map: i32, target: i64, exit_type: i64, par1: i64) -> String {
-    if target == 0 {
+/// `par1..par4` of a `room_exits` row.
+type ExitPars = [i64; 4];
+
+/// The lock part of a door or key exit: a negative `par2` is a picklock/strength requirement of
+/// `1 - par2`, a positive one means any attempt works, zero means none is listed.
+fn lock_text(par2: i64, strength: bool) -> String {
+    let unit = if strength {
+        "picklocks/strength"
+    } else {
+        "picklocks"
+    };
+    match par2 {
+        0 => String::new(),
+        p if p < 0 => format!("{} {unit}", 1 - p),
+        _ => format!("any {unit}"),
+    }
+}
+
+/// The text after `map/room`. The kinds MME describes with words from a text block ("Text:"),
+/// an action's item and direction ("Action [...]") or a timer stay a generic `(Other)`; the rest
+/// is rebuilt from the parameters and checked against the stock `.mdb` by the parity example.
+fn exit_suffix(exit_type: i64, p: ExitPars) -> String {
+    match exit_type {
+        0 | 1 | 5 | EXIT_MAPCHANGE | 19 => String::new(),
+        EXIT_KEY => {
+            let lock = lock_text(p[2], false);
+            if lock.is_empty() {
+                format!(" (Key: {})", p[0])
+            } else {
+                format!(" (Key: {} [or {lock}])", p[0])
+            }
+        }
+        EXIT_ITEM => format!(" (Item: {})", p[0]),
+        EXIT_TOLL => format!(" (Toll: {})", p[0]),
+        // par1 is a bit set: 1 passable, 2 searchable, higher bits the actions needed (par2
+        // is their count, negative when the order does not matter).
+        EXIT_HIDDEN => match p[0] {
+            1 => " (Hidden/Passable)".to_string(),
+            2 => " (Hidden/Searchable)".to_string(),
+            _ if p[1] != 0 => format!(
+                " (Hidden/Needs {} Actions, {} order)",
+                p[1].abs(),
+                if p[1] < 0 { "any" } else { "specific" }
+            ),
+            _ => " (Hidden/Unknown)".to_string(),
+        },
+        EXIT_DOOR | EXIT_DOOR_ALT => {
+            let lock = lock_text(p[1], true);
+            match (p[3], lock.is_empty()) {
+                (0, true) => " (Door)".to_string(),
+                (0, false) => format!(" (Door [{lock}])"),
+                (k, true) => format!(" (Key: {k})"),
+                (k, false) => format!(" (Key: {k} [or {lock}])"),
+            }
+        }
+        EXIT_TRAP => format!(" (Trap, {} damage)", p[0]),
+        EXIT_CLASS => format!(" (Class: {} OK, {} NO)", p[0], p[1]),
+        EXIT_RACE => format!(" (Race: {} OK, {} NO)", p[0], p[1]),
+        EXIT_LEVEL => format!(" (Level: {} to {})", p[0], p[1]),
+        EXIT_TICKET => format!(" (Ticket/Item: {})", p[0]),
+        EXIT_CAST => format!(" (Cast: pre-{}, post-{})", p[0], p[1]),
+        EXIT_ABILITY => format!(" (Ability: {} w/value {} to {})", p[0], p[1], p[2]),
+        EXIT_SPELLTRAP => format!(" (Spell Trap: {})", p[0]),
+        _ => " (Other)".to_string(),
+    }
+}
+
+fn exit_text(map: i32, target: i64, exit_type: i64, pars: ExitPars) -> String {
+    // A hidden exit with no parameters at all is an unused slot in MME.
+    if target == 0 || (exit_type == EXIT_HIDDEN && pars == [0; 4]) {
         return "0".to_string();
     }
     let dest_map = if exit_type == EXIT_MAPCHANGE {
-        par1
+        pars[0]
     } else {
         i64::from(map)
     };
-    let suffix = match exit_type {
-        0 | EXIT_MAPCHANGE => "",
-        EXIT_DOOR => " (Door)",
-        // The other kinds carry parameters MME prints in several shapes; only the kind is kept.
-        1 => " (Spell)",
-        2 => " (Key)",
-        3 => " (Item)",
-        4 => " (Toll)",
-        6 => " (Hidden)",
-        _ => " (Other)",
-    };
-    format!("{dest_map}/{target}{suffix}")
+    format!("{dest_map}/{target}{}", exit_suffix(exit_type, pars))
 }
 
 fn rooms(conn: &Connection) -> Result<Vec<RoomRow>> {
-    let mut exits = HashMap::<i64, Vec<(i64, i64, i64, i64)>>::new();
+    let mut exits = HashMap::<i64, Vec<(i64, i64, i64, ExitPars)>>::new();
     {
-        let mut stmt =
-            conn.prepare("SELECT room_id, slot, target, exit_type, par1 FROM room_exits")?;
+        let mut stmt = conn.prepare(
+            "SELECT room_id, slot, target, exit_type, par1, par2, par3, par4 FROM room_exits",
+        )?;
         let mut rows = stmt.query([])?;
         while let Some(r) = rows.next()? {
-            exits
-                .entry(r.get(0)?)
-                .or_default()
-                .push((r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?));
+            exits.entry(r.get(0)?).or_default().push((
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                [r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?],
+            ));
         }
     }
     let mut placed = children(conn, "room_placed_items", "room_id", "item", "0")?;
@@ -521,8 +653,8 @@ fn rooms(conn: &Connection) -> Result<Vec<RoomRow>> {
             let id: i64 = r.row.get("id")?;
             let map = r.i("map")?;
             let mut dirs: [String; 10] = std::array::from_fn(|_| "0".to_string());
-            for (slot, target, kind, par1) in exits.remove(&id).into_iter().flatten() {
-                dirs[slot_index("room_exits", slot, 10)?] = exit_text(map, target, kind, par1);
+            for (slot, target, kind, pars) in exits.remove(&id).into_iter().flatten() {
+                dirs[slot_index("room_exits", slot, 10)?] = exit_text(map, target, kind, pars);
             }
             let [n, s, e, w, ne, nw, se, sw, u, d] = dirs;
             // MME lists placed items as "939," (each followed by a comma).
@@ -532,20 +664,30 @@ fn rooms(conn: &Connection) -> Result<Vec<RoomRow>> {
                     .map(|x| format!("{},", x.1))
                     .collect::<String>()
             });
-            let shopnum = r.i("shopnum")?;
+            // MME only records the shop on the shop room itself (room_type 1); the vault, locker
+            // and inn side rooms carry the number in silvermere but not in the stock .mdb.
+            let shopnum = if r.i("room_type")? == 1 {
+                r.i("shopnum")?
+            } else {
+                0
+            };
             let cmdtext = r.i("cmdtext")?;
             Ok(RoomRow {
                 room: Room {
                     map_number: map,
                     room_number: r.i("room")?,
-                    name: Some(r.s("name")?),
+                    name: nonempty(r.s("name")?),
                     light: r.i("light")?,
                     shop: shopnum,
                     npc: r.i("specmon")?,
                     cmd: cmdtext,
                     spell: r.i("roomspell")?,
                     lair: None,
-                    delay: r.i("regendelay")?,
+                    // An unset delay (0) reads as the default 5 in MME.
+                    delay: match r.i("regendelay")? {
+                        0 => 5,
+                        d => d,
+                    },
                     placed: placed_items.filter(|p| !p.is_empty()),
                     n,
                     s,
@@ -593,11 +735,13 @@ fn shops(conn: &Connection, rooms: &[RoomRow]) -> Result<Vec<Shop>> {
                 pct: to_i32(T, "regenpct", v[5])?,
             };
         }
-        let homes: Vec<String> = rooms
+        let mut homes: Vec<String> = rooms
             .iter()
             .filter(|x| x.shopnum == number)
             .map(|x| format!("Room {}/{}", x.room.map_number, x.room.room_number))
             .collect();
+        // MME lists the rooms in text order ("Room 10/271" before "Room 3/542").
+        homes.sort();
         Ok(Shop {
             number,
             name: r.s("name")?,
@@ -605,7 +749,8 @@ fn shops(conn: &Connection, rooms: &[RoomRow]) -> Result<Vec<Shop>> {
             min_lvl: r.i("minlevel")?,
             max_lvl: r.i("maxlevel")?,
             markup_pct: r.i("markup")?,
-            class_rest: r.i("trainclass")?,
+            // A byte in MME; the high byte of the 16-bit field is padding.
+            class_rest: r.i("trainclass")? & 0xFF,
             stock: slots,
             in_game: !homes.is_empty(),
             assigned_to: if homes.is_empty() {
