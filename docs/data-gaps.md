@@ -24,7 +24,7 @@ monster `avg_dmg*`, `avg_lair_exp`, `script_value`; the whole `Lairs` table; `Ro
 | `limit` | direct | `items.limit_copies` |
 | `encum` | direct | `items.weight` |
 | `item_type` | direct | `items.item_type` (same ITEM_* codes) |
-| `use_count` | derived | `items.charges`; silvermere's -1 ("no charges") becomes 0 |
+| `use_count` | direct | `items.charges`; both keep -1 for "no charges" (checked by `docs/data-parity.md`) |
 | `price` | direct | `items.cost` |
 | `currency` | direct | `items.currency` |
 | `min`, `max` | direct | `items.mindmg`, `items.maxdmg` |
@@ -56,7 +56,7 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | Field | Status | Source / fill |
 |---|---|---|
 | `number` | direct | `monsters.number` |
-| `name` | direct | `monsters.name` (`Some`) |
+| `name` | direct | `monsters.name`; an empty name is `None`, as the `.mdb` has NULL there |
 | `weapon` | direct | `monsters.weapon` |
 | `armour_class` | direct | `monsters.ac` |
 | `damage_resist` | direct | `monsters.dr` |
@@ -64,14 +64,14 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | `magic_res` | direct | `monsters.magicres` |
 | `bs_defense` | direct | `monsters.bsdefense` |
 | `exp` | direct | `monsters.exp` |
-| `exp_multi` | derived | `monsters.level` (silvermere awards `exp * level`). This is the one reading of MME's EXP/ExpMulti split I could not confirm against the stock database, because the converted `.mdb` has no level column; a mismatch would show up in the oracle comparison |
+| `exp_multi` | derived | `monsters.level` (silvermere awards `exp * level`). Confirmed against the stock database by the T-015 parity run: `exp` and `exp_multi` match for every monster |
 | `hp` | direct | `monsters.maxhp` |
 | `energy` | direct | `monsters.energy` |
 | `avg_dmg`, `avg_dmg_phys`, `avg_dmg_spell` | none | `0.0`; NMR computes these from the attacks, accuracy and the monster's spells |
 | `greet_txt` | direct | `monsters.talktext` |
 | `hp_regen` | direct | `monsters.hpregen` |
 | `charm_lvl` | direct | `monsters.charmlvl` |
-| `type` | direct | `monsters.montype` |
+| `type` | direct | `monsters.grouprole` (solo, leader, follower, stationary). `montype` is a different, finer code and does not match; found by the T-015 parity run |
 | `undead` | direct | `monsters.undead` |
 | `align` | direct | `monsters.alignment` |
 | `regen_time` | direct | `monsters.regenhrs` |
@@ -81,16 +81,16 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | `r`, `p`, `g`, `s`, `c` | direct | `monsters.cash_runic`, `_platinum`, `_gold`, `_silver`, `_copper` (silvermere already reversed the record's runic-first order) |
 | `death_spell` | direct | `monsters.deathspell` |
 | `create_spell` | direct | `monsters.createspell` |
-| `attacks[n].name` | derived | `messages.text1` (the line the target sees, "slashes you") of the attack's `hitmsg`; an unused slot is `"None"` as in MME; a used slot whose message is missing is `""` |
+| `attacks[n].name` | derived | by the attack's kind: 0 is `"None"` (also an unused slot); 2 (spell) is the name of the spell numbered by the accuracy field; 1 is the hit message's `text0` ("The %s slashes you for %d damage!") reduced to "slashes you" (text before `%s `, and the damage tail, removed; a message without a damage figure is named by its first word; over 49 characters cut to 46 plus `...`); an empty message is `"Physical"`; any other kind is `"Unknown"`. All but one stock monster name match |
 | `attacks[n].att_type` | direct | `monster_attacks.kind` |
 | `attacks[n].acc` | direct | `monster_attacks.accuracy` |
 | `attacks[n].pct` | direct | `monster_attacks.pct` (cumulative in both) |
-| `attacks[n].true_pct` | derived | step between this slot's cumulative `pct` and the previous used slot's. MME's stored value is sometimes a little different (for example 49.2 against a step of 50), so this is an approximation of NMR's value |
+| `attacks[n].true_pct` | derived | step between this slot's cumulative `pct` and the previous used slot's. This is NMR's own computed value and is only approximated: NMR weighs the slots by their energy and appears to simulate the choice (values like 49.2 against a step of 50, 73.3 against 75), gives 0 to kind-0 slots, and gives spell attacks a different share. It matches exactly for about a third of the monsters (one attack, or equal energies and no spells) and is within 3 points for another third. A rules function that needs the real attack mix derives it from `pct`, `energy` and `att_type` |
 | `attacks[n].min`, `.max` | direct | `monster_attacks.min`, `.max` |
 | `attacks[n].energy` | direct | `monster_attacks.energy` |
 | `attacks[n].hit_spell` | direct | `monster_attacks.hitspell` |
 | `mid_spells[n]` | direct | `monster_spells.spell`, `.pct`, `.level` by slot |
-| `drops[n]` | direct | `monster_items.item`, `.pct` by slot (`uses` is dropped) |
+| `drops[n]` | direct | `monster_items.item`, `.pct` by slot (`uses` is dropped). An empty slot is 0/0; the `.mdb` keeps a stale percentage on some empty slots (615 of them), which has no source and no meaning |
 | `abilities[n]` | direct | `monster_abilities.ability`, `.value` by slot |
 | `in_game` | none | always `true` |
 | `summoned_by` | none | `None`; NMR's text of the groups and lairs that spawn the monster |
@@ -100,19 +100,19 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | Field | Status | Source / fill |
 |---|---|---|
 | `number` | direct | `spells.number` |
-| `name` | direct | `spells.name` (`Some`) |
-| `short` | direct | `spells.shortnm` |
+| `name` | direct | `spells.name`; empty is `None` |
+| `short` | direct | `spells.shortnm`; empty is `None` (the `.mdb` has NULL for 651 spells) |
 | `req_level` | direct | `spells.level` |
 | `energy_cost` | direct | `spells.energy` |
 | `mana_cost` | direct | `spells.mana` |
 | `min_base`, `max_base` | direct | `spells.minval`, `spells.maxval` |
 | `diff` | direct | `spells.diff` |
-| `type_of_resists` | direct | `spells.resstat` (RSTAT_*; 0 = magic resistance) |
+| `type_of_resists` | direct | `spells.resmode` (0 magic resistance, 1 stat, 2 other). Settled by the parity run: `resstat` did not match |
 | `targets` | direct | `spells.target` |
 | `dur` | direct | `spells.duration` |
 | `att_type` | direct | `spells.element` (ELEM_*; MME's AttType uses the same numbering, 4 = normal) |
 | `magery`, `magery_lvl` | direct | `spells.magery`, `spells.magelvl` |
-| `cap` | direct | `spells.levelcap` |
+| `cap` | direct | `spells.levelcap` low byte; the field is 16 bits and 74 spells have padding in the high byte (8224 reads 32) |
 | `max_inc_lvls`, `max_inc` | direct | `spells.maxlvls`, `spells.maxinc` |
 | `min_inc_lvls`, `min_inc` | direct | `spells.minlvls`, `spells.mininc` |
 | `dur_inc_lvls`, `dur_inc` | direct | `spells.durlvls`, `spells.durinc` |
@@ -120,25 +120,23 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | `learnable` | none | `false`; NMR derives it from the scrolls and trainers that teach the spell |
 | `learned_from`, `casted_by`, `classes` | none | `None`; NMR's cross-reference text. `classes` could be derived from class magery later |
 
-Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `resmode`, `msgnum`. If the
-oracle shows MME's `TypeOfResists` is `resmode` rather than `resstat` for some spells, change the
-one line in the loader.
+Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 
 ## Rooms (`rooms`, `room_exits`, `room_placed_items`)
 
 | Field | Status | Source / fill |
 |---|---|---|
 | `map_number`, `room_number` | direct | `rooms.map`, `rooms.room` |
-| `name` | direct | `rooms.name` (`Some`) |
+| `name` | direct | `rooms.name`; empty is `None` (140 rooms in the `.mdb`) |
 | `light` | direct | `rooms.light` |
-| `shop` | direct | `rooms.shopnum` |
+| `shop` | derived | `rooms.shopnum` for a shop room (`room_type` 1), else 0. Vaults, lockers and inn side rooms carry the number in silvermere but not in MME (1,447 rooms) |
 | `npc` | direct | `rooms.specmon` |
 | `cmd` | direct | `rooms.cmdtext` |
 | `spell` | direct | `rooms.roomspell` |
 | `lair` | none | `None`; NMR's text of the monsters a lair room generates (`Max n: ...[group]`), which depends on its lair grouping rules |
-| `delay` | direct | `rooms.regendelay` |
+| `delay` | derived | `rooms.regendelay`, with 0 read as the default 5 (7,049 rooms) |
 | `placed` | derived | `room_placed_items.item` joined as `"7,8,"` (each followed by a comma, as MME writes it); `None` when empty |
-| `n`, `s`, `e`, `w`, `ne`, `nw`, `se`, `sw`, `u`, `d` | derived | from `room_exits` (slot = direction). No exit is `"0"`. Otherwise `map/room`: the same map, or `par1` for a map-change exit. A suffix names the exit kind: ` (Door)`, ` (Spell)`, ` (Key)`, ` (Item)`, ` (Toll)`, ` (Hidden)`, ` (Other)`. MME prints the exit's parameters too (`(Key: 1124 [or 301 picklocks/strength])`, `(Trap, 30 damage)`, `Action [...]`), and the loader does not rebuild those: the destination is exact, the suffix text is not. Anything that parses exits for pathing only needs the leading `map/room` |
+| `n`, `s`, `e`, `w`, `ne`, `nw`, `se`, `sw`, `u`, `d` | derived | from `room_exits` (slot = direction). No exit is `"0"` (also a hidden exit with all-zero parameters). Otherwise `map/room`: the same map, or `par1` for a map-change exit, followed by MME's suffix rebuilt from the exit kind and `par1..par4`: `(Door)` or `(Door [N picklocks/strength])`, `(Key: K ...)`, `(Item: N)`, `(Toll: N)`, `(Hidden/Passable)`, `(Hidden/Searchable)`, `(Hidden/Needs N Actions, any|specific order)`, `(Trap, N damage)`, `(Class: ..)`, `(Race: ..)`, `(Level: a to b)`, `(Ticket/Item: N)`, `(Cast: pre-a, post-b)`, `(Ability: ..)`, `(Spell Trap: N)`. The destination and these suffixes match the stock `.mdb`. Not rebuilt, and `(Other)` instead: text-triggered exits (`(Text: go path, ...)` takes its words from a text block), action exits (`Action [on the N exit ...]`), alignment-gated exits and timed exits; 547 of the 26,694 x 10 exit fields differ for this reason alone. A consumer parsing exits for pathing only needs the leading `map/room`, which is right for every field except those of the `Action` kind (MME prints no destination for them) |
 
 ## Shops (`shops`, `shop_items`, `rooms`)
 
@@ -148,14 +146,14 @@ one line in the loader.
 | `shop_type` | direct | `shops.shop_type` |
 | `min_lvl`, `max_lvl` | direct | `shops.minlevel`, `shops.maxlevel` |
 | `markup_pct` | direct | `shops.markup` |
-| `class_rest` | direct | `shops.trainclass` |
+| `class_rest` | direct | `shops.trainclass` low byte (padding in the high byte on some shops) |
 | `stock[n].item` | direct | `shop_items.item` by slot |
-| `stock[n].max` | direct | `shop_items.maxqty` |
+| `stock[n].max` | direct | `shop_items.maxqty`. Shop 123 (the gang shop) has stock in silvermere and none in the `.mdb`; that is the only stock difference |
 | `stock[n].time` | direct | `shop_items.regentime` |
 | `stock[n].amount` | direct | `shop_items.regennum` |
 | `stock[n].pct` | direct | `shop_items.regenpct` |
-| `in_game` | derived | some room has `shopnum` equal to the shop |
-| `assigned_to` | derived | those rooms as `Room map/room`, joined with `, ` |
+| `in_game` | derived | some room has `shop` equal to the shop. Three unused shops (39, 65, 85) read true because they are placed in rooms the stock `.mdb` does not have (silvermere's world has 26 more rooms than MME's) |
+| `assigned_to` | derived | those rooms as `Room map/room`, in text order ("Room 10/271" before "Room 3/542", as MME), joined with `, `. Differs for the same three shops and for two more that also list one of the 26 extra rooms |
 
 ## Classes and races
 
@@ -189,7 +187,7 @@ one line in the loader.
 | `number` | direct | `text_blocks.number`, one row per block |
 | `link_to` | direct | `text_blocks.link` of the block's first part |
 | `action` | none | `None`; NMR's parsed ASK keywords/actions of the text |
-| `called_from` | derived | comma-joined `Monster #n` (monster `talktext`), `Room map/room` (room `cmdtext`) and `Textblock #n` (another block linking here); empty when nothing points at it. Item text references are not included (the model has no `textnum`) |
+| `called_from` | derived | comma-joined `Monster #n` (monster `talktext`), `Room map/room` (room `cmdtext`) and `Textblock #n` (another block linking here); empty when nothing points at it. Item text references are not included (the model has no `textnum`). NMR also lists blocks referenced from inside another block's script (`Textblock #998(6%)`, `Textblock(rndm) #997`), which needs the script parser (T-014); about half of the blocks that have a caller differ for that reason. The `.mdb` has 3 blocks silvermere lacks (11, 60, 134) and silvermere has 944 the `.mdb` lacks (block 0 and the 10000 series). |
 
 ## Info
 
