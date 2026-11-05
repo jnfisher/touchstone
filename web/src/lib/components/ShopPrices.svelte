@@ -54,13 +54,14 @@
 					: ''
 	);
 	const fmt = (n: number) => n.toLocaleString('en-US');
-	const th = 'text-muted-foreground px-2 py-1 text-left text-xs font-medium';
+	const th = 'text-muted-foreground bg-card sticky top-0 px-2 py-0.5 text-left text-[11px] font-medium whitespace-nowrap';
+	const td = 'px-2 py-0.5 whitespace-nowrap';
 </script>
 
-<section class="mt-5" data-testid="shop-prices">
+<section class="mt-4" data-testid="shop-prices">
 	{#if data && !data.training}
-		<h3 class="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">Stock</h3>
-		<div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+		<h3 class="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase">Stock</h3>
+		<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
 			<label class="flex items-center gap-2">
 				<span>Charm</span>
 				<button
@@ -106,7 +107,7 @@
 			{/if}
 		</div>
 	{:else if data?.training}
-		<h3 class="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">Training</h3>
+		<h3 class="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase">Training</h3>
 	{/if}
 
 	{#if error}
@@ -114,18 +115,18 @@
 	{:else if !data}
 		<p class="text-muted-foreground text-sm">Loading prices...</p>
 	{:else if data.training}
-		<table class="w-full text-sm" data-testid="train-table">
+		<div class="overflow-x-auto rounded-md border"><table class="w-max min-w-full" data-testid="train-table">
 			<thead><tr><th class={th}>Level</th><th class={th}>Cost</th></tr></thead>
 			<tbody>
 				{#each data.levels as r (r.level)}
-					<tr class="border-t"><td class="px-2 py-1 tabular-nums">{r.level}</td><td class="px-2 py-1">{r.cost}</td></tr>
+					<tr class="border-t"><td class="{td} tabular-nums">{r.level}</td><td class={td}>{r.cost}</td></tr>
 				{/each}
 			</tbody>
-		</table>
+		</table></div>
 	{:else if data.items.length === 0}
 		<p class="text-muted-foreground text-sm">This shop stocks nothing.</p>
 	{:else}
-		<table class="w-full text-sm" data-testid="price-table">
+		<div class="overflow-x-auto rounded-md border"><table class="w-max min-w-full" data-testid="price-table">
 			<thead>
 				<tr>
 					<th class={th}>#</th><th class={th}>Name</th><th class={th + ' text-right'}>Max</th>
@@ -135,14 +136,14 @@
 			<tbody>
 				{#each data.items as r (r.slot)}
 					<tr class="border-t">
-						<td class="text-muted-foreground px-2 py-1 tabular-nums">{r.item}</td>
-						<td class="px-2 py-1">{r.name}</td>
-						<td class="px-2 py-1 text-right tabular-nums">{fmt(r.max)}</td>
-						<td class="px-2 py-1">{r.regen}</td>
-						<td class="px-2 py-1">{showSell ? r.sell : r.buy}</td>
+						<td class="{td} text-muted-foreground tabular-nums">{r.item}</td>
+						<td class={td}>{r.name}</td>
+						<td class="{td} text-right tabular-nums">{fmt(r.max)}</td>
+						<td class={td}>{r.regen}</td>
+						<td class="{td} tabular-nums">{showSell ? r.sell : r.buy}</td>
 					</tr>
 				{/each}
 			</tbody>
-		</table>
+		</table></div>
 	{/if}
 </section>
