@@ -12,15 +12,19 @@
 | 5 | Release: aarch64/x86_64 musl binaries, systemd unit, Pi install doc | T-050 |
 | 6 | Optional: map, pathing, reachability, live game state | decided at the end of phase 4 |
 
-The phase 3 and 4 cards are written from `docs/inventory.md` (T-003), which maps every MME screen
-and calculation to the procedures that implement it.
+The phase 3 and 4 cards come from `docs/inventory.md` section 8 (T-003), which maps every MME
+screen and calculation to the procedures that implement it.
 
 ## Waves
 
 1. T-001, T-002
 2. T-003, T-010, T-020
 3. T-011, T-012, T-021
-4. T-013, T-022, then phase 3 and phase 4 cards in parallel
+4. T-013, T-022
+5. Phase 3 starts with the families that need the fewest shims (P3-13a/b monster attack
+   simulator, P3-01 exp tables, P3-20 exp/hr Model D). In parallel, phase 4 starts with the UI
+   that needs only the tables API: P4-02a shell, P4-04 grid wrapper, P4-03 data source, and the
+   explorers showing raw columns; computed columns are added when their phase 3 cards merge.
 
 ## How agents work
 
