@@ -91,10 +91,16 @@ def mk_cur(n):
 
 
 def f32(x):
+    # Rounding a finite Double to Single overflows (VB6 error 6) when it lands beyond the Single
+    # range. Older Pythons raise OverflowError from struct.pack; newer ones return infinity, so
+    # check the result as well.
     try:
-        return F32(struct.unpack("f", struct.pack("f", x))[0])
+        r = struct.unpack("f", struct.pack("f", x))[0]
     except OverflowError:
         raise overflow()
+    if math.isinf(r) and not math.isinf(x):
+        raise overflow()
+    return F32(r)
 
 
 def mk_dbl(x):
