@@ -1,0 +1,119 @@
+# Design
+
+touchstone ports MMUD Explorer (MME) to a Rust server with a Svelte web UI. The goal is the same
+answers as MME (parity), presented in a modern browser UI, served from one binary on a Raspberry
+Pi 4 (aarch64, 4 GB) beside a silvermere/Quicksilver server.
+
+## Reference sources
+
+| Source | What it is | How it is used |
+|---|---|---|
+| MME | VB6 app, `jnfisher/MMUD-Explorer` pinned at `28d23d70caf4f971418aa7ea25471cdb0ab0888a` (2026-10-25, v2.3.5) | **The spec.** Formulas, screens, filters and columns are ported from it. Fetched by `tools/mme-fetch.sh` into `~/.cache/touchstone/mme/<sha>/`; never committed. |
+| MME stock database | `data-v1.11p.mdb` in the same commit, sha256 `eba20f06af8dc08df755eb6dcd9763b023794f12e809cbab6762236d64d7345f` | Parity data. Fetched and converted by `tools/mdb-fetch.sh`; never committed. |
+| silvermere | `jnfisher/silvermere` (public, MIT) | Schema of the live database; its migrations may be vendored for test fixtures. |
+| Quicksilver | `jnfisher/quicksilver-dev` (private) | The deployment target's schema and content changes (`docs/balance`, `docs/differences-1.20.md`) feed the later `Quicksilver` profile. |
+| Reconstructed game source | `jnfisher/silvermere-dev` (private) | Read-only reference for how the game actually behaves, used to explain MME's numbers and to build the `Quicksilver` profile. **Never** copied, quoted or named in this repository (see CLAUDE.md). |
+
+The MME pin moves only by a deliberate card that bumps it and regenerates the fixtures.
+
+## Crates and layout
+
+```
+crates/
+  touchstone-model    plain data types: World { items, monsters, spells, rooms, shops, classes,
+                      races, lairs, textblocks, info }, Character, enums. No IO.
+  touchstone-vb6      VB6 numeric/string semantics (CInt banker's rounding, Fix/Int, `\`, Mod,
+                      Integer/Long overflow, Val, Round) so ported formulas match exactly.
+  touchstone-rules    MME's formulas, ported. Pure functions over model types plus a Profile.
+  touchstone-data     loaders that build a World: from a converted MME .mdb (SQLite produced by
+                      mdbtools), and from a silvermere-schema SQLite database, read-only and live.
+bin/touchstone        axum server: JSON API + the built web UI, CLI (clap), config (TOML).
+web/                  SvelteKit (adapter-static, SPA mode) + TypeScript + Tailwind + shadcn-svelte
+                      + AG Grid Community.
+tools/
+  mme-fetch.sh        fetch MME source at the pin into the cache
+  mdb-fetch.sh        fetch the stock .mdb at the pin, check sha256, convert to SQLite (mdbtools)
+  mme-index/          split MME source into one file per procedure + an index (Python, stdlib)
+  oracle/             VB6-subset interpreter that runs MME's own modules to produce fixtures
+fixtures/             golden JSON produced by the oracle: inputs and expected outputs
+tasks/                task cards (T-NNN-*.md), STATUS.md
+```
+
+Dependencies point downward: `model <- vb6 <- rules`, `model <- data`, and
+`{rules, data} <- bin/touchstone`. `rules` and `model` never do IO.
+
+## Data
+
+**Internal model.** `World` mirrors the MME `.mdb` tables (Items, Monsters, Spells, Rooms, Shops,
+Classes, Races, Lairs, Info, TBInfo) with typed fields, because MME's formulas are written against
+those columns. Field names follow the `.mdb` column names (snake_cased), so a ported formula reads
+like the original.
+
+**MME `.mdb` path.** `tools/mdb-fetch.sh` converts the database to SQLite once with mdbtools
+(`mdb-schema` + `mdb-export`), cached at `~/.cache/touchstone/mdb/<sha256>.sqlite`. The loader
+reads that SQLite, so Rust never parses Jet files. For a user-supplied `.mdb`, the CLI runs the
+same conversion (needs `mdbtools` installed: `apt install mdbtools`).
+
+**Live silvermere/Quicksilver path.** The server opens the game's SQLite file read-only
+(`mode=ro`). The game runs in WAL mode, so reads never block it; touchstone must run as the
+game's Unix user or with group read access to the data directory (WAL readers need the `-shm`
+file). On startup it checks the migration version it was built for and refuses with a clear
+message if the schema is unknown. It polls `PRAGMA data_version` (every 10 s by default) and,
+when it changes, rebuilds the `World` in the background and swaps it in (`arc-swap`). The adapter
+maps silvermere's normalised tables (items + item_abilities + ...) into the same `World`. Fields
+MME has and silvermere lacks (for example NMR's computed references) are listed in
+`docs/data-gaps.md`, not guessed.
+
+**Characters** are saved server-side as JSON files in the data directory, one per named
+character. MME `.mmec` files (INI format) can be imported and exported.
+
+## Formulas and profiles
+
+`touchstone-rules` takes a `Profile`:
+
+- `Stock`: the default and the only one tested for parity. It reproduces MME's stock (non-
+  GreaterMUD) branches exactly, including VB6 rounding and integer behaviour (`touchstone-vb6`).
+  Where MME disagrees with the real game, parity wins and the difference goes in
+  `docs/differences.md`.
+- `Quicksilver`: later. Stock plus the Quicksilver balance changes.
+
+MME's GreaterMUD and Paramud branches are not ported unless a card asks for them; keep the
+branching visible (a `match` on profile) so they can be added.
+
+## Server and API
+
+axum, JSON. The game data is small (about 2k items, 1.1k monsters, 1.4k spells, 27k rooms), so
+the UI fetches whole tables once and filters and sorts in the browser:
+
+- `GET /api/info`: data source, version, loaded-at, data_version.
+- `GET /api/{items,monsters,spells,rooms,shops,classes,races,lairs}`: full tables.
+- `GET/PUT/DELETE /api/characters[/{name}]`, import/export `.mmec`.
+- `POST /api/evaluate`: a character in, per-item and per-monster computed columns out (damage,
+  hit chance, exp/hr...), as MME shows them in its lists.
+- `POST /api/calc/{swing,hit,backstab,exp,coin,monster-attack-sim}`: the calculator windows.
+
+Config: `touchstone.toml` (data source, bind address, default `0.0.0.0:8370`, data dir). No
+authentication: it is meant for a LAN or Tailscale.
+
+In release builds the web UI is embedded in the binary (feature `embed-web`, `rust-embed`).
+Debug builds and tests serve `web/build` from disk if present and do not need Node.
+
+## Web UI
+
+SvelteKit in SPA mode, TypeScript, Tailwind, shadcn-svelte for chrome, AG Grid Community for
+every list (column filters, multi-sort, resize, pinning, virtual scrolling, copy). Dark by
+default with a light toggle. Layout follows MME: one tab per explorer (Weapons, Armour, Spells,
+Monsters, Shops, Items, Races, Classes, Rooms, Character, Compare), keyboard shortcuts F1 to F11, a
+detail pane beside each list, and a compare pane. Columns, filters and the meaning of each value
+copy MME one to one; the look is modern.
+
+## Deployment
+
+The release workflow builds `aarch64-unknown-linux-musl` and `x86_64-unknown-linux-musl`
+binaries with the web UI embedded. `packaging/` holds a systemd unit and an example config.
+Builds never happen on the Pi.
+
+## Later (optional)
+
+Map / room explorer, MegaMUD pathing, monster reachability and routes, live game state (what is
+spawned now). Decide at the end of phase 4.

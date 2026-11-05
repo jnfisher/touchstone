@@ -1,0 +1,48 @@
+# Testing
+
+Parity with MME is checked against **golden fixtures**: JSON files of inputs and the outputs
+MME's own code produces for them. The Rust tests only read fixtures, so they need no network,
+no Windows, no MME and no servers, and the whole suite runs in seconds.
+
+## Layers
+
+1. **Unit and property tests** in each crate (`proptest` for numeric rules).
+2. **VB6 semantics table.** `fixtures/vb6-semantics.json` lists VB6 operations and their
+   documented results (`CInt(2.5) = 2`, `Int(-2.5) = -3`, `5.5 \ 2 = 3`, Integer overflow at
+   32768 raises error 6, ...). Both the oracle and `touchstone-vb6` are tested against it.
+3. **Formula fixtures.** `fixtures/rules/<family>.json`: produced by the oracle running MME's
+   unmodified modules. `touchstone-rules` must reproduce every case. Integers match exactly;
+   a `Double` matches within the tolerance written in the fixture header (default exact).
+4. **Data fixtures.** `fixtures/data/*.json`: record counts and sampled records from the stock
+   `.mdb`, which the loader must reproduce. The silvermere adapter is tested against a small
+   SQLite file built in the test from vendored silvermere migrations.
+5. **Web.** `svelte-check` and Vitest for logic; no browser end-to-end in CI.
+
+## The oracle
+
+`tools/oracle/` is a Python (stdlib only, run with `python3 -I`) interpreter for the subset of
+VB6 that MME's formula modules use. It loads MME's `.bas`/`.cls` files from the pinned commit
+unchanged, with shims for DAO recordsets (over the converted stock database), global variables
+and the few form controls the formulas read. A scenario file sets the globals (a character), names
+the procedure and arguments, and the oracle writes the result into a fixture.
+
+Because the oracle runs MME's code rather than a re-reading of it, fixtures can be regenerated
+whenever the MME pin moves, and the fixture diff shows exactly which answers changed.
+
+Generating fixtures is a development step, run in a cloud session and committed. It is never
+part of PR CI. A manual workflow (`oracle-check`, `workflow_dispatch`) regenerates everything and
+fails if the committed fixtures are stale.
+
+## No manual verification
+
+Nobody runs MME on Windows to check results. If the oracle and the port disagree and the cause
+cannot be found, the case goes in `fixtures/known_gaps.json` with an explanation, and the
+orchestrator triages it.
+
+## CI budget
+
+PR CI must stay under 5 minutes. It runs fmt, clippy, tests and cargo-deny in one Rust job, and
+svelte-check, Vitest and the web build in a web job that runs only when `web/` changes. No
+service containers, no Docker build, no cross-compiling and no oracle on PRs. Each crate's
+integration tests are one binary (`tests/all.rs`). Anything slower runs in a manual or release
+workflow.
