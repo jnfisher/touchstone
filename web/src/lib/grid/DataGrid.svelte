@@ -27,21 +27,69 @@
 		browserColorScheme: 'inherit'
 	});
 
-	let { rows, columnDefs }: { rows: T[]; columnDefs: ColDef<T>[] } = $props();
+	let {
+		rows,
+		columnDefs,
+		getRowId,
+		selectedId,
+		quickFilter = '',
+		onSelect,
+		onCount
+	}: {
+		rows: T[];
+		columnDefs: ColDef<T>[];
+		getRowId?: (row: T) => string;
+		/** Row id to show as selected; changes are applied without echoing back through onSelect. */
+		selectedId?: string;
+		quickFilter?: string;
+		onSelect?: (row: T) => void;
+		/** Rows left after filtering. */
+		onCount?: (n: number) => void;
+	} = $props();
 
 	let host: HTMLDivElement;
 	let api: GridApi<T> | undefined;
+
+	function select(id: string | undefined) {
+		if (!api || id === undefined) return;
+		const node = api.getRowNode(id);
+		if (!node) return;
+		if (!node.isSelected()) node.setSelected(true, true, 'api');
+		if (node.rowIndex !== null) api.ensureIndexVisible(node.rowIndex);
+	}
 
 	onMount(() => {
 		api = createGrid<T>(host, {
 			theme,
 			columnDefs,
 			rowData: rows,
+			getRowId: getRowId ? (p) => getRowId(p.data) : undefined,
 			defaultColDef: { sortable: true, filter: true, resizable: true },
 			multiSortKey: 'ctrl',
-			enableCellTextSelection: true
+			enableCellTextSelection: true,
+			rowSelection: { mode: 'singleRow', checkboxes: false, enableClickSelection: true },
+			quickFilterText: quickFilter,
+			onSelectionChanged: (e) => {
+				const row = e.api.getSelectedRows()[0];
+				if (row && e.source !== 'api') onSelect?.(row);
+			},
+			// Arrow keys move the focused cell; the selection (and detail pane) follows it.
+			onCellFocused: (e) => {
+				if (e.rowIndex === null || e.rowPinned) return;
+				const node = e.api.getDisplayedRowAtIndex(e.rowIndex);
+				if (node && !node.isSelected()) node.setSelected(true, true, 'rowClicked');
+			},
+			onModelUpdated: (e) => onCount?.(e.api.getDisplayedRowCount()),
+			onFirstDataRendered: () => select(selectedId)
 		});
 		return () => api?.destroy();
+	});
+
+	$effect(() => {
+		api?.setGridOption('quickFilterText', quickFilter);
+	});
+	$effect(() => {
+		select(selectedId);
 	});
 
 	$effect(() => {
