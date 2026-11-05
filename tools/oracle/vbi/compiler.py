@@ -434,6 +434,11 @@ class Compiler:
                 # F(args) inside Function F is a recursive call, F alone is the return variable
                 b = ("proc", ctx.module.proc_map[low], ctx.module)
             k = b[0]
+            # Inside a Function, Name(args) is a recursive call, not an index into the return value.
+            if (k == "local" and ctx.proc is not None and low == ctx.proc.low and args
+                    and ctx.module.proc_map.get(low)):
+                b = ("proc", ctx.module.proc_map[low], ctx.module)
+                k = "proc"
             if k in ("local", "clsvar", "global"):
                 base = self.name_value(target, ctx)
                 name = target.name
