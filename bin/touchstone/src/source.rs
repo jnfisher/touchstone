@@ -44,7 +44,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
                 kind: "mdb",
                 path: src.path.display().to_string(),
             };
-            let loaded = Loaded::build(&world, info, None, 1)?;
+            let loaded = Loaded::build(world, info, None, 1)?;
             Ok(Started {
                 state: AppState::new(loaded),
                 live: None,
@@ -59,7 +59,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
                 kind: "silvermere",
                 path: src.path.display().to_string(),
             };
-            let loaded = Loaded::build(&world, info.clone(), Some(version), 1)?;
+            let loaded = Loaded::build(world, info.clone(), Some(version), 1)?;
             Ok(Started {
                 state: AppState::new(loaded),
                 live: Some(Arc::new(LiveSource {
@@ -87,7 +87,7 @@ impl LiveSource {
         }
         let world = handle.load_world()?;
         let n = self.loads.load(Ordering::Relaxed) + 1;
-        let loaded = Loaded::build(&world, self.info.clone(), Some(version), n)?;
+        let loaded = Loaded::build(world, self.info.clone(), Some(version), n)?;
         state.swap(loaded);
         // Only after the swap: a failed attempt is retried on the next poll.
         self.seen_version.store(version, Ordering::Relaxed);

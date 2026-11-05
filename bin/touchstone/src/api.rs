@@ -10,11 +10,14 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::json;
 
+use crate::calc;
 use crate::state::AppState;
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/info", get(info))
+        .route("/api/exp", get(calc::exp_table))
+        .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/{table}", get(table))
         .with_state(state)
 }
