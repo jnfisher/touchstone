@@ -7,6 +7,7 @@ mod accuracy;
 mod exp;
 mod exp_per_hour;
 mod game_text;
+mod gear;
 mod item_value;
 mod monster_sim;
 mod spells;
