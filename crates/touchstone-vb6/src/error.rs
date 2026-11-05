@@ -9,6 +9,9 @@ pub enum Vb6Error {
     /// Error 6: the result does not fit the target type.
     #[error("overflow (6)")]
     Overflow,
+    /// Error 13: a String that is not a number was converted, for example `CDbl("abc")`.
+    #[error("type mismatch (13)")]
+    TypeMismatch,
     /// Error 11: `/`, `\`, `Mod` or `^` with a zero divisor.
     #[error("division by zero (11)")]
     DivisionByZero,
@@ -22,6 +25,7 @@ impl Vb6Error {
             Self::InvalidProcedureCall => 5,
             Self::Overflow => 6,
             Self::DivisionByZero => 11,
+            Self::TypeMismatch => 13,
         }
     }
 }

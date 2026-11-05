@@ -51,6 +51,8 @@ T = {
     "DivCur": ("ByVal a As Currency, ByVal b As Currency", "a / b"),
     "Str": ("ByVal a As Double", "Str(a)"),
     "Val": ("ByVal a As String", "Val(a)"),
+    "IsNumeric": ("ByVal a As String", "IsNumeric(a)"),
+    "CDblStr": ("ByVal a As String", "CDbl(a)"),
     "Len": ("ByVal a As String", "Len(a)"),
     "CStr": ("ByVal a As Variant", "CStr(a)"),
     "CBool": ("ByVal a As Variant", "CBool(a)"),

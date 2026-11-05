@@ -12,9 +12,8 @@
 
 mod vbstr;
 
-pub use vbstr::{
-    instr, instr_ci, instrrev, is_numeric, lcase, left, len, mid, mid_from, right, rtrim, trim,
-};
+pub use touchstone_vb6::is_numeric;
+pub use vbstr::{instr, instr_ci, instrrev, lcase, left, len, mid, mid_from, right, rtrim, trim};
 
 use touchstone_vb6::{Vb6Error, add_i32, clng, val};
 
