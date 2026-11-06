@@ -50,7 +50,9 @@ in for it:
   parametric adds that family's fixture test there. The `weave` family (Q-013a) has no MME counterpart: `tests/all/quicksilver_weave.rs` checks its `v120` column through
   `quicksilver::weave` and that Stock and NEUTRAL weave nothing. The `weave_round` family (Q-013b) composes the engine's blow
   resolution (the share of landed blows that deal damage) with the `weave` proc figures, because the balance tool has no closed per-round
-  figure; `tests/all/quicksilver_weave_round.rs` checks it and the wiring through `get_damage_output`. It covers the stats, accuracy, attack, char_panel, spell_cast and character fixtures (and more, as cards
+  figure; `tests/all/quicksilver_weave_round.rs` checks it and the wiring through `get_damage_output`. The `exphr_d` family (Q-014) has no closed engine figure for a whole exp/hr; it cross-checks Model D's Quicksilver recovery
+  (mana exact over a 210-second cycle, the time to restore both bars within a stated tick allowance) against the engine's rest, meditate
+  and slow ticks, and `tests/all/quicksilver_exphr.rs` checks it with the model gate and the dispatch. It covers the stats, accuracy, attack, char_panel, spell_cast, character and exp/hr (`exphr_*`, `exp_dispatch`) fixtures (and more, as cards
   add them); the spell_cast run gives the caster a casting stat, class and level so the neutral balance has something to undo.
 
 ## No manual verification

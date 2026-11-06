@@ -42,6 +42,7 @@ mod paste_party;
 mod pipeline;
 mod quicksilver_backstab;
 mod quicksilver_balance;
+mod quicksilver_exphr;
 mod quicksilver_identity;
 mod quicksilver_melee;
 mod quicksilver_opener;

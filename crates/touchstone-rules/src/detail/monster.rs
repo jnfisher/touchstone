@@ -2189,6 +2189,10 @@ fn scripting_and_lair(
             if vb::len(&exp_info.s_move_text) > 0 {
                 lv.add("").text(exp_info.s_move_text.clone());
             }
+            // Quicksilver only: why Models A to C did not run (a note, not an error)
+            if !exp_info.s_notice.is_empty() {
+                lv.add("").text(exp_info.s_notice.clone());
+            }
             if (exp_info.n_time_recovering > 0.0
                 || (inp.settings.show_all
                     && (vb::len(&exp_info.s_hitpoint_recovery) > 6

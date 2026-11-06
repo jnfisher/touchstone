@@ -14,7 +14,12 @@ mod model_b;
 mod model_c;
 mod model_d;
 
-pub use dispatch::{ExpPerHourSettings, calc_exp_per_hour, clamp_knob};
+/// Why Models A to C refuse the Quicksilver rules (R10): they assume a character rests or
+/// meditates, never both, and Quicksilver restores HP and mana together.
+pub const UNSUPPORTED_UNDER_QUICKSILVER: &str =
+    "exp/hr Models A to C assume rest or meditate, never both (Quicksilver: use Model D)";
+
+pub use dispatch::{ExpPerHourSettings, QS_MODEL_NOTICE, calc_exp_per_hour, clamp_knob};
 pub use helpers::{
     SEC_PER_MEDI_TICK, SEC_PER_REGEN_TICK, SEC_PER_REST_TICK, SEC_PER_ROUND, ceph_b_saturate,
     ceph_b_smooth_step, ceph_c_ceil, clamp_dbl, max_dbl, min_dbl, safe_div,
@@ -22,7 +27,7 @@ pub use helpers::{
 pub use model_a::model_a;
 pub use model_b::model_b;
 pub use model_c::model_c;
-pub use model_d::{ceph_d_overkill_frac, model_d};
+pub use model_d::{ceph_d_overkill_frac, model_d, qs_recovery_mana_per_sec, qs_recovery_secs};
 
 /// The arguments of `CalcExpPerHour`, in MME's order and with MME's VB6 types (the model
 /// arguments that are narrower in a model's own signature are checked there).
@@ -134,6 +139,9 @@ pub struct ExpPerHourInfo {
     pub s_rtc_text: String,
     pub s_move_text: String,
     pub s_exp_all: String,
+    /// A plain-text note for the reader (not an error): under Quicksilver, that only Model D ran.
+    /// Always empty under the stock profile.
+    pub s_notice: String,
 }
 
 pub(crate) fn vb(e: Vb6Error) -> RulesError {

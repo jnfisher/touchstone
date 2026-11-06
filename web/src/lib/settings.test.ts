@@ -11,6 +11,8 @@ import {
   draftSettings,
   filterNumberText,
   noModelTicked,
+  shownModels,
+  QUICKSILVER_MODEL_NOTE,
   normalizeModels,
   predictKnob,
   predictSimRounds,
@@ -77,6 +79,21 @@ describe("live validation", () => {
 });
 
 describe("models", () => {
+  it("shows only Model D under the Quicksilver rules", () => {
+    const stored = { ...defaultBlock(), model_a: true, model_b: true, model_d: false };
+    const q = shownModels(true, stored);
+    expect([q.model_a, q.model_b, q.model_c, q.model_d]).toEqual([
+      false,
+      false,
+      false,
+      true,
+    ]);
+    // stock shows what is stored, and nothing stored is changed
+    expect(shownModels(false, stored)).toBe(stored);
+    expect(stored.model_a).toBe(true);
+    expect(QUICKSILVER_MODEL_NOTE).toContain("Model D");
+  });
+
   it("turns A, B and C on when none is ticked", () => {
     const none = {
       ...defaultBlock(),

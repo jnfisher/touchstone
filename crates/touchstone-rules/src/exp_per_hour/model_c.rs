@@ -6,7 +6,8 @@ use touchstone_vb6::format;
 use super::helpers::{
     SEC_PER_MEDI_TICK, SEC_PER_REGEN_TICK, SEC_PER_REST_TICK, SEC_PER_ROUND, ceph_c_ceil,
 };
-use super::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, vb};
+use super::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, UNSUPPORTED_UNDER_QUICKSILVER, vb};
+use crate::stats::regen_on;
 use crate::{Profile, RulesError};
 
 const DENSITY_K: f64 = 0.2;
@@ -496,8 +497,8 @@ pub fn model_c(
     knobs: &ExpPerHourKnobs,
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
-    match profile {
-        Profile::Stock | Profile::Quicksilver(_) => {}
+    if regen_on(profile).is_some() {
+        return Err(RulesError::Unsupported(UNSUPPORTED_UNDER_QUICKSILVER));
     }
     let mut ret = ExpPerHourInfo::default();
 

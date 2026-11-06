@@ -171,6 +171,16 @@ export function normalizeModels(b: ExpHrBlock): ExpHrBlock {
   return { ...b, model_a: true, model_b: true, model_c: true };
 }
 
+/** Why Models A to C are off under the Quicksilver rules (shown as a note, not an error). */
+export const QUICKSILVER_MODEL_NOTE =
+  "Quicksilver rules: only Model D is used. Models A to C assume a character rests or meditates, never both, and on Quicksilver both recover at once.";
+
+/** The model ticks the dialog shows: under Quicksilver only Model D, whatever is stored. */
+export function shownModels(quicksilver: boolean, b: ExpHrBlock): ExpHrBlock {
+  if (!quicksilver) return b;
+  return { ...b, model_a: false, model_b: false, model_c: false, model_d: true };
+}
+
 export function noModelTicked(b: ExpHrBlock): boolean {
   return !MODELS.some((m) => b[m]);
 }

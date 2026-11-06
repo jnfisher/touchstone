@@ -7,6 +7,8 @@ use super::helpers::{
     ceph_c_ceil, safe_div,
 };
 use super::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, vb};
+use crate::quicksilver::Balance;
+use crate::stats::{QS_SLOW_SECS, regen_on};
 use crate::{Profile, RulesError};
 
 const HP_REST_START_FRAC: f64 = 0.75;
@@ -62,10 +64,46 @@ pub fn ceph_d_overkill_frac(per_mob_hp: f64, char_dmg: f64, char_first_round_dmg
     0.0
 }
 
+/// Mana per second while recovering under Quicksilver (rule R10): the standing rate `standing` (paid every
+/// 30 seconds) times the rest multiple, or the meditate multiple for a character with a meditation rate.
+/// The standing ticks are part of the multiple, so nothing is added for them.
+#[must_use]
+pub fn qs_recovery_mana_per_sec(balance: &Balance, meditating: bool, standing: i32) -> f64 {
+    let mult = if meditating {
+        balance.meditate_mana_mult
+    } else {
+        balance.rest_mana_mult
+    };
+    f64::from(mult) * f64::from(standing.max(0)) / f64::from(QS_SLOW_SECS)
+}
+
+/// Seconds of the one Quicksilver recovery phase (rest or meditate heal HP and restore mana at the same
+/// time and end when both are done): the longer of the two times. Returns `(hp_secs, mp_secs, phase_secs)`,
+/// each time being zero when its bar needs nothing or cannot recover.
+#[must_use]
+pub fn qs_recovery_secs(
+    hp_missing: f64,
+    hp_per_sec: f64,
+    mp_missing: f64,
+    mp_per_sec: f64,
+) -> (f64, f64, f64) {
+    let time = |missing: f64, rate: f64| {
+        if missing > 0.0 && rate > 0.0 {
+            missing / rate
+        } else {
+            0.0
+        }
+    };
+    let (hp, mp) = (time(hp_missing, hp_per_sec), time(mp_missing, mp_per_sec));
+    (hp, mp, hp.max(mp))
+}
+
 /// Port of modExpPerHour `ceph_ModelD`.
 ///
-/// Only the stock profile exists; the model never reads the engine variant (the canonical
-/// rounds-to-kill arrives in `n_rtk`). `n_char_mana` is an `Integer` in the VB6 signature, so a
+/// The model never reads the engine variant (the canonical rounds-to-kill arrives in `n_rtk`).
+/// Under a Quicksilver balance with rest and meditate mana on (R10, `regen_on`), HP and mana
+/// recover in one phase instead of one after the other; everything else is the stock model. The
+/// opener and the opportunist and weave procs reach it through its inputs. `n_char_mana` is an `Integer` in the VB6 signature, so a
 /// value outside -32768..=32767 is run-time error 6, as when `CalcExpPerHour` passes it on.
 ///
 /// # Errors
@@ -75,9 +113,7 @@ pub fn model_d(
     knobs: &ExpPerHourKnobs,
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
-    match profile {
-        Profile::Stock | Profile::Quicksilver(_) => {}
-    }
+    let qs = regen_on(profile);
     let mut ret = ExpPerHourInfo::default();
 
     let n_exp = input.n_exp;
@@ -206,6 +242,10 @@ pub fn model_d(
         med_mp_ps = MEDITATE_EFF * (f64::from(input.n_meditate_rate) / SEC_PER_MEDI_TICK);
     }
     med_mp_ps += passive_mp_ps;
+    if let Some(b) = qs {
+        // rest or meditate: the mode the character can do; the rate holds the standing ticks already
+        med_mp_ps = qs_recovery_mana_per_sec(b, input.n_meditate_rate > 0, input.n_char_mp_regen);
+    }
 
     let hp_max = f64::from(input.n_char_hp);
     let mp_max = f64::from(n_char_mana);
@@ -268,7 +308,15 @@ pub fn model_d(
             lairs = 1;
         }
 
-        if use_hp && hp_cur < tg_hp && rest_hp_ps > 0.0 {
+        if qs.is_some() {
+            // one phase: HP and mana come back together; the phase lasts as long as the slower bar
+            let hp_missing = if use_hp { tg_hp - hp_cur } else { 0.0 };
+            let mp_missing = if use_mp { tg_mp - mp_cur } else { 0.0 };
+            let (hp_secs, mp_secs, _) =
+                qs_recovery_secs(hp_missing, rest_hp_ps, mp_missing, med_mp_ps);
+            tot_rest_hp += hp_secs;
+            tot_med_mp += mp_secs;
+        } else if use_hp && hp_cur < tg_hp && rest_hp_ps > 0.0 {
             let mut rest_secs = (tg_hp - hp_cur) / rest_hp_ps;
             if rest_secs < 0.0 {
                 rest_secs = 0.0;
@@ -279,7 +327,7 @@ pub fn model_d(
                 mp_cur = mp_max;
             }
         }
-        if use_mp && mp_cur < tg_mp && med_mp_ps > 0.0 {
+        if qs.is_none() && use_mp && mp_cur < tg_mp && med_mp_ps > 0.0 {
             let mut med_secs = (tg_mp - mp_cur) / med_mp_ps;
             if med_secs < 0.0 {
                 med_secs = 0.0;
@@ -299,6 +347,10 @@ pub fn model_d(
             let heavy_frac = hp_lost_per_lair / hp_max;
             let rest_relief = HEAVY_REST_RELIEF * ceph_b_smooth_step(0.25, 0.5, heavy_frac);
             rest_hp_secs_per_lair *= 1.0 - rest_relief;
+        }
+        if qs.is_some() {
+            // the phase is the longer time: mana is charged only for what it adds beyond the HP time
+            med_mp_secs_per_lair = (med_mp_secs_per_lair - rest_hp_secs_per_lair).max(0.0);
         }
         let rec_secs = rest_hp_secs_per_lair + med_mp_secs_per_lair;
         let active_secs = attack_secs + move_secs;
