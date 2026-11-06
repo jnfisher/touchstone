@@ -228,6 +228,7 @@ class Env:
         specs = spec if isinstance(spec, list) else [spec]
         self.it.bind("objToolTip", shims.NoopShim())
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
+        self.it.bind_proc("RGB", lambda it_, r, g, b: V.mk_i32(V.int_value(r) + 256 * V.int_value(g) + 65536 * V.int_value(b)))
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
         for n in [n for one in specs for n in one.get("stub_procs", [])]:   # display-only helpers (tool-tip text)
             self.it.bind_proc(n, lambda it_, *a: "")
@@ -566,12 +567,16 @@ class Env:
         after the `post` calls (`{"call", "args"}` with `{"lv": true}` as the ListView) ran on it, each result and
         the ListView after it going to `<as>.post`. `watch` names a control element (`cmbCharBless(0)`) whose
         list gains entries (AddItem): `<as>.watch` holds `[text, ItemData]` or null per key. Rows are
-        `[Text, Tag, [[sub Text, sub Tag, sub ForeColor], ..]]`; a Tag or ForeColor never assigned is null."""
+        `[Text, Tag, [[sub Text, sub Tag, sub ForeColor], ..]]`, plus the row's ForeColor as a fourth element when it was
+        assigned; a Tag or ForeColor never assigned is null. `hwnd` gives the ListView an hWnd other than 0, the
+        value frmMain's own lists read, for code that asks whether it was handed `lvMonsters`."""
         spec = st["rows"]
         rs = self.it.get_global(spec["table"])
         rs.vb_set("index", [], spec["index"])
         shared = spec.get("lv") == "shared"
         lv_shared = shims.RecordingListViewShim() if shared else None
+        if shared and "hwnd" in spec:
+            lv_shared.props["hwnd"] = V.I32(spec["hwnd"])
         watch = None
         if spec.get("watch"):
             wname, widx = re.match(r"(\w+)\((\d+)\)$", spec["watch"]).groups()
@@ -580,6 +585,8 @@ class Env:
         for key in spec["keys"]:
             rs.vb_get("seek", ["=", decode(key)])
             lv = lv_shared or shims.RecordingListViewShim()
+            if "hwnd" in spec:
+                lv.props["hwnd"] = V.I32(spec["hwnd"])   # a list that is not frmMain's own (its hWnd reads 0)
             before = len(watch.items.get("list", {})) if watch else 0
             args = self.build_args(st.get("args", []), objs, [], lv)
             self.invoke(objs, st["call"], args)
