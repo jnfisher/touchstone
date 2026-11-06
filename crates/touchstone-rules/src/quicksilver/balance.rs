@@ -366,6 +366,14 @@ impl Balance {
     /// maximum; Q-007 decides above it).
     pub const NEUTRAL: Self = v120::NEUTRAL;
 
+    /// Whether every value is the stock-equivalent one ([`Balance::NEUTRAL`]). Rules the balance
+    /// has no key for (Alter Energy Usage) read this to switch off, so the neutral profile answers
+    /// as MME does.
+    #[must_use]
+    pub fn is_neutral(&self) -> bool {
+        *self == Self::NEUTRAL
+    }
+
     /// Whether every value is the 1.20.0 one.
     #[must_use]
     pub fn is_v120(&self) -> bool {
