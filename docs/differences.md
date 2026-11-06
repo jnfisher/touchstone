@@ -143,3 +143,12 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   replay of it does nothing but record the criterion for Next Best.
 - The "last find best" values of each slot are not kept between clicks in MME either: Next Best recomputes them
   from the worn items. Only the last menu entry and the exclusion list persist.
+
+## Spell tools, Spell Book and chests (P4-32)
+
+- MME shows "Find counters" and "What casts this spell?" in its Results window; touchstone shows list dialogs whose
+  lines open the records. The textblock tree window is not ported.
+- The chest button fills the Items reference list in MME, sorted by chance with `SortListViewByTag`; touchstone opens a
+  dialog sorted by chance (stable), so the order of equal chances may differ from the Windows ListView.
+- "Copy Chest to Clipboard" copies only the chances, one per line, as MME does (the item names are sub-items it does not read).
+- The Spell Book takes the character's magery from the global filter's class, not from items that grant magery.
