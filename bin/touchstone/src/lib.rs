@@ -3,6 +3,7 @@
 mod api;
 pub mod calc;
 pub mod config;
+mod detail;
 pub mod source;
 pub mod state;
 mod web;

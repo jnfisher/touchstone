@@ -314,6 +314,54 @@ export function expPath(q: ExpQuery): string {
 	return `/api/exp?${p}`;
 }
 
+/** `GET /api/abilities/{table}/{n}`: MME's ability text for a record, one line per printed slot. */
+export type AbilityTable = 'items' | 'spells' | 'races' | 'classes' | 'monsters';
+export interface AbilityLine {
+	ability: number;
+	value: number;
+	name: string;
+	/** `GetAbilityStats`: the name followed by the value. */
+	text: string;
+	/** `text` without the leading name. */
+	detail: string;
+}
+export interface Abilities {
+	table: AbilityTable;
+	number: number;
+	lines: AbilityLine[];
+	/** Item ability 59: class names, listed apart from the abilities. */
+	class_ok: string[];
+}
+
+/** `GET /api/spells/{n}/effect?level=L`: numbers and effect text at a caster level. */
+export interface SpellRange {
+	min: number;
+	max: number;
+}
+export interface SpellEffect {
+	number: number;
+	level: number;
+	used_level: number;
+	req_level: number;
+	cap: number;
+	damage: SpellRange | null;
+	heal: SpellRange | null;
+	duration: number;
+	effect: string;
+}
+
+/** `GET /api/monsters/{n}/max-damage`. */
+export interface MonsterMaxDamage {
+	number: number;
+	max_damage: number;
+	energy_per_round: number;
+}
+
+export const abilitiesPath = (table: AbilityTable, n: number) => `/api/abilities/${table}/${n}`;
+export const spellEffectPath = (n: number, level?: number) =>
+	`/api/spells/${n}/effect${level === undefined ? '' : `?level=${level}`}`;
+export const maxDamagePath = (n: number) => `/api/monsters/${n}/max-damage`;
+
 type FetchFn = typeof fetch;
 interface Entry {
 	etag: string | null;
@@ -357,6 +405,12 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		return p;
 	}
 
+	async function getJson<T>(path: string): Promise<T> {
+		const res = await fetchFn(path);
+		if (!res.ok) throw new ApiError(res.status, path);
+		return (await res.json()) as T;
+	}
+
 	return {
 		async table<T extends TableName>(name: T): Promise<TableTypes[T][]> {
 			const path = `/api/${name}`;
@@ -379,6 +433,15 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 			const res = await fetchFn(path);
 			if (!res.ok) throw new ApiError(res.status, path);
 			return (await res.json()) as ExpTable;
+		},
+		async abilities(table: AbilityTable, n: number): Promise<Abilities> {
+			return getJson(abilitiesPath(table, n));
+		},
+		async spellEffect(n: number, level?: number): Promise<SpellEffect> {
+			return getJson(spellEffectPath(n, level));
+		},
+		async monsterMaxDamage(n: number): Promise<MonsterMaxDamage> {
+			return getJson(maxDamagePath(n));
 		},
 		async info(): Promise<Info> {
 			return (await shared('/api/info', false)) as Info;

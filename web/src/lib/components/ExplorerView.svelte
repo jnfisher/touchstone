@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type TableName, type TableTypes } from '$lib/api';
+	import { api, type AbilityTable, type Spell, type TableName, type TableTypes } from '$lib/api';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopPrices from '$lib/components/ShopPrices.svelte';
+	import SpellEffect from '$lib/components/SpellEffect.svelte';
 	import SplitPane from '$lib/components/SplitPane.svelte';
 	import { selection } from '$lib/explorer-state.svelte';
-	import { buildLookups, listRows, parseNmr, type AnyExplorer, type Lookups } from '$lib/explorers';
+	import {
+		buildLookups,
+		listRows,
+		parseNmr,
+		type AnyExplorer,
+		type DetailExtra,
+		type Lookups
+	} from '$lib/explorers';
 	import { toColDefs } from '$lib/grid/columns';
 	import DataGrid from '$lib/grid/DataGrid.svelte';
 
@@ -45,7 +53,29 @@
 	const selected = $derived(
 		selectedId === undefined ? undefined : rows.find((r) => String(explorer.rowId(r)) === String(selectedId))
 	);
-	const groups = $derived(selected ? explorer.detail(selected, lookups ?? { nmr }) : []);
+	const ABILITY_TABLES: readonly string[] = ['items', 'spells', 'races', 'classes', 'monsters'];
+
+	// MME's ability text and a monster's max damage come from the server for the selected record.
+	let extra = $state.raw<DetailExtra>({});
+	let extraTicket = 0;
+	$effect(() => {
+		const table = explorer.table;
+		const id = selectedId === undefined ? undefined : Number(selectedId);
+		const mine = ++extraTicket;
+		extra = {};
+		if (id === undefined || !ABILITY_TABLES.includes(table)) return;
+		const stale = () => mine !== extraTicket;
+		api
+			.abilities(table as AbilityTable, id)
+			.then((abilities) => !stale() && (extra = { ...extra, abilities }))
+			.catch(() => !stale() && (extra = { ...extra, abilitiesFailed: true }));
+		if (table === 'monsters')
+			api
+				.monsterMaxDamage(id)
+				.then((d) => !stale() && (extra = { ...extra, maxDamage: d.max_damage }))
+				.catch(() => {});
+	});
+	const groups = $derived(selected ? explorer.detail(selected, lookups ?? { nmr }, extra) : []);
 </script>
 
 <div class="flex h-full min-h-0 flex-col gap-2">
@@ -102,6 +132,10 @@
 						<DetailPane {groups}>
 							{#if slug === 'shops'}
 								<ShopPrices shop={Number(explorer.rowId(selected))} />
+							{:else if slug === 'spells'}
+								{#key selectedId}
+									<SpellEffect number={Number(explorer.rowId(selected))} reqLevel={(selected as Spell).req_level} />
+								{/key}
 							{:else if slug === 'races' || slug === 'classes'}
 								<ExpTable kind={slug === 'races' ? 'race' : 'class'} number={Number(explorer.rowId(selected))} />
 							{/if}
