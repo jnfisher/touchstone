@@ -48,10 +48,22 @@ def _decl_line(code, name):
     raise ValueError("declaration of %s not found in the form" % name)
 
 
+def _enum_lines(code, name):
+    pat = re.compile(r"^(Public |Private )?Enum %s\s*$" % re.escape(name), re.I)
+    for i, line in enumerate(code):
+        if pat.match(line.rstrip("\r")):
+            for j in range(i, len(code)):
+                if re.match(r"^End Enum\s*$", code[j].rstrip("\r"), re.I):
+                    return [l.rstrip("\r") for l in code[i:j + 1]]
+    raise ValueError("enum %s not found in the form" % name)
+
+
 def build_source(raw, spec):
-    """spec: {"decls": [name], "procs": [name], "cuts": {proc: {"cut": line, "append": [lines]}}}"""
+    """spec: {"decls": [name], "enums": [name], "procs": [name], "cuts": {proc: {"cut": line, "append": [lines]}}}"""
     _, code = _code_lines(raw)
     out = ["Option Explicit", "Option Base 0"]
+    for n in spec.get("enums", []):
+        out += _enum_lines(code, n)
     out += [_decl_line(code, n) for n in spec.get("decls", [])]
     for name in spec["procs"]:
         body = _proc_lines(code, name)
