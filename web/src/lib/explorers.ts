@@ -5,6 +5,7 @@
 import type { ClassRec, Item, Monster, Race, Room, Shop, Spell, TableName, TableTypes } from './api';
 import type { Abilities, AbilitySlot } from './api';
 import * as E from './enums';
+import type { EvalTab } from './evaluate';
 import type { SectionSlug } from './sections';
 
 export type Cell = string | number;
@@ -65,6 +66,8 @@ export interface Explorer<K extends TableName = TableName> {
 	rowId(rec: TableTypes[K]): string | number;
 	title(rec: TableTypes[K]): string;
 	defaultSort?: { col: string; dir: 'asc' | 'desc' };
+	/** Set when the server builds the list (`/api/evaluate`); `columns` is then unused. */
+	computed?: EvalTab;
 	/** Columns MME shows that need the rules engine or a character; not faked here. */
 	pending: string[];
 	detail(rec: TableTypes[K], lk: Lookups, extra?: DetailExtra): DetailGroup[];
@@ -86,8 +89,6 @@ export function abilityValue(slots: AbilitySlot[], ...ids: number[]): number | u
 	for (const s of slots) if (s.ability !== 0 && ids.includes(s.ability)) found = s.value;
 	return found;
 }
-const abilitySum = (slots: AbilitySlot[], ...ids: number[]) =>
-	slots.reduce((t, s) => (s.ability !== 0 && ids.includes(s.ability) ? t + s.value : t), 0);
 
 /** "Name (#n)" when the table is loaded, "#n" otherwise. */
 function ref(map: Map<number, string> | undefined, n: number): string {
@@ -147,14 +148,9 @@ const numberCol = <T extends { number: number }>(): ColumnSpec<T> =>
 
 // ---------- items: Weapons, Armour, Sundry ----------
 
-const ACC_ABILITIES = [22, 105, 106];
-const CRITS = 58;
-const MIN_LEVEL = 135;
-const BS_ACCURACY = 116;
 
 const acText = (r: Item, round: boolean) =>
 	`${round ? Math.ceil(r.armour_class / 10) : r.armour_class / 10}/${r.damage_resist / 10}`;
-const acKey = (r: Item) => r.armour_class * 100000 + r.damage_resist;
 
 function itemDetail(r: Item, lk: Lookups, extra?: DetailExtra): DetailGroup[] {
 	const isWeapon = r.item_type === 1;
@@ -220,28 +216,10 @@ const weapons: Explorer<'items'> = {
 	slug: 'weapons',
 	table: 'items',
 	include: (r) => r.item_type === 1 && r.in_game && namedOk(r),
-	columns: [
-		numberCol<Item>(),
-		str('name', 'Name', (r) => r.name, 240),
-		str('type', 'Wepn Type', (r) => E.weaponType(r.weapon_type), 100),
-		num('min', 'Min Dmg', (r) => r.min),
-		num('max', 'Max Dmg', (r) => r.max),
-		num('speed', 'Speed', (r) => r.speed),
-		num('level', 'Level', (r) => abilityValue(r.abilities, MIN_LEVEL) ?? 0, 70),
-		num('str', 'Str', (r) => r.str_req, 65),
-		num('enc', 'Enc', (r) => r.encum, 65),
-		{ ...str<Item>('ac', 'AC', (r) => acText(r, true), 85), sortKey: acKey },
-		num('acc', 'Acc', (r) => (abilityValue(r.abilities, ...ACC_ABILITIES) ?? 0) + r.accy, 65),
-		{
-			id: 'bsacc',
-			header: 'BS Acc',
-			width: 80,
-			get: (r) => abilityValue(r.abilities, BS_ACCURACY) ?? 'No'
-		},
-		num('crits', 'Crits', (r) => abilityValue(r.abilities, CRITS) ?? 0, 70),
-		num('limit', 'Limit', (r) => r.limit, 70)
-	],
-	pending: ['Dmg/Spd', '#Swings', 'xSwings', 'Extra', 'Dmg/Rnd', 'Dmg/1st', 'Ability']
+	// The list comes from the server (POST /api/evaluate/weapons): MME's columns and cells.
+	computed: 'weapons',
+	columns: [],
+	pending: []
 };
 
 const armour: Explorer<'items'> = {
@@ -249,19 +227,10 @@ const armour: Explorer<'items'> = {
 	slug: 'armour',
 	table: 'items',
 	include: (r) => r.item_type === 0 && r.in_game && namedOk(r),
-	columns: [
-		numberCol<Item>(),
-		str('name', 'Name', (r) => r.name, 240),
-		str('worn', 'Worn', (r) => E.wornType(r.worn), 100),
-		str('type', 'Armr Type', (r) => E.armourType(r.armour_type), 110),
-		num('level', 'Level', (r) => abilityValue(r.abilities, MIN_LEVEL) ?? 0, 70),
-		num('enc', 'Enc', (r) => r.encum, 65),
-		{ ...str<Item>('ac', 'AC', (r) => acText(r, false), 85), sortKey: acKey },
-		num('acc', 'Acc', (r) => r.accy + abilitySum(r.abilities, ...ACC_ABILITIES), 65),
-		num('crits', 'Crits', (r) => abilityValue(r.abilities, CRITS) ?? 0, 70),
-		num('limit', 'Limit', (r) => r.limit, 70)
-	],
-	pending: ['AC/Enc', 'Ability']
+	// The list comes from the server (POST /api/evaluate/armour): MME's columns and cells.
+	computed: 'armour',
+	columns: [],
+	pending: []
 };
 
 const sundry: Explorer<'items'> = {
@@ -269,13 +238,9 @@ const sundry: Explorer<'items'> = {
 	slug: 'items',
 	table: 'items',
 	include: (r) => ((r.item_type === 0 && r.worn === 0) || r.item_type > 1) && r.in_game && namedOk(r),
-	columns: [
-		numberCol<Item>(),
-		str('name', 'Name', (r) => r.name, 280),
-		str('type', 'Type', (r) => E.itemType(r.item_type), 110),
-		num('enc', 'Enc', (r) => r.encum, 70),
-		num('limit', 'Limit', (r) => r.limit, 70)
-	],
+	// The list comes from the server (POST /api/evaluate/items): MME's columns and cells.
+	computed: 'items',
+	columns: [],
 	pending: []
 };
 
@@ -301,22 +266,13 @@ const spells: Explorer<'spells'> = {
 		const n = spellName(s);
 		return n !== '' && !n.startsWith('1') && !n.toLowerCase().startsWith('sdf') && spellInGame(s, lk.nmr);
 	},
-	columns: [
-		numberCol<Spell>(),
-		str('name', 'Name', spellName, 240),
-		str('short', 'Short', (s) => text(s.short), 90),
-		{
-			...str<Spell>('magery', 'Magery', (s) => E.mageryName(s.magery, s.magery_lvl), 100),
-			sortKey: (s) => s.magery * 1000 + s.magery_lvl
-		},
-		num('level', 'Level', (s) => s.req_level, 70),
-		num('mana', 'Mana', (s) => s.mana_cost, 70),
-		num('diff', 'Diff', (s) => s.diff, 70)
-	],
+	// The list comes from the server (POST /api/evaluate/spells): MME's columns and cells.
+	computed: 'spells',
+	columns: [],
 	rowId: (s) => s.number,
 	title: spellName,
 	defaultSort: { col: 'name', dir: 'asc' },
-	pending: ['Dmg', 'Dmg/M', 'Heal', 'Heal/M', 'Detail'],
+	pending: [],
 	detail: (s, _lk, extra) => {
 		const out = [
 			group(spellName(s), [
@@ -463,11 +419,9 @@ const shops: Explorer<'shops'> = {
 	table: 'shops',
 	needs: ['classes'],
 	include: (s) => s.in_game && shopOk(s),
-	columns: [
-		numberCol<Shop>(),
-		str('name', 'Name', (s) => s.name, 300),
-		str('type', 'Type', (s) => E.shopType(s.shop_type), 120)
-	],
+	// The list comes from the server (POST /api/evaluate/shops): MME's columns and cells.
+	computed: 'shops',
+	columns: [],
 	rowId: (s) => s.number,
 	title: (s) => s.name,
 	defaultSort: { col: 'name', dir: 'asc' },
@@ -498,32 +452,13 @@ const races: Explorer<'races'> = {
 	table: 'races',
 	needs: [],
 	include: (r) => r.name !== '',
-	columns: [
-		numberCol<Race>(),
-		str('name', 'Name', (r) => r.name, 160),
-		{
-			...str<Race>('exp', 'Exp%', (r) => `${r.exp_table}%`, 80),
-			sortKey: (r) => r.exp_table
-		},
-		num('hp', 'HP', (r) => r.hp_per_lvl, 65),
-		...(
-			[
-				['str', 'Str', 'm_str', 'x_str'],
-				['int', 'Int', 'm_int', 'x_int'],
-				['wis', 'Wis', 'm_wil', 'x_wil'],
-				['agi', 'Agi', 'm_agl', 'x_agl'],
-				['hea', 'Hea', 'm_hea', 'x_hea'],
-				['cha', 'Cha', 'm_chm', 'x_chm']
-			] as const
-		).map(([id, header, lo, hi]) => ({
-			...str<Race>(id, header, (r) => range(r[lo], r[hi]), 80),
-			sortKey: (r: Race) => r[lo] * 1000 + r[hi]
-		}))
-	],
+	// The list comes from the server (POST /api/evaluate/races): MME's columns and cells.
+	computed: 'races',
+	columns: [],
 	rowId: (r) => r.number,
 	title: (r) => r.name,
 	defaultSort: { col: 'num', dir: 'asc' },
-	pending: ['Abilities'],
+	pending: [],
 	detail: (r, _lk, extra) => {
 		const out = [
 			group(r.name, [
@@ -551,29 +486,13 @@ const classes: Explorer<'classes'> = {
 	table: 'classes',
 	needs: [],
 	include: (c) => c.name !== '',
-	columns: [
-		numberCol<ClassRec>(),
-		str('name', 'Name', (c) => c.name, 160),
-		{
-			...str<ClassRec>('exp', 'Exp%', (c) => `${c.exp_table + 100}%`, 80),
-			sortKey: (c) => c.exp_table
-		},
-		str('weapon', 'Weapon', (c) => E.classWeaponType(c.weapon_type), 110),
-		str('armour', 'Armour', (c) => E.armourType(c.armour_type), 110),
-		{
-			...str<ClassRec>('magic', 'Magic', (c) => E.mageryName(c.magery_type, c.magery_lvl), 100),
-			sortKey: (c) => c.magery_type * 1000 + c.magery_lvl
-		},
-		num('cmbt', 'Cmbt', (c) => c.combat_lvl - 2, 70),
-		{
-			...str<ClassRec>('hp', 'HP', (c) => range(c.min_hits, c.min_hits + c.max_hits), 80),
-			sortKey: (c) => c.min_hits * 1000 + c.max_hits
-		}
-	],
+	// The list comes from the server (POST /api/evaluate/classes): MME's columns and cells.
+	computed: 'classes',
+	columns: [],
 	rowId: (c) => c.number,
 	title: (c) => c.name,
 	defaultSort: { col: 'num', dir: 'asc' },
-	pending: ['Abilities'],
+	pending: [],
 	detail: (c, _lk, extra) => {
 		const out = [
 			group(c.name, [
