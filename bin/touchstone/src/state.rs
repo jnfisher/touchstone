@@ -1,7 +1,8 @@
 //! The loaded game data, swapped atomically when it changes.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use arc_swap::ArcSwap;
@@ -128,7 +129,12 @@ impl Loaded {
 pub struct AppState {
     loaded: ArcSwap<Loaded>,
     data_dir: PathBuf,
+    /// Finished `/api/evaluate` lists, each tagged with the load it was built from.
+    evaluate_cache: Mutex<HashMap<String, (u64, Bytes)>>,
 }
+
+/// Lists kept for instant tab switches; the world is small, so a few dozen is plenty.
+const EVALUATE_CACHE_MAX: usize = 64;
 
 impl AppState {
     pub fn new(loaded: Loaded) -> Arc<Self> {
@@ -140,6 +146,7 @@ impl AppState {
         Arc::new(Self {
             loaded: ArcSwap::from_pointee(loaded),
             data_dir,
+            evaluate_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -149,6 +156,25 @@ impl AppState {
 
     pub fn current(&self) -> Arc<Loaded> {
         self.loaded.load_full()
+    }
+
+    /// A cached list, if it was built from load number `load`.
+    pub fn evaluate_cache_get(&self, key: &str, load: u64) -> Option<Bytes> {
+        let cache = self.evaluate_cache.lock().ok()?;
+        cache
+            .get(key)
+            .filter(|(l, _)| *l == load)
+            .map(|(_, b)| b.clone())
+    }
+
+    pub fn evaluate_cache_put(&self, key: String, load: u64, body: Bytes) {
+        if let Ok(mut cache) = self.evaluate_cache.lock() {
+            cache.retain(|_, (l, _)| *l == load);
+            if cache.len() >= EVALUATE_CACHE_MAX {
+                cache.clear();
+            }
+            cache.insert(key, (load, body));
+        }
     }
 
     pub fn swap(&self, loaded: Loaded) {

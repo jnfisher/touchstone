@@ -19,18 +19,26 @@ describe('explorer definitions', () => {
 			expect(ex, s.slug).toBeDefined();
 			const ids = ex!.columns.map((c) => c.id);
 			expect(new Set(ids).size).toBe(ids.length);
-			if (ex!.defaultSort) expect(ids).toContain(ex!.defaultSort.col);
+			// the server's columns carry the default sort of a computed tab
+			if (ex!.defaultSort && !ex!.computed) expect(ids).toContain(ex!.defaultSort.col);
 		}
 		expect(Object.keys(EXPLORERS)).toHaveLength(9);
 	});
 
-	// MME headers and order: modMain AddWeapon2LV, AddArmour2LV, AddMonster2LV.
-	it('uses MME headers in MME order', () => {
-		const h = (slug: string) => explorerFor(slug)!.columns.map((c) => c.header);
-		expect(h('weapons').slice(0, 5)).toEqual(['#', 'Name', 'Wepn Type', 'Min Dmg', 'Max Dmg']);
-		expect(h('armour')).toEqual(['#', 'Name', 'Worn', 'Armr Type', 'Level', 'Enc', 'AC', 'Acc', 'Crits', 'Limit']);
-		expect(h('monsters').slice(0, 4)).toEqual(['#', 'Name', 'RGN', 'Exp']);
-		expect(explorerFor('weapons')!.pending).toContain('Dmg/Rnd');
+	// Every non-monster explorer is built by the server (POST /api/evaluate/{tab}).
+	it('lists the seven computed tabs from the server', () => {
+		const computed = Object.values(EXPLORERS)
+			.filter((e) => e!.computed)
+			.map((e) => e!.computed);
+		expect(computed.sort()).toEqual(['armour', 'classes', 'items', 'races', 'shops', 'spells', 'weapons']);
+		for (const slug of ['weapons', 'armour', 'items', 'spells', 'shops', 'races', 'classes'])
+			expect(explorerFor(slug)!.pending).toEqual([]);
+	});
+
+	// MME headers and order for the tab that still builds its own columns: AddMonster2LV.
+	it('uses MME headers in MME order for monsters', () => {
+		const h = explorerFor('monsters')!.columns.map((c) => c.header);
+		expect(h.slice(0, 4)).toEqual(['#', 'Name', 'RGN', 'Exp']);
 	});
 
 	// FilterWeapons, FilterArmour, FilterSundry: item-type split with "only in game" on.
@@ -45,22 +53,6 @@ describe('explorer definitions', () => {
 		expect([w, a, ring, scroll].map((r) => inc('armour', r))).toEqual([false, true, true, false]);
 		expect([w, a, ring, scroll].map((r) => inc('items', r))).toEqual([false, false, true, true]);
 		expect(inc('weapons', out)).toBe(false);
-	});
-
-	it('derives weapon columns from abilities like AddWeapon2LV', () => {
-		const w = item({
-			armour_class: 15,
-			damage_resist: 5,
-			accy: 3,
-			abilities: slots([135, 12], [22, 4], [58, 7], [116, -10])
-		});
-		const col = (id: string) => explorerFor('weapons')!.columns.find((c) => c.id === id)!;
-		expect(col('level').get(w)).toBe(12);
-		expect(col('acc').get(w)).toBe(7);
-		expect(col('crits').get(w)).toBe(7);
-		expect(col('bsacc').get(w)).toBe(-10);
-		expect(col('ac').get(w)).toBe('2/0.5');
-		expect(col('bsacc').get(item({}))).toBe('No');
 	});
 
 	it('formats monster exp with the multiplier and thousands separators', () => {
