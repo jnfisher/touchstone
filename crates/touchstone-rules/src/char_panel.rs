@@ -36,7 +36,7 @@ use crate::stats::{
     ManaRegenInput, calc_cp_level, calc_mana_regen, calc_max_hp, calc_max_mana,
     calc_meditate_mana_regen, calc_mr, calc_picklocks, calc_rest_mana_regen, calc_resting_rate,
     calc_spell_casting, get_class_magery, get_class_magery_lvl, get_class_max_hp, get_class_min_hp,
-    get_race_cp,
+    get_race_cp, soft_cap_extra, soft_caps_on,
 };
 
 type Res<T> = Result<T, Vb6Error>;
@@ -137,6 +137,25 @@ fn stat_cp_cost(used: i32) -> Res<i32> {
     }
 }
 
+/// The cost of stat `x` raised `used` points above its race minimum. MME prices every point on the
+/// stock ladder; under a Quicksilver profile with soft caps the part above the race maximum is
+/// priced by [`soft_cap_extra`] instead (R14). Without a known race the ladder stands.
+fn stat_cost(input: &CpInput, x: usize, used: i32) -> Res<i32> {
+    let race = input.race.and_then(|n| input.world.get_race(n));
+    let (Some(r), Some(_)) = (race, soft_caps_on(input.profile)) else {
+        return stat_cp_cost(used);
+    };
+    let race_max = [r.x_str, r.x_int, r.x_wil, r.x_agl, r.x_hea, r.x_chm][x];
+    let min = lng(input.max_tags[x])?;
+    let span = vb::sub_i32(race_max, min)?.max(0);
+    let target = vb::add_i32(min, used)?;
+    match soft_cap_extra(input.profile, race_max.max(min), target) {
+        Ok(None) => stat_cp_cost(used),
+        Ok(Some(extra)) => vb::add_i32(stat_cp_cost(used.min(span))?, extra),
+        Err(_) => Err(Vb6Error::Overflow),
+    }
+}
+
 /// Port of frmMain `RefreshCPs`: creation point cost of the six stats, points available, the level
 /// that pays for them and the exp that level needs.
 #[must_use]
@@ -161,7 +180,7 @@ fn cps_steps(input: &CpInput, out: &mut CpPanel) -> Res<()> {
         if used < 0 {
             used = 0;
         }
-        let cost = stat_cp_cost(used)?;
+        let cost = stat_cost(input, x, used)?;
         out.stat_costs[x] = cost;
         total = vb::add_i32(total, cost)?;
         out.total_cost = total;
@@ -529,10 +548,15 @@ pub fn refresh_picklocks(
 ///
 /// # Errors
 /// The VB6 error number where an argument does not fit a Long (MME's handler leaves the box as it was).
-pub fn refresh_magic_res(intellect: f64, willpower: f64, plus_mr: i32) -> Result<i32, i32> {
+pub fn refresh_magic_res(
+    profile: Profile,
+    intellect: f64,
+    willpower: f64,
+    plus_mr: i32,
+) -> Result<i32, i32> {
     let i = lng(intellect).map_err(code)?;
     let w = lng(willpower).map_err(code)?;
-    Ok(calc_mr(i, w, plus_mr))
+    Ok(calc_mr(profile, i, w, plus_mr))
 }
 
 /// Result of [`refresh_dodge`].

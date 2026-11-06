@@ -41,6 +41,7 @@ fn quicksilver_world_loads_with_every_row_and_ability() {
     // Census, docs/data-gaps.md "Quicksilver 1.20 census": the 1.20.0 content, in the database's
     // migration 9001 column.
     assert_eq!(w.info.dat_file_version, "1.20.0");
+    assert_eq!(w.info.content_version.as_deref(), Some("1.20.0"));
 
     // Every table row reaches the model.
     assert_eq!(w.items.len(), scalar(&conn, "SELECT count(*) FROM items"));

@@ -13,13 +13,13 @@ fn neutral() -> Profile {
     Profile::Quicksilver(&Balance::NEUTRAL)
 }
 
-/// R12 and the stat tables: stats fixtures.
+/// R12 (CalcMR) and the stat tables: stats fixtures.
 #[test]
 fn stats_fixtures_identical_under_neutral() {
     crate::stats::check_fixture(neutral());
 }
 
-/// R13: accuracy fixtures (dodge, hit and dodge caps).
+/// R13 (CalcDodge): accuracy fixtures (dodge, hit and dodge caps).
 #[test]
 fn accuracy_fixtures_identical_under_neutral() {
     crate::accuracy::check_fixture(neutral());
@@ -29,4 +29,29 @@ fn accuracy_fixtures_identical_under_neutral() {
 #[test]
 fn attack_fixtures_identical_under_neutral() {
     crate::attack::check_fixture(neutral());
+}
+
+/// R12 and R13 in the aggregation: the second half of CalcCharacterStats (magic resistance and
+/// dodge).
+#[test]
+fn gear2_fixtures_identical_under_neutral() {
+    crate::gear::check_gear2(neutral());
+}
+
+/// R12 through RefreshAll (magic resistance) and the rest of the pipeline.
+#[test]
+fn pipeline_fixtures_identical_under_neutral() {
+    crate::pipeline::check_fixture(neutral());
+}
+
+/// R13 for party members (dodge) and the party damage that follows.
+#[test]
+fn paste_party_fixtures_identical_under_neutral() {
+    crate::paste_party::check_fixture(neutral());
+}
+
+/// R14: the creation-point panel (RefreshCPs) prices stats above the race maximum.
+#[test]
+fn char_panel_fixtures_identical_under_neutral() {
+    crate::char_panel::check_fixture(neutral());
 }

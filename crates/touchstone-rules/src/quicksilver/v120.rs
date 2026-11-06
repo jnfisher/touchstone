@@ -256,8 +256,10 @@ pub(super) const NEUTRAL: Balance = Balance {
     ..BALANCE
 };
 
-/// A knee no stat reaches, so the third-above-the-knee rule never applies.
-const KNEE_OUT_OF_REACH: u32 = 65_535;
+/// A knee no value reaches, so the third-above-the-knee rule never applies. MME's formulas take
+/// 32-bit stats (the fixtures go to the extremes), so this is the largest 32-bit value rather than
+/// the game's 16-bit stat ceiling.
+const KNEE_OUT_OF_REACH: u32 = i32::MAX as u32;
 
 /// The 1.20.0 balance as a `static`, for `Profile::Quicksilver(&V120_BALANCE)`.
 pub static V120_BALANCE: Balance = Balance::V120;

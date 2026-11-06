@@ -149,7 +149,8 @@ fn info(conn: &Connection) -> Result<Info> {
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             e => Err(e),
         })?;
-    let (finished, content_version) = match row {
+    // An empty value is no value: nothing sets one by hand, but "" must not pick a profile.
+    let (finished, content_version) = match row.map(|(f, c)| (f, c.filter(|c| !c.is_empty()))) {
         Some((None, _)) => return Err(Error::ImportIncomplete),
         Some((f, c)) => (f, c),
         None => (None, None),
@@ -161,7 +162,10 @@ fn info(conn: &Connection) -> Result<Info> {
     };
     Ok(Info {
         nmr_version: String::new(),
-        dat_file_version: content_version.unwrap_or_else(|| "silvermere".to_string()),
+        dat_file_version: content_version
+            .clone()
+            .unwrap_or_else(|| "silvermere".to_string()),
+        content_version,
         date,
         time,
         custom: "silvermere".to_string(),

@@ -6,6 +6,7 @@
 
 mod knees;
 mod regen;
+mod training;
 
 use std::path::Path;
 
@@ -55,6 +56,7 @@ fn main() {
     for fam in [
         knees::family(),
         regen::family(),
+        training::family(),
     ] {
         let text = render(&fam, &commit, &version);
         let path = Path::new(&dir).join(format!("{}.json", fam.name));

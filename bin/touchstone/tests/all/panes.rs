@@ -323,6 +323,7 @@ fn fixture_world(data: &Value, dat_ver: &str) -> World {
         info: Info {
             nmr_version: "v1.8.3".to_owned(),
             dat_file_version: dat_ver.to_owned(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),
@@ -1034,6 +1035,7 @@ mod misc {
             info: Info {
                 nmr_version: "v1.8.3".to_owned(),
                 dat_file_version: String::new(),
+                content_version: None,
                 date: String::new(),
                 time: String::new(),
                 custom: String::new(),

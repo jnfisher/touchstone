@@ -844,6 +844,8 @@ fn to_table(tab: Tab, built: Built) -> Table {
 /// What the builders read about the world and the character.
 pub(crate) struct Ctx<'a> {
     pub(crate) world: &'a World,
+    /// The rules of the load the request runs against.
+    pub(crate) rules: Profile,
     pub(crate) nmr: f64,
     pub(crate) avg: f64,
     /// The loaded character's state when it is used (`chkGlobalFilter` on).
@@ -876,7 +878,7 @@ impl Ctx<'_> {
     ) -> touchstone_rules::character::CharacterProfile {
         match &self.state {
             Some(st) => st.profile_for(self.world, mud, weapon),
-            None => no_character_profile(Profile::Stock, self.world, self.nmr, self.avg, mud),
+            None => no_character_profile(self.rules, self.world, self.nmr, self.avg, mud),
         }
     }
 }
@@ -889,7 +891,7 @@ fn filter_env<'a>(ctx: &'a Ctx<'a>) -> FilterEnv<'a> {
         std::array::from_fn(|k| st.stats.stat_tag[37 + k].map_or(0.0, |t| vb::val(&vb::cstr(t))))
     });
     FilterEnv {
-        profile: Profile::Stock,
+        profile: ctx.rules,
         world: ctx.world,
         only_in_game: true,
         global_filter: ctx.filter_on,
@@ -1038,7 +1040,7 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
         vs_mr_text: opts.vs_mr.0.clone(),
     };
     let usable = UsableEnv {
-        profile: Profile::Stock,
+        profile: ctx.rules,
         spells: &ctx.world.spells,
         classes: &ctx.world.classes,
         nmr_ver: ctx.nmr,
@@ -1157,6 +1159,7 @@ pub(crate) fn with_monster_env<R>(
     f: impl FnOnce(&mut CharLairEnv<'_>, &MonsterSetup<'_>) -> R,
 ) -> Result<R, ApiError> {
     let world = ctx.world;
+    let profile = ctx.rules;
     let unprocessable = |m: String| (StatusCode::UNPROCESSABLE_ENTITY, m);
     let placeholder;
     let state = if let Some(st) = &ctx.state {
@@ -1180,7 +1183,7 @@ pub(crate) fn with_monster_env<R>(
             party: controls.party(),
             ..PipelineOptions::default()
         };
-        placeholder = refresh_all(Profile::Stock, world, &ch, &opts)
+        placeholder = refresh_all(profile, world, &ch, &opts)
             .map_err(|e| unprocessable(format!("cannot evaluate the default character: {e}")))?;
         &placeholder
     };
@@ -1220,7 +1223,7 @@ pub(crate) fn with_monster_env<R>(
         vec![Currency::from_scaled(0); slots],
         vec![Currency::from_scaled(0); slots],
     );
-    let mut cache = LairCache::load(world, Profile::Stock, ctx.nmr);
+    let mut cache = LairCache::load(world, profile, ctx.nmr);
     let mut sim = MonsterSimInput::default();
     let mut rnd = Rnd::from_state(327_680);
     let use_character = state.character.global_filter;
@@ -1229,7 +1232,7 @@ pub(crate) fn with_monster_env<R>(
         let mut env = CharLairEnv {
             cache: &mut cache,
             query: LairQuery {
-                profile: Profile::Stock,
+                profile,
                 startup: true,
                 use_character,
                 party: &party,
@@ -1256,7 +1259,7 @@ pub(crate) fn with_monster_env<R>(
     let mut env = CharLairEnv {
         cache: &mut cache,
         query: LairQuery {
-            profile: Profile::Stock,
+            profile,
             startup: false,
             use_character,
             party: &party,
@@ -1432,7 +1435,7 @@ fn plain(rows: Vec<Row>) -> Built {
 }
 
 fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
-    let mut env = RowEnv::for_world(ctx.world, Profile::Stock, equipped);
+    let mut env = RowEnv::for_world(ctx.world, ctx.rules, equipped);
     env.dat_ver_caption = &ctx.world.info.dat_file_version;
     env.avg_level_max_all_stats = ctx.avg;
     env.accuracy_tag = &ctx.accuracy_tag;
@@ -1446,7 +1449,11 @@ fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
 /// # Errors
 /// 422 for a character without class and race or one the pipeline cannot evaluate; 400 for a
 /// character that is not well formed.
-pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a>, ApiError> {
+pub(crate) fn prepare<'a>(
+    profile: Profile,
+    world: &'a World,
+    req: &EvaluateBody,
+) -> Result<Ctx<'a>, ApiError> {
     req.options.validate()?;
     if let Some(g) = &req.global_filter {
         g.validate()?;
@@ -1455,7 +1462,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
         }
     }
     let nmr = nmr_ver(&world.info.nmr_version);
-    let avg = compute_avg_level_max_stats(Profile::Stock, &world.races).all_stats;
+    let avg = compute_avg_level_max_stats(profile, &world.races).all_stats;
 
     let mut state = None;
     let mut level_text = "0".to_owned();
@@ -1500,7 +1507,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
                 party: req.options.monsters.party(),
                 ..PipelineOptions::default()
             };
-            let st = refresh_all(Profile::Stock, world, &ch, &opts).map_err(|e| {
+            let st = refresh_all(profile, world, &ch, &opts).map_err(|e| {
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
                     format!("cannot evaluate this character: {e}"),
@@ -1525,6 +1532,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
         .map_or_else(String::new, vb::cstr);
     Ok(Ctx {
         world,
+        rules: profile,
         nmr,
         avg,
         state,
@@ -1543,9 +1551,15 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
 ///
 /// # Errors
 /// As [`prepare`].
-pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, ApiError> {
+pub fn evaluate(
+    profile: Profile,
+    world: &World,
+    tab: Tab,
+    req: &EvaluateBody,
+) -> Result<Table, ApiError> {
     let exp = ExpPerHourSettings::default();
     evaluate_with(
+        profile,
         world,
         tab,
         req,
@@ -1561,6 +1575,7 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
 /// # Errors
 /// As [`prepare`].
 pub fn evaluate_with(
+    profile: Profile,
     world: &World,
     tab: Tab,
     req: &EvaluateBody,
@@ -1569,6 +1584,7 @@ pub fn evaluate_with(
     hide_record_numbers: bool,
 ) -> Result<Table, ApiError> {
     evaluate_with_damage(
+        profile,
         world,
         tab,
         req,
@@ -1587,6 +1603,7 @@ pub fn evaluate_with(
 /// As [`prepare`].
 #[allow(clippy::too_many_arguments)] // one request's inputs, each from a different source
 pub fn evaluate_with_damage(
+    profile: Profile,
     world: &World,
     tab: Tab,
     req: &EvaluateBody,
@@ -1596,7 +1613,7 @@ pub fn evaluate_with_damage(
     damage: &Snapshot,
     reach: Option<&crate::reach::ReachSlot>,
 ) -> Result<Table, ApiError> {
-    let mut ctx = prepare(world, req)?;
+    let mut ctx = prepare(profile, world, req)?;
     ctx.reach = reach;
     ctx.hide_record_numbers = hide_record_numbers;
     let built = match tab {
@@ -1691,6 +1708,7 @@ pub async fn evaluate_route(
     } else {
         let job = tokio::task::spawn_blocking(move || {
             evaluate_with_damage(
+                loaded.profile,
                 &loaded.world,
                 tab,
                 &req,

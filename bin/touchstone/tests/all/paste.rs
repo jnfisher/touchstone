@@ -205,6 +205,7 @@ pub(crate) fn char_world(data: &Value) -> World {
         info: Info {
             nmr_version: String::new(),
             dat_file_version: String::new(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),
@@ -361,6 +362,7 @@ fn party_world(data: &Value, nmr: &str) -> World {
         info: Info {
             nmr_version: nmr.to_owned(),
             dat_file_version: String::new(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),

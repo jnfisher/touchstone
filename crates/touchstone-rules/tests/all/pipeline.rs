@@ -146,6 +146,7 @@ pub(crate) fn world(data: &Value) -> World {
         info: Info {
             nmr_version: String::new(),
             dat_file_version: String::new(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),
@@ -705,18 +706,18 @@ fn check_adapters(st: &CharacterState) -> Check {
 // Expected values: fixtures/rules/pipeline.json (frmMain RefreshAll and modMain PopulateCharacterProfile).
 #[test]
 fn pipeline_matches_the_oracle() {
+    check_fixture(Profile::Stock);
+}
+
+/// Shared with the Quicksilver identity harness.
+pub(crate) fn check_fixture(profile: Profile) {
     let fx = fixture::load("pipeline");
     let world = world(&fx.header["data"]);
     let mut failures = Vec::new();
     for case in &fx.cases {
         let id = case["id"].as_str().unwrap();
         let inputs = Inputs::new(&fx.header, case);
-        let st = match refresh_all(
-            Profile::Stock,
-            &world,
-            &inputs.character(),
-            &inputs.options(),
-        ) {
+        let st = match refresh_all(profile, &world, &inputs.character(), &inputs.options()) {
             Ok(st) => st,
             Err(e) => {
                 failures.push(format!("{id}: {e}"));

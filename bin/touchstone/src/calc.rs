@@ -10,7 +10,6 @@ use axum::http::header::CACHE_CONTROL;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use touchstone_model::World;
-use touchstone_rules::Profile;
 use touchstone_rules::ability_text::AbilityEnv;
 use touchstone_rules::attack::CharacterProfile;
 use touchstone_rules::exp::{calc_exp_needed_by_race_class, calc_money_required_to_train};
@@ -232,6 +231,7 @@ pub async fn shop_prices(
     }
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     let shop = world
         .get_shop(number)
         .ok_or_else(|| not_found(format!("no shop {number}")))?;
@@ -269,7 +269,7 @@ pub async fn shop_prices(
     let markup = i16::try_from(shop.markup_pct).map_err(|_| fail("shop markup out of range"))?;
     for (slot, s) in shop.stock.iter().enumerate().filter(|(_, s)| s.item != 0) {
         let v = get_item_value(
-            Profile::Stock,
+            profile,
             s.item,
             world.get_item(s.item),
             charm as i16,
@@ -353,12 +353,13 @@ pub async fn exp_table(State(state): State<Arc<AppState>>, Query(q): Query<ExpQu
     }
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     known(world, race, class)?;
     let mut rows = Vec::new();
     for level in from..=to {
         // MME's handler returns 0 where its Integer or Currency maths overflows.
         let exp = calc_exp_needed_by_race_class(
-            Profile::Stock,
+            profile,
             level,
             class,
             race,
@@ -489,6 +490,7 @@ pub async fn calc_exp(
     use touchstone_rules::calculators::{ExpCalcInput, calc_exp as core};
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     let known_id = |n: Option<i32>, what: &str, found: bool| match n {
         Some(n) if n > 0 && !found => Err(not_found(format!("no {what} {n}"))),
         _ => Ok(()),
@@ -533,7 +535,7 @@ pub async fn calc_exp(
     let mut last = 0.0;
     for level in from..=to {
         // MME's loop ends at the first run-time error, keeping the rows already listed.
-        let exp = match touchstone_rules::exp::calc_exp_needed(Profile::Stock, level, table) {
+        let exp = match touchstone_rules::exp::calc_exp_needed(profile, level, table) {
             Ok(v) => v,
             Err(e) => {
                 let code = match e {
@@ -835,6 +837,7 @@ pub async fn calc_swing(
     }
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     find_weapon(world, req.weapon)?;
     let caption = &world.info.dat_file_version;
     let max_encum = if req.max_encum_auto {
@@ -845,7 +848,7 @@ pub async fn calc_swing(
     } else {
         req.max_encum.0.clone()
     };
-    let abilities = AbilityEnv::for_world(world, Profile::Stock);
+    let abilities = AbilityEnv::for_world(world, profile);
     let equipped = EquippedGlobals::default();
     let env = AttackEnv {
         items: &world.items,
@@ -854,14 +857,13 @@ pub async fn calc_swing(
         equipped: &equipped,
         cast_text: &abilities,
         dat_ver_caption: caption,
-        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
-            .all_stats,
+        avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
         accuracy_tag: "",
     };
     let mut speed_options = [false; 4];
     speed_options[req.speed_option] = true;
     let out = calc_swings(
-        Profile::Stock,
+        profile,
         &SwingInput {
             weapon: req.weapon,
             combat: req.combat,
@@ -1290,6 +1292,7 @@ mod hit {
     }
 
     pub fn run(
+        profile: touchstone_rules::Profile,
         form: &HitCalcForm,
         state: &HitCalcState,
         ch: &HitCalcCharacter,
@@ -1297,7 +1300,6 @@ mod hit {
         event: Event,
         index: Option<usize>,
     ) -> HitCalcResult {
-        let profile = touchstone_rules::Profile::Stock;
         let set_vals = |refresh| {
             set_hit_calc_vals(
                 profile,
@@ -1374,6 +1376,7 @@ pub async fn calc_hit(State(app): State<Arc<AppState>>, Body(req): Body<hit::Hit
     use touchstone_rules::hit_calc::{HitCalcCharacter, HitCalcForm};
     let loaded = app.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
 
     if req.event == hit::Event::Modify && req.index.is_none_or(|i| i > 11) {
         return Err(bad("index must be 0 to 11 for a modify event"));
@@ -1452,7 +1455,16 @@ pub async fn calc_hit(State(app): State<Arc<AppState>>, Body(req): Body<hit::Hit
     let enabled = match req.enabled {
         Some(e) => e,
         None => {
-            let d = hit::run(&form, &state, &character, world, hit::Event::Refresh, None).form;
+            let d = hit::run(
+                profile,
+                &form,
+                &state,
+                &character,
+                world,
+                hit::Event::Refresh,
+                None,
+            )
+            .form;
             hit::Enabled {
                 prot_evil: d.prot_evil_enabled,
                 vile_ward: d.vile_ward_enabled,
@@ -1470,7 +1482,9 @@ pub async fn calc_hit(State(app): State<Arc<AppState>>, Body(req): Body<hit::Hit
     form.see_hidden_enabled = enabled.see_hidden;
     form.monster_list_enabled = enabled.monster_list;
 
-    let r = hit::run(&form, &state, &character, world, req.event, req.index);
+    let r = hit::run(
+        profile, &form, &state, &character, world, req.event, req.index,
+    );
     let f = &r.form;
     json(&HitJson {
         calc_type: req.calc_type,

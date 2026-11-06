@@ -12,6 +12,7 @@ use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::lairs::LairCache;
 
+use crate::profile::{ProfileChoice, ProfileJson};
 use crate::settings::{self, Settings};
 
 pub const TABLES: [&str; 8] = [
@@ -38,6 +39,8 @@ pub struct Loaded {
     pub world: World,
     pub tables: Vec<TableJson>,
     pub info: InfoJson,
+    /// The rules every computed endpoint follows, chosen once for this load.
+    pub profile: Profile,
     /// MME's `LoadLairInfo` cache, built when a reference list first needs it.
     lair_cache: OnceLock<LairCache>,
     /// The computed reachability of this load (a reload starts without one).
@@ -53,6 +56,8 @@ pub struct InfoJson {
     /// How many times the data has been (re)loaded since start, counting the first.
     pub load_count: u64,
     pub version: VersionJson,
+    /// Which rules this load follows and why (`docs/quicksilver-profile.md` part 3).
+    pub profile: ProfileJson,
     pub counts: Vec<(String, usize)>,
 }
 
@@ -66,12 +71,35 @@ pub struct VersionJson {
 }
 
 impl Loaded {
+    /// A load with the default `[rules]`: the profile follows the database's content version.
+    ///
+    /// # Errors
+    /// A table fails to serialise, or the content version is one this build has no rules for.
     pub fn build(
         world: World,
         source: SourceInfo,
         data_version: Option<i64>,
         load_count: u64,
-    ) -> Result<Self, serde_json::Error> {
+    ) -> anyhow::Result<Self> {
+        Self::build_with(
+            world,
+            source,
+            data_version,
+            load_count,
+            &ProfileChoice::default(),
+        )
+    }
+
+    /// # Errors
+    /// A table fails to serialise, or the content version is one this build has no rules for.
+    pub fn build_with(
+        world: World,
+        source: SourceInfo,
+        data_version: Option<i64>,
+        load_count: u64,
+        choice: &ProfileChoice,
+    ) -> anyhow::Result<Self> {
+        let (profile, profile_json) = choice.choose(&world.info)?;
         let mut tables = Vec::new();
         for name in TABLES {
             let body = match name {
@@ -117,6 +145,7 @@ impl Loaded {
         Ok(Self {
             world,
             tables,
+            profile,
             lair_cache: OnceLock::new(),
             reach: crate::reach::ReachSlot::default(),
             info: InfoJson {
@@ -125,6 +154,7 @@ impl Loaded {
                 data_version,
                 load_count,
                 version,
+                profile: profile_json,
                 counts,
             },
         })
@@ -134,7 +164,7 @@ impl Loaded {
     pub fn lair_cache(&self) -> &LairCache {
         self.lair_cache.get_or_init(|| {
             let nmr = crate::detail::nmr_ver(&self.world.info.nmr_version);
-            LairCache::load(&self.world, Profile::Stock, nmr)
+            LairCache::load(&self.world, self.profile, nmr)
         })
     }
 

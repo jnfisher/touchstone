@@ -15,6 +15,7 @@ mod monster_sim;
 mod monsters;
 mod panes;
 mod paste;
+mod profile;
 mod reachability;
 mod rooms;
 mod settings;

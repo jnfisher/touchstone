@@ -218,6 +218,7 @@ fn world(data: &Value) -> World {
         info: Info {
             nmr_version: "v1.8.3".to_owned(),
             dat_file_version: String::new(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),

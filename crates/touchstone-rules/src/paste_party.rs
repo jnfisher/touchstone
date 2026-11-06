@@ -977,6 +977,7 @@ fn run(
         let max_enc = p.max_enc.v[i];
         if level > 0 && agi > 0 && cha > 0 {
             let d = calc_dodge(
+                env.profile,
                 level,
                 agi,
                 cha,

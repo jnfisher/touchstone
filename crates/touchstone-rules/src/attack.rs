@@ -750,8 +750,24 @@ pub fn calculate_attack(
     req: &AttackRequest,
     casts: &mut String,
 ) -> AttackDamage {
-    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
-    attack_steps(env, ch, req, casts).unwrap_or_default()
+    attack_steps(profile, env, ch, req, casts).unwrap_or_default()
+}
+
+/// The crit block of CalcAttack: over the knee only a third of the excess counts, and a result
+/// above 99 is held at 99. The knee is 40 in stock; Quicksilver (R11) reads `crit_knee`.
+///
+/// # Errors
+/// The VB6 error where MME's Integer arithmetic overflows.
+pub fn crit_after_knee(profile: Profile, crit_chance: i16) -> Res<i16> {
+    let knee: i16 = match profile {
+        Profile::Stock => 40,
+        Profile::Quicksilver(b) => i16::try_from(b.crit_knee).unwrap_or(i16::MAX),
+    };
+    if crit_chance <= knee {
+        return Ok(crit_chance);
+    }
+    let over = vb::fix(f64::from(crit_chance - knee) / 3.0);
+    Ok(vb::cint(f64::from(knee) + over)?.min(99))
 }
 
 /// Where the weapon's numbers come from.
@@ -763,6 +779,7 @@ enum Source<'a> {
 
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 fn attack_steps(
+    profile: Profile,
     env: &AttackEnv,
     ch: &CharacterProfile,
     req: &AttackRequest,
@@ -1164,13 +1181,7 @@ fn attack_steps(
             );
             crit_chance = cur_to_i16(cur(i64::from(crit_chance)).checked_add(qnd_bonus)?)?;
         }
-        if crit_chance > 40 {
-            let over = vb::fix(f64::from(crit_chance - 40) / 3.0);
-            crit_chance = vb::cint(40.0 + over)?;
-            if crit_chance > 99 {
-                crit_chance = 99;
-            }
-        }
+        crit_chance = crit_after_knee(profile, crit_chance)?;
 
         if attack_type == 6 {
             energy = n32(i64::from(energy) * 2)?;

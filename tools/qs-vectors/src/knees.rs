@@ -1,7 +1,7 @@
 //! The knee family (R11 crit, R12 magic resistance, R13 dodge).
 //!
 //! Each case runs the engine twice: under the 1.20.0 balance and under a balance whose knees
-//! are set where the stock rules have them (crit 40, the others out of reach).
+//! are set where the stock rules have them (crit 40, the others out of reach (2^31 - 1)).
 
 use serde_json::{Value, json};
 use silvermere_engine::player::secondary::secondary;
@@ -14,6 +14,10 @@ use silvermere_types::ids::{ClassNo, RaceNo};
 
 use crate::Family;
 
+/// Beyond any value touchstone's stock formulas take (they work in 32 bits); matches
+/// `KNEE_OUT_OF_REACH` in touchstone-rules.
+const KNEE_OUT_OF_REACH: u32 = i32::MAX as u32;
+
 fn v120() -> Balance {
     Balance::V120
 }
@@ -23,8 +27,8 @@ fn v120() -> Balance {
 fn neutral() -> Balance {
     Balance {
         crit_knee: 40,
-        mr_stat_knee: 65_535,
-        dodge_agi_knee: 65_535,
+        mr_stat_knee: KNEE_OUT_OF_REACH,
+        dodge_agi_knee: KNEE_OUT_OF_REACH,
         ..Balance::V120
     }
 }
