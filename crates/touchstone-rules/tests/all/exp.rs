@@ -7,7 +7,7 @@ use touchstone_vb6::Currency;
 use crate::fixture::{cur, load};
 use serde_json::Value;
 
-fn class(number: i32, exp_table: i32) -> Class {
+pub(crate) fn class(number: i32, exp_table: i32) -> Class {
     Class {
         number,
         name: String::new(),
@@ -23,7 +23,7 @@ fn class(number: i32, exp_table: i32) -> Class {
     }
 }
 
-fn race(number: i32, exp_table: i32) -> Race {
+pub(crate) fn race(number: i32, exp_table: i32) -> Race {
     Race {
         number,
         name: String::new(),

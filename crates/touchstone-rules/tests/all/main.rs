@@ -10,6 +10,7 @@ mod calculators;
 mod char_panel;
 mod character;
 mod class_race_builder;
+mod clipboard;
 mod combat;
 mod equip;
 mod exp;
