@@ -481,11 +481,24 @@ fn character_side<'a>(
 
 // ---------- routes ----------
 
+/// MME runs "Calc. Monster Dmg vs Party" with no character loaded (its menu item depends on the lair filter's party
+/// size, not on a character) and the party calculation reads only the party boxes. The pipeline wants a class and a
+/// race to build the lair environment, so a party request without them gets the first class and race of the data.
+pub fn with_stand_in_character(world: &World, mut body: CalcBody) -> CalcBody {
+    if body.mode == Mode::Party {
+        let c = &mut body.character;
+        c.class = c.class.or_else(|| world.classes.first().map(|k| k.number));
+        c.race = c.race.or_else(|| world.races.first().map(|r| r.number));
+    }
+    body
+}
+
 pub async fn calculate_route(
     State(state): State<Arc<AppState>>,
     Body(body): Body<CalcBody>,
 ) -> ApiResult {
     let loaded = state.current();
+    let body = with_stand_in_character(&loaded.world, body);
     let (_, rounds) = run_settings(&state, Some(&body.character));
     let st = state.clone();
     let out = tokio::task::spawn_blocking(move || calculate(&st, &loaded, &body, rounds))

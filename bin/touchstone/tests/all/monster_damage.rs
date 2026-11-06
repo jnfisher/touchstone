@@ -303,6 +303,34 @@ async fn calculating_twice_and_clearing_follow_the_oracle() {
     }
 }
 
+// Expected: the same fixture case as above. MME's "Calc. Monster Dmg vs Party" (mnuOptionsItems_Click 3 ->
+// CalculateMonsterPartyDamage) is enabled by the lair filter's party size and reads no character, so it runs with none
+// loaded: a request with no class and race gives the arrays the oracle pinned for the case's character.
+#[tokio::test]
+async fn party_damage_runs_without_a_character() {
+    let fx = fixture("monster_damage_calc");
+    let c = case(&fx, "party-plain");
+    let want = array(&c["outputs"]["party"]);
+    let (router, state) = app(world(&fx), rounds(&fx, c));
+    let mut blank = character(&fx, c);
+    blank["class"] = Value::Null;
+    blank["race"] = Value::Null;
+    let body = json!({"character": blank, "mode": "party", "party": party_boxes(&fx, c)});
+    let (st, got) = call(&router, "/api/monster-damage/calculate", Some(&body)).await;
+    assert_eq!(st, StatusCode::OK, "{got}");
+    let snap = snapshot(&state);
+    assert!(snap.party_calculated);
+    let got = mine(&snap.vs_party);
+    for (n, (g, w)) in got.iter().zip(&want).enumerate() {
+        // the first calculation of a session is the one the oracle pinned
+        assert_eq!(g, w, "monster {n}");
+    }
+    // the character calculation still needs a class and race
+    let body = json!({"character": blank, "mode": "char"});
+    let (st, _) = call(&router, "/api/monster-damage/calculate", Some(&body)).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
 #[tokio::test]
 async fn status_reports_what_is_calculated() {
     let fx = fixture("monster_damage_calc");

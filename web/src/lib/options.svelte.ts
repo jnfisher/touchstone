@@ -91,9 +91,13 @@ export function createOptionsStore(deps: OptionsDeps = {}) {
 		dismissNotice() {
 			notice = undefined;
 		},
-		/** Whether the damage items can run: a class and race are chosen. */
+		/** Whether the vs Char item can run: a class and race are chosen. */
 		get canCalcDamage() {
 			return canCalculate(chars.doc) && !damage.busy;
+		},
+		/** The vs Party item reads only the party boxes, so MME offers it with no character loaded. */
+		get canCalcPartyDamage() {
+			return !damage.busy;
 		},
 		/** The two checked items. */
 		get jumpToCompare() {

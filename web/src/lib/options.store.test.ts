@@ -122,6 +122,10 @@ describe('Options menu actions', () => {
 		expect(x.damage.version).toBe(v + 1);
 		x.chars.edit((d) => (d.race = null));
 		expect(x.opts.canCalcDamage).toBe(false);
+		// mnuOptionsItems(3) depends on the lair party size and not on a character
+		expect(x.opts.canCalcPartyDamage).toBe(true);
+		expect(await x.opts.calcDamage('party')).toBe(true);
+		expect(await x.opts.calcDamage('char')).toBe(false);
 	});
 
 	it('Clear Learned Spells asks first (default No) and empties the learned spells', async () => {
