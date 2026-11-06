@@ -218,7 +218,7 @@ pub fn family() -> Family {
                 `unresisted` and `resist_rolls` are the weave family's proc pieces, `per_landed` = chance/100 * \
                 unresisted * (99 - resist_rolls)/99 (the expected weave damage of one landed blow that deals \
                 damage) and `per_blow` = per_landed * landed. v120 is the 1.20.0 balance; neutral has the \
-                weave chance 0 (null) and class shares 100.",
+                weave chance 0 (every figure 0) and class shares 100.",
         keys: json!({
             "weave_pct": { "v120": v120().weave_pct, "neutral": 0 },
             "weave_pct_magery1": { "v120": v120().weave_pct_magery1, "neutral": 0 },
