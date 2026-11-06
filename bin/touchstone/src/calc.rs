@@ -1130,6 +1130,16 @@ mod hit {
         pub strength: Text,
         pub level: Text,
         pub shadow_ac: i32,
+        /// `nGlobalCharAccyAbils`, `nGlobalCharAccyOther`, `nGlobalCharAccyItems` and
+        /// `GetCharActiveVileWard()`.
+        pub accy_abilities: i32,
+        pub accy_other: i32,
+        pub accy_items: i32,
+        pub vile_ward: i32,
+        /// `nGlobalCharWeaponNumber(0)`, `nGlobalCharWeaponAccy(0)`, `nGlobalCharWeaponBSaccy(0)`.
+        pub weapon_number: i32,
+        pub weapon_accy: i32,
+        pub weapon_bs_accy: i32,
         pub class: Option<i32>,
         /// The backstab weapon (`nGlobalAttackBackstabWeapon`); absent is none chosen.
         pub bs_weapon: Option<i32>,
@@ -1413,6 +1423,13 @@ pub async fn calc_hit(State(app): State<Arc<AppState>>, Body(req): Body<hit::Hit
         level: touchstone_vb6::val(&ch.level.0),
         class: ch.class,
         shadow_ac: ch.shadow_ac,
+        accy_abilities: ch.accy_abilities,
+        accy_other: ch.accy_other,
+        accy_items: ch.accy_items,
+        vile_ward: ch.vile_ward,
+        weapon_number: ch.weapon_number,
+        weapon_accy: ch.weapon_accy,
+        weapon_bs_accy: ch.weapon_bs_accy,
         attack_type,
         attack_accy_adj: ch.accy_adj,
         attack_martial_art: martial_art,

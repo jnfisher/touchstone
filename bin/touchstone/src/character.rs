@@ -323,6 +323,26 @@ pub struct StateJson {
     heal: HealJson,
     /// The run-time error that cut `CalcCharacterStats` short, if any.
     stats_error_text: Option<String>,
+    /// What the calculator windows read from the main form and the character globals.
+    calc: CalcJson,
+}
+
+/// The `Tag`s of `lblInvenCharStat` (0 while empty) and the `nGlobalChar*` / `nGlobalAttack*` values
+/// that frmHitCalc, frmSwingCalc and frmBSCalc read, so the page does not recompute them.
+#[derive(Serialize)]
+struct CalcJson {
+    stat_tags: Vec<f64>,
+    shadow_ac: i32,
+    vile_ward: i32,
+    accy_abilities: i32,
+    accy_other: i32,
+    accy_items: i32,
+    /// `nGlobalAttackAccyAdj`.
+    attack_accy_adj: i32,
+    /// `nGlobalCharWeaponNumber(0)`, `nGlobalCharWeaponAccy(0)`, `nGlobalCharWeaponBSaccy(0)`.
+    weapon_number: i32,
+    weapon_accy: i32,
+    weapon_bs_accy: i32,
 }
 
 fn error_text(code: Option<i32>) -> Option<String> {
@@ -417,6 +437,18 @@ fn state_json(st: &CharacterState, ch: &Character) -> StateJson {
             spell_lvl: st.attack_config().heal_spell_lvl,
         },
         stats_error_text: error_text(s.error),
+        calc: CalcJson {
+            stat_tags: s.stat_tag.iter().map(|t| t.unwrap_or(0.0)).collect(),
+            shadow_ac: s.shadow_ac,
+            vile_ward: s.vile_ward,
+            accy_abilities: s.accy_abils,
+            accy_other: s.accy_other,
+            accy_items: s.accy_items,
+            attack_accy_adj: s.attack_accy_adj,
+            weapon_number: s.weapons[0].number,
+            weapon_accy: s.weapons[0].accy,
+            weapon_bs_accy: s.weapons[0].bs_accy,
+        },
     }
 }
 
