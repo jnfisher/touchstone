@@ -33,8 +33,7 @@ show-all flags and the four knobs become a settings struct argument; there are n
   with no INI keys all four models are on. `ExpPerHourSettings::default()` is all four on,
   recovery-only and show-all off, knobs 1.0. `ExpPerHourSettings::at_form_load()` is the A+B+C start
   state. The settings dialog (`cmdSave_Click`) turns A+B+C on when none is ticked; that is
-  `normalized()`. `CalcExpPerHour` itself with no model on returns the empty record. Noted in
-  `docs/differences.md`.
+  `normalized()`. `CalcExpPerHour` itself with no model on returns the empty record. Noted in the PR body (`docs/differences.md` does not exist yet).
 - Arguments are converted at the call as VB6 does: `nCharHPRegen` goes to `IsMobKillable` as an
   `Integer` and `nMobHP - nSurpriseDMG` as a `Long` (error 6 escapes `CalcExpPerHour`, which has no handler); `nSpellCost`
   and `nSurpriseChance` are `Integer` parameters.
