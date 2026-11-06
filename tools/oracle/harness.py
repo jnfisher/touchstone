@@ -397,6 +397,7 @@ class Env:
         it.procs.pop("regexpfindv2", None)
         for n, v in (("dbOpenSnapshot", 4), ("dbForwardOnly", 8), ("vbModeless", 0)):     # DAO / form constants (modReachability)
             it.bind(n, V.I32(v))
+        it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         it.bind_proc("EnsureDatabaseConnection", false)
         it.procs.pop("ensuredatabaseconnection", None)
 
