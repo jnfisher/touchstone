@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import CharacterTab from '$lib/components/character/CharacterTab.svelte';
 	import ExplorerView from '$lib/components/ExplorerView.svelte';
 	import { explorerFor } from '$lib/explorers';
 	import { SECTIONS } from '$lib/sections';
@@ -9,7 +10,9 @@
 	const explorer = $derived(explorerFor(slug));
 </script>
 
-{#if explorer}
+{#if slug === 'character'}
+	<CharacterTab />
+{:else if explorer}
 	<!-- Keyed by tab so each tab gets its own grid, search text and scroll position. -->
 	{#key slug}
 		<ExplorerView {explorer} title={label} />
