@@ -320,6 +320,19 @@ class Env:
             rec.add("sort_listview", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
                     data_type=V.int_value(kind), ascending=bool(ascending))
         it.bind_proc("SortListView", sort_listview)
+
+        def refresh_sort(shops_first):
+            # LV_RefreshSort / LV_RefreshSort_ShopsFirst (item detail, P3-35): the same skipped feature; only the request
+            # is recorded: rows held, column, data type, by tag, ascending (their optional defaults differ per procedure).
+            defaults = (1, 1, True, False) if shops_first else (1, 0, False, True)
+
+            def f(it_, lv, col=V.MISSING, dtype=V.MISSING, by_tag=V.MISSING, asc=V.MISSING):
+                got = [d if a is V.MISSING else a for a, d in zip((col, dtype, by_tag, asc), defaults)]
+                rec.add("lv_refresh_sort", shops_first=shops_first, rows=len(getattr(lv, "rows", [])),
+                        column=V.int_value(got[0]), data_type=V.int_value(got[1]), by_tag=bool(got[2]), ascending=bool(got[3]))
+            return f
+        it.bind_proc("LV_RefreshSort", refresh_sort(False))
+        it.bind_proc("LV_RefreshSort_ShopsFirst", refresh_sort(True))
         for n, v in (("ldtstring", 0), ("ldtnumber", 1), ("ldtDateTime", 2)):     # modListViewExt's ListDataType
             it.bind(n, V.I32(v))
         # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
@@ -592,13 +605,22 @@ class Env:
         if spec.get("watch"):
             wname, widx = re.match(r"(\w+)\((\d+)\)$", spec["watch"]).groups()
             watch = self.it.externals["frmmain"].vb_get(wname, [V.I16(int(widx))])
-        per, seen = [], []
+        per, seen, captured = [], [], []
         for key in spec["keys"]:
             rs.vb_get("seek", ["=", decode(key)])
             lv = lv_shared or shims.RecordingListViewShim()
             before = len(watch.items.get("list", {})) if watch else 0
             args = self.build_args(st.get("args", []), objs, [], lv)
+            n_events = len(self.rec.events)
             self.invoke(objs, st["call"], args)
+            if spec.get("capture"):
+                # `capture`: {"name": "%c.txtDetail.Text"}: read expressions evaluated after each key; with `events` the
+                # recorded events of that key move from the case's event list into the capture
+                cap = {k: self.read(objs, expr) for k, expr in spec["capture"].items()}
+                if spec.get("events"):
+                    cap["events"] = self.rec.events[n_events:]
+                    del self.rec.events[n_events:]
+                captured.append(cap)
             if not shared:
                 rows = lv.dump(encode)
                 per.append(rows[0] if rows else None)
@@ -616,6 +638,8 @@ class Env:
             results[name + ".post"] = post
         if watch is not None:
             results[name + ".watch"] = seen
+        if spec.get("capture"):
+            results[name + ".capture"] = captured
 
     _READ = re.compile(r"^(?P<obj>[A-Za-z_]\w*)\.(?P<prop>\w+)(?:\[(?P<idx>[^\]]*)\])?$")
 
