@@ -23,11 +23,12 @@
 
 use std::cell::Cell;
 
-use touchstone_model::Spell;
+use touchstone_model::{Spell, World};
 use touchstone_vb6 as vb;
 use touchstone_vb6::Vb6Error;
 
 use crate::Profile;
+use crate::attack::CastText;
 use crate::spells::{PullArgs, SpellEnv, SpellText};
 use crate::textblock::{TextblockData, get_textblock_action};
 
@@ -43,6 +44,25 @@ pub trait NameLookup {
     fn monster_name(&self, number: i32) -> Option<String>;
     fn item_name(&self, number: i32) -> Option<String>;
     fn class_name(&self, number: i32) -> Option<String>;
+}
+
+/// The database itself: a row's `Name` column, or `None` when there is no such row. A NULL name is
+/// `Some("")`, which is what MME's Access column holds.
+impl NameLookup for World {
+    fn spell_name(&self, number: i32) -> Option<String> {
+        self.get_spell(number)
+            .map(|r| r.name.clone().unwrap_or_default())
+    }
+    fn monster_name(&self, number: i32) -> Option<String> {
+        self.get_monster(number)
+            .map(|r| r.name.clone().unwrap_or_default())
+    }
+    fn item_name(&self, number: i32) -> Option<String> {
+        self.get_item(number).map(|r| r.name.clone())
+    }
+    fn class_name(&self, number: i32) -> Option<String> {
+        self.get_class(number).map(|r| r.name.clone())
+    }
 }
 
 fn numbered(name: Option<String>, n: i32, no_number: bool) -> String {
@@ -365,6 +385,44 @@ impl SpellText for AbilityEnv<'_> {
     }
     fn monster_name(&self, number: i32) -> String {
         get_monster_name(self.names, number, self.hide_record_numbers)
+    }
+}
+
+/// `GetSpellName` and `PullSpellEQ(True, 0, n, ..., True, ..., bonus)` for `CalculateAttack`.
+impl CastText for AbilityEnv<'_> {
+    fn spell_name(&self, number: i32) -> String {
+        get_spell_name(self.names, number, self.hide_record_numbers)
+    }
+    fn spell_eq(&self, number: i32, spell_bonus: i16) -> String {
+        self.pull_spell_eq(&PullArgs {
+            calc_level: true,
+            spell: number,
+            percent_column: true,
+            spell_bonus,
+            ..PullArgs::default()
+        })
+    }
+}
+
+impl<'a> AbilityEnv<'a> {
+    /// The environment over a loaded database, with MME's globals at their start-up values
+    /// (record numbers shown, no quick-spell style, no global level filter, `nSpellNest` 0).
+    /// Set the public fields afterwards for any other state. This is the production
+    /// implementation of `spells::SpellText` (for `SpellEnv` and `SpellCastEnv`) and of
+    /// `attack::CastText` (for `AttackEnv`).
+    #[must_use]
+    pub fn for_world(world: &'a World, profile: Profile) -> Self {
+        AbilityEnv {
+            profile,
+            names: world,
+            textblocks: world,
+            spells: &world.spells,
+            hide_record_numbers: false,
+            quick_spell: false,
+            global_level_text: None,
+            avg_level_max_all_stats: 0.0,
+            nest: Cell::new(0),
+        }
     }
 }
 

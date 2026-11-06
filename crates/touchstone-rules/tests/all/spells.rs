@@ -1,104 +1,14 @@
 // Fixture tests for the spells family (FAM-10): see docs/porting.md step 5.
-use crate::fixture;
+use crate::fixture::{self, Names, Textblocks};
 use serde_json::Value;
 use std::cell::Cell;
-use std::collections::HashMap;
-use touchstone_model::{AbilitySlot, Spell};
+use touchstone_model::Spell;
 use touchstone_rules::Profile;
+use touchstone_rules::ability_text::AbilityEnv;
 use touchstone_rules::spells::*;
 
 fn i(v: &Value) -> i64 {
     v.as_i64().unwrap_or_else(|| panic!("not an integer: {v}"))
-}
-
-/// The case "table" carries every stock row as [fields.., learnable, learned_from?, [ability, value, ..]].
-fn spell_table(case: &Value) -> Vec<Spell> {
-    case["inputs"]["spells"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| {
-            let f: Vec<i32> = r.as_array().unwrap()[..18]
-                .iter()
-                .map(|x| i(x) as i32)
-                .collect();
-            let flat = r[18].as_array().unwrap();
-            let mut abilities = [AbilitySlot::default(); 10];
-            for (k, p) in flat.chunks(2).enumerate() {
-                abilities[k] = AbilitySlot {
-                    ability: i(&p[0]) as i32,
-                    value: i(&p[1]) as i32,
-                };
-            }
-            Spell {
-                number: f[0],
-                name: None,
-                short: None,
-                req_level: f[1],
-                energy_cost: f[2],
-                mana_cost: 0,
-                min_base: f[3],
-                max_base: f[4],
-                diff: 0,
-                type_of_resists: 0,
-                targets: f[5],
-                dur: f[6],
-                att_type: f[7],
-                magery: f[8],
-                magery_lvl: 0,
-                cap: f[9],
-                max_inc_lvls: f[10],
-                max_inc: f[11],
-                min_inc_lvls: f[12],
-                min_inc: f[13],
-                dur_inc_lvls: f[14],
-                dur_inc: f[15],
-                abilities,
-                learnable: f[16] != 0,
-                learned_from: (f[17] != 0).then(|| "x".to_string()),
-                casted_by: None,
-                classes: None,
-            }
-        })
-        .collect()
-}
-
-/// GetAbilityStats / GetSpellName / GetMonsterName answers the oracle gave, replayed.
-#[derive(Default)]
-struct Recorded {
-    stats: HashMap<(i16, i16, bool, bool), String>,
-    spells: HashMap<i32, String>,
-    monsters: HashMap<i32, String>,
-    quick: Cell<bool>,
-}
-
-impl SpellText for Recorded {
-    fn ability_stats(&self, ability: i16, value: i16, calc_level: bool, _pct: bool) -> String {
-        // Only these abilities print a nested PullSpellEQ, so only they depend on the flags.
-        let nest = matches!(ability, 43 | 148 | 151 | 153);
-        let key = (
-            ability,
-            value,
-            !nest || calc_level,
-            nest && self.quick.get(),
-        );
-        self.stats
-            .get(&key)
-            .unwrap_or_else(|| panic!("no recorded GetAbilityStats for {key:?}"))
-            .clone()
-    }
-    fn spell_name(&self, n: i32) -> String {
-        self.spells
-            .get(&n)
-            .unwrap_or_else(|| panic!("no recorded GetSpellName({n})"))
-            .clone()
-    }
-    fn monster_name(&self, n: i32) -> String {
-        self.monsters
-            .get(&n)
-            .unwrap_or_else(|| panic!("no recorded GetMonsterName({n})"))
-            .clone()
-    }
 }
 
 fn is_missing(v: &Value) -> bool {
@@ -148,40 +58,20 @@ fn spells_fixture() {
         .iter()
         .find(|c| c["id"] == "table")
         .expect("table case");
-    let spells = spell_table(table);
+    let spells = fixture::spell_table(table);
     assert!(spells.len() > 1000);
-
-    let mut rec = Recorded::default();
-    for c in &fx.cases {
-        let id = c["id"].as_str().unwrap();
-        let a = c["inputs"]["args"].as_array();
-        if id.starts_with("as-") {
-            let a = a.unwrap();
-            let quick = c["inputs"]["globals"]["bQuickSpell"] == true;
-            let (ab, v, calc) = (i(&a[0]) as i16, i(&a[1]) as i16, a[3].as_bool().unwrap());
-            let nest = matches!(ab, 43 | 148 | 151 | 153);
-            rec.stats.insert(
-                (ab, v, !nest || calc, nest && quick),
-                c["outputs"]["result"].as_str().unwrap().to_string(),
-            );
-        } else if id.starts_with("sn-") {
-            rec.spells.insert(
-                i(&a.unwrap()[0]) as i32,
-                c["outputs"]["result"].as_str().unwrap().to_string(),
-            );
-        } else if id.starts_with("mn-") {
-            rec.monsters.insert(
-                i(&a.unwrap()[0]) as i32,
-                c["outputs"]["result"].as_str().unwrap().to_string(),
-            );
-        }
-    }
+    let names = Names::from_table(&table["inputs"]["names"]);
+    let tbs = Textblocks::from_table(&table["inputs"]["textblocks"]);
+    let text = Tables {
+        names: &names,
+        tbs: &tbs,
+    };
 
     let mut fails = Vec::new();
     let mut ran = 0;
     for c in &fx.cases {
         let id = c["id"].as_str().unwrap();
-        if id == "table" || ["as-", "sn-", "mn-"].iter().any(|p| id.starts_with(p)) {
+        if id == "table" {
             continue;
         }
         let inp = &c["inputs"];
@@ -229,7 +119,7 @@ fn spells_fixture() {
                 }
                 "PullSpellEQ" => {
                     // MME's nSpellNo 0 is the record the first step left the cursor on.
-                    let env = env_for(&spells, &rec, inp, avg);
+                    let env = env_for(&spells, &text, inp, avg);
                     let got = env.pull_spell_eq(&pull_args(sargs, n));
                     if out["r"] != got.as_str() {
                         bad(format!("got {got:?}, want {}", out["r"]));
@@ -289,7 +179,7 @@ fn spells_fixture() {
                 }
             }
             "PullSpellEQ" => {
-                let env = env_for(&spells, &rec, inp, avg);
+                let env = env_for(&spells, &text, inp, avg);
                 // nSpell 0 means the record under the cursor, which on a fresh recordset is the first.
                 let spell = if arg(a, 2) == 0 {
                     spells[0].number
@@ -313,16 +203,23 @@ fn spells_fixture() {
     );
 }
 
-fn env_for<'a>(spells: &'a [Spell], rec: &'a Recorded, inp: &'a Value, avg: f64) -> SpellEnv<'a> {
-    let quick = inp["globals"]["bQuickSpell"] == true;
-    rec.quick.set(quick);
+/// The name and textblock tables the case "table" carries.
+struct Tables<'a> {
+    names: &'a Names,
+    tbs: &'a Textblocks,
+}
+
+/// MME's globals for the case, over the real text port.
+fn env_for<'a>(spells: &'a [Spell], t: &Tables<'a>, inp: &'a Value, avg: f64) -> AbilityEnv<'a> {
     let frm = &inp["forms"]["frmMain"];
     let filter_on = frm["chkGlobalFilter"]["Value"] == 1;
-    SpellEnv {
+    AbilityEnv {
         profile: Profile::Stock,
+        names: t.names,
+        textblocks: t.tbs,
         spells,
-        text: rec,
-        quick_spell: quick,
+        hide_record_numbers: false,
+        quick_spell: inp["globals"]["bQuickSpell"] == true,
         global_level_text: filter_on.then(|| {
             frm["txtGlobalLevel"]["$array"]["0"]["Text"]
                 .as_str()
@@ -336,11 +233,13 @@ fn env_for<'a>(spells: &'a [Spell], rec: &'a Recorded, inp: &'a Value, avg: f64)
 // An empty table is the one PullSpellEQ branch the stock database cannot reach: "tabSpells.RecordCount = 0".
 #[test]
 fn pull_spell_eq_with_no_spell_records() {
-    let rec = Recorded::default();
-    let env = SpellEnv {
+    let (names, tbs) = (Names::default(), Textblocks::default());
+    let env = AbilityEnv {
         profile: Profile::Stock,
+        names: &names,
+        textblocks: &tbs,
         spells: &[],
-        text: &rec,
+        hide_record_numbers: false,
         quick_spell: false,
         global_level_text: None,
         avg_level_max_all_stats: 0.0,

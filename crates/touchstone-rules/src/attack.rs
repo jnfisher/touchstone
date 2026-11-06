@@ -16,8 +16,9 @@
 //! assigned at the very end. A run-time error that escapes (a procedure with no handler) is
 //! returned as `Err`.
 
-mod mini_regex;
+use std::sync::OnceLock;
 
+use regex::{Regex, RegexBuilder};
 use touchstone_model::{Class, Item, Race};
 use touchstone_vb6 as vb;
 use touchstone_vb6::{Currency, Vb6Error};
@@ -559,37 +560,94 @@ pub struct AttackDamage {
 fn damage_term() -> String {
     let text = r"[^\[\{\}\]]+";
     let name = r"(Damage(?:\(-MR\))?|DrainLife)";
-    let num = r"(-?\d+)";
+    // ASCII digits, as VBScript's `\d`; the regex crate's `\d` is every Unicode digit.
+    let num = r"(-?[0-9]+)";
     format!("{text}, {name} {num} to {num}")
 }
 
 /// The pattern for the three layouts a weapon's spell text can have: alternatives (`{a} OR {b}`),
 /// a chain of `EndCast` spells, or one spell.
-fn cast_regex(casts: &str) -> mini_regex::Regex {
-    let term = damage_term();
-    let pattern = if contains_ci(casts, "} or {") {
-        let tail_of_term = r"[^\]\}]*";
-        let one = r"(?:\{TERMTAIL(?:\} OR )?)?"
-            .replace("TERM", &term)
-            .replace("TAIL", tail_of_term);
-        r"\[[^\[\{\}\]]+\[\{TERMTAIL(?:\} OR )MORE\}\], (\d+)%\]"
-            .replace("TERM", &term)
-            .replace("TAIL", tail_of_term)
-            .replace("MORE", &one.repeat(5))
+///
+/// These are the three patterns `CalculateAttack` hands to `RegExpFindv2` (VBScript.RegExp, global,
+/// ignore-case). They use only literals, classes, groups, `|`, `?`, `+`, `*` and `\d`, so the
+/// `regex` crate's leftmost-first matching picks the same match and captures as VBScript's
+/// backtracking; there are no backreferences or lookaround. MME's `{` is a literal there (no
+/// digits follow it) and is written `\{` here because the crate rejects a bare one.
+fn cast_regex(casts: &str) -> &'static Regex {
+    static LAYOUTS: OnceLock<[Regex; 3]> = OnceLock::new();
+    let layouts = LAYOUTS.get_or_init(|| {
+        [
+            compile_cast(&alternatives_pattern()),
+            compile_cast(&end_cast_pattern()),
+            compile_cast(&single_pattern()),
+        ]
+    });
+    if contains_ci(casts, "} or {") {
+        &layouts[0]
     } else if contains_ci(casts, ", EndCast [") {
-        let first = format!(r"(?:{term}(?:\]|, EndCast ))");
-        let more = format!(r"(?:\[{term}(?:\]|, EndCast ))?").repeat(5);
-        format!(r"\[{first}{more}\]+, (\d+)%\]")
+        &layouts[1]
     } else {
-        format!(r"\[(?:{term}[^\]]*), (\d+)%\]")
-    };
-    mini_regex::Regex::new(&pattern, true)
+        &layouts[2]
+    }
+}
+
+fn alternatives_pattern() -> String {
+    let term = damage_term();
+    let tail_of_term = r"[^\]\}]*";
+    let one = r"(?:\{TERMTAIL(?:\} OR )?)?"
+        .replace("TERM", &term)
+        .replace("TAIL", tail_of_term);
+    r"\[[^\[\{\}\]]+\[\{TERMTAIL(?:\} OR )MORE\}\], ([0-9]+)%\]"
+        .replace("TERM", &term)
+        .replace("TAIL", tail_of_term)
+        .replace("MORE", &one.repeat(5))
+}
+
+fn end_cast_pattern() -> String {
+    let term = damage_term();
+    let first = format!(r"(?:{term}(?:\]|, EndCast ))");
+    let more = format!(r"(?:\[{term}(?:\]|, EndCast ))?").repeat(5);
+    format!(r"\[{first}{more}\]+, ([0-9]+)%\]")
+}
+
+fn single_pattern() -> String {
+    let term = damage_term();
+    format!(r"\[(?:{term}[^\]]*), ([0-9]+)%\]")
+}
+
+fn compile_cast(pattern: &str) -> Regex {
+    // `RegExpFindv2(sCasts, pattern, MatchCase:=False)`. The crate folds case with Unicode rules
+    // where VBScript folds ASCII only; the spell text is ASCII, so the two agree on it.
+    RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()
+        .expect("the cast patterns are fixed and valid")
+}
+
+/// One `RegExpFindv2` match: the whole text and each group (`None` when it did not take part).
+struct CastMatch {
+    text: String,
+    groups: Vec<Option<String>>,
+}
+
+fn find_all_casts(casts: &str) -> Vec<CastMatch> {
+    cast_regex(casts)
+        .captures_iter(casts)
+        .map(|c| CastMatch {
+            text: c[0].to_string(),
+            groups: c
+                .iter()
+                .skip(1)
+                .map(|g| g.map(|m| m.as_str().to_string()))
+                .collect(),
+        })
+        .collect()
 }
 
 /// The extra damage a weapon's cast spells add per hit and per swing, from the `[spell, ...]`
 /// text: only the last matching group's average survives, as in MME.
 fn cast_extra_damage(casts: &str, spell_bonus: i16, swings: f64) -> Res<(Currency, Currency)> {
-    let matches = cast_regex(casts).find_all(casts);
+    let matches = find_all_casts(casts);
     let mut extra_avg_hit = cur(0);
     let mut extra_avg_swing = cur(0);
     if matches.is_empty() {
