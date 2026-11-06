@@ -32,7 +32,7 @@ use crate::attack::{
     AttackEnv, AttackRequest, CastText, CharacterProfile, EnergyInput, EquippedGlobals,
     calc_energy_used, calc_quick_and_deadly_bonus, calculate_attack,
 };
-use crate::spell_cast::{CastRequest, SpellCastEnv, SpellCasterProfile, UsableEnv};
+use crate::spell_cast::{CastRequest, SpellCastEnv, SpellCasterProfile, UsableEnv, casting_stat};
 use crate::spells::SpellText;
 use crate::stats::{
     ManaRegenInput, calc_mana_regen, calc_resting_rate, get_class_combat, get_class_magery,
@@ -1211,6 +1211,14 @@ fn attack_prompts(
                 max_mana: m.max_mana,
                 spell_overhead: 0.0,
                 mana_regen: m.mana_regen,
+                casting_stat: casting_stat(
+                    get_class_magery(find_class(env, m.class)),
+                    i32::from(m.int),
+                    i32::from(m.wis),
+                    i32::from(m.cha),
+                ),
+                class: m.class,
+                level: m.level,
             };
             let req = CastRequest {
                 spell: spell_num,

@@ -5,6 +5,8 @@ use serde_json::{Value, json};
 use touchstone_model::{AbilitySlot, Class, Item, Spell};
 use touchstone_rules::Profile;
 use touchstone_rules::character::*;
+use touchstone_rules::spell_cast::casting_stat;
+use touchstone_rules::stats::get_class_magery;
 use touchstone_rules::spells::SpellText;
 use touchstone_vb6 as vb;
 
@@ -378,6 +380,11 @@ fn pick(outputs: &Value, keys: &[&str]) -> Value {
 
 #[test]
 fn character_fixture() {
+    check_fixture(Profile::Stock);
+}
+
+/// The whole MME fixture under `profile` (the layer-1 harness runs it under the neutral balance).
+pub(crate) fn check_fixture(profile: Profile) {
     let fx = fixture::load("character");
     let table = fx
         .cases
@@ -402,7 +409,7 @@ fn character_fixture() {
         let stats = char_stats(forms, g);
         let party = party(forms);
         let ctx = Context {
-            profile: Profile::Stock,
+            profile,
             nmr_ver: g_f64(g, "nNMRVer"),
             avg_level_max_all_stats: g_f64(g, "gAvgLevelMaxAllStats"),
             hide_record_numbers: g_b(g, "bHideRecordNumbers"),
@@ -434,6 +441,16 @@ fn character_fixture() {
                     i(&args[4]) as i32,
                     flag(5),
                 );
+                // The casting stat is not an MME field: a loaded character's is the class's stat
+                // (Mage Int, Priest Wil, Druid their mean, Bard Cha, none for Kai) with gear.
+                if t.is_loaded_character {
+                    let class = classes.iter().find(|c| c.number == t.class);
+                    let st = |k: usize| stats.base_stat[k] as i32;
+                    let want = casting_stat(get_class_magery(class), st(1), st(2), st(5));
+                    if t.casting_stat != want {
+                        bad.push(format!("{id}: casting stat {}, want {want}", t.casting_stat));
+                    }
+                }
                 (profile_json(&t), out["result.refs"][0].clone())
             }
             "SetCurrentAttackTypeConfig" => {
@@ -477,7 +494,7 @@ fn character_fixture() {
             }
             "bCharIsEvilAligned" => (json!(char_is_evil_aligned(&ch)), out["result"].clone()),
             "GetCharActiveVileWard" => (
-                json!(get_char_active_vile_ward(Profile::Stock)),
+                json!(get_char_active_vile_ward(profile)),
                 out["result"].clone(),
             ),
             "ClearLearnedSpells" | "LearnSpell" | "UnLearnSpell" | "LearnOrUnlearnSpell" => {

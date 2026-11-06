@@ -33,10 +33,11 @@ use crate::Profile;
 use crate::abilities::item_has_ability;
 use crate::accuracy::{BackstabAccuracyInput, calculate_backstab_accuracy};
 use crate::exp::get_max_level;
-use crate::spell_cast::{CastRequest, SpellCastEnv, SpellCasterProfile};
+use crate::spell_cast::{CastRequest, SpellCastEnv, SpellCasterProfile, casting_stat};
 use crate::spells::{SpellText, get_spell_duration};
 use crate::stats::{
-    calc_encumbrance_percent, calc_movement_speed, get_class_combat, get_class_stealth,
+    calc_encumbrance_percent, calc_movement_speed, get_class_combat, get_class_magery,
+    get_class_stealth,
 };
 
 /// A VB6 error that ends the procedure at the point MME's handler would (the handler resumes at
@@ -321,6 +322,9 @@ pub struct CharacterProfile {
     pub spell_attack_cost: f64,
     pub spell_overhead: f64,
     pub spell_dmg_bonus: i16,
+    /// The class's casting stat with gear (`spell_cast::casting_stat`); not an MME field. Only
+    /// Quicksilver's spell damage (R7) reads it.
+    pub casting_stat: i32,
     pub max_mana: f64,
     pub spellcasting: i16,
     pub mana_regen: f64,
@@ -369,6 +373,9 @@ impl CharacterProfile {
             max_mana: self.max_mana,
             spell_overhead: self.spell_overhead,
             mana_regen: self.mana_regen,
+            casting_stat: self.casting_stat,
+            class: self.class,
+            level: self.level,
         }
     }
 }
@@ -574,6 +581,14 @@ fn populate_steps(
         t.agi = int16(st.base_stat[3])?;
         t.int = int16(st.base_stat[1])?;
         t.cha = int16(st.base_stat[5])?;
+        // Not an MME step, so it must never end the procedure: an unrepresentable stat reads 0.
+        let stat = |k: usize| vb::clng(st.base_stat[k]).unwrap_or(0);
+        t.casting_stat = casting_stat(
+            get_class_magery(find_class(ctx.classes, t.class)),
+            stat(1),
+            stat(2),
+            stat(5),
+        );
         t.crit = int16(st.stat[7])?;
         t.plus_max_damage = int16(st.stat[11])?;
         t.plus_min_damage = int16(st.stat[30])?;

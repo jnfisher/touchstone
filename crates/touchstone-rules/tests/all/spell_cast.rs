@@ -137,6 +137,13 @@ fn check_cast(got: &SpellCastValues, want: &Value) -> bool {
 
 #[test]
 fn spell_cast_fixture() {
+    check_fixture(Profile::Stock);
+}
+
+/// The whole MME fixture under `profile`. The caster carries a casting stat, class and level so a
+/// profile that scales by them must undo it: stock ignores them and the neutral Quicksilver
+/// balance scales by 1.
+pub(crate) fn check_fixture(profile: Profile) {
     let fx = fixture::load("spell_cast");
     let table = fx
         .cases
@@ -150,7 +157,7 @@ fn spell_cast_fixture() {
     let names = Names::default();
     let tbs = Textblocks::default();
     let text = AbilityEnv {
-        profile: Profile::Stock,
+        profile,
         names: &names,
         textblocks: &tbs,
         spells: &spells,
@@ -186,7 +193,7 @@ fn spell_cast_fixture() {
         let escaped = c.get("error").map(|e| i(&e["number"]));
         let g = &inp["globals"];
         let usable = UsableEnv {
-            profile: Profile::Stock,
+            profile,
             spells: &spells,
             classes: &classes,
             nmr_ver: g["nNMRVer"].as_f64().unwrap_or(0.0),
@@ -203,6 +210,9 @@ fn spell_cast_fixture() {
                     max_mana: f["nMaxMana"].as_f64().unwrap_or(0.0),
                     spell_overhead: f["nSpellOverhead"].as_f64().unwrap_or(0.0),
                     mana_regen: f["nManaRegen"].as_f64().unwrap_or(0.0),
+                    casting_stat: 170,
+                    class: 12,
+                    level: 45,
                 };
                 let req = CastRequest {
                     spell: num(a, 1, 0.0) as i32,
@@ -216,7 +226,7 @@ fn spell_cast_fixture() {
                     vs_water: num(a, 9, 0.0) as i16,
                 };
                 let env = SpellCastEnv {
-                    profile: Profile::Stock,
+                    profile,
                     spells: &spells,
                     text: &text,
                     avg_level_max_all_stats: 0.0,
@@ -267,7 +277,7 @@ fn spell_cast_fixture() {
             }
             "GetSpellCastChance" => {
                 let got = get_spell_cast_chance(
-                    Profile::Stock,
+                    profile,
                     &spells,
                     num(a, 0, 0.0) as i16,
                     num(a, 1, 0.0) as i16,
