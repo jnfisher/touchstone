@@ -53,3 +53,11 @@ engine for the grammar.
 `cargo test --workspace` and `tools/guard.sh` pass; each field above matches the stock `.mdb` for
 at least 99% of records or every remaining mismatch class is in `docs/data-gaps.md`; the
 Quicksilver load time is reported.
+
+## Result
+Stock parity (`docs/data-parity.md`): TBInfo `action` 100%, `called_from` 99.4%; `learnable`,
+`learned_from`, `classes` 99.35%; `summoned_by` 97.5%; `casted_by` 97.5%; `obtained_from` 87.5%.
+Every miss is explained in `docs/data-gaps.md`: the 26 rooms silvermere has beyond the `.mdb`,
+the order of a few lists, and the `Item #n(p%)` chest percentages (185 items), whose rule behind
+NMR's figures is unknown. Quicksilver 1.20: the derivation settles in six passes; a whole
+`load_world()` takes 0.55 to 0.67 s in a release build (about 0.3 s of it the derivation).
