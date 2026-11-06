@@ -236,10 +236,10 @@ fn run_case(world: &World, setup: &Value, setup_rounds: i32, case: &Value) -> Op
                     &mut rnd,
                 )
                 .unwrap();
-                if let Some(key) = name {
-                    if let Some(d) = check("damage", &r.damage.scaled(), &cur(&out[key])) {
-                        return Some(d);
-                    }
+                if let Some(d) =
+                    name.and_then(|key| check("damage", &r.damage.scaled(), &cur(&out[key])))
+                {
+                    return Some(d);
                 }
                 // the store is skipped by MME's handler when the monster is past the array's end
                 if let Some(c) = r.cached {
