@@ -39,7 +39,7 @@
 				<tr data-testid="party-member-{k}">
 					<td>
 						<input
-							class="{cell} text-left"
+							class="{cell.replace('text-right', 'text-left')}"
 							value={form.name[k] ?? ''}
 							oninput={(e) => (form.name[k] = e.currentTarget.value)}
 							onchange={onedit}
