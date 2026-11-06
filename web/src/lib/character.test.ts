@@ -12,7 +12,9 @@ import {
 	nameProblem,
 	newCharacter,
 	QUESTS,
-	slotChoices
+	toChoices,
+	equippableChoices,
+	flaggedSlots
 } from './character';
 
 const item = (o: Partial<Item>): Item => ({ number: 1, name: 'x', item_type: 0, worn: 0, in_game: true, ...o }) as Item;
@@ -63,17 +65,30 @@ describe('character mapping', () => {
 		expect(derivedStatName(45)).toBe('Stat 45');
 	});
 
-	it('offers slot items by worn value, weapons for the weapon slot', () => {
+	it('turns server pick lists into name-sorted combobox rows', () => {
+		const rows = toChoices([
+			{ number: 7, label: 'zed helm (7)' },
+			{ number: 2, label: 'Alpha helm (2)' }
+		]);
+		expect(rows.map((r) => r.number)).toEqual([2, 7]);
+		expect(filterChoices(rows, 'HEL ALP')).toHaveLength(1);
+	});
+
+	it('offers in-game armour with a slot and weapons to the equip-anywhere search', () => {
 		const items = [
 			item({ number: 1, name: 'helm', worn: 2 }),
-			item({ number: 2, name: 'boots', worn: 5 }),
+			item({ number: 2, name: 'nowhere pants', worn: 0 }),
 			item({ number: 3, name: 'sword', item_type: 1 }),
-			item({ number: 4, name: 'hidden helm', worn: 2, in_game: false })
+			item({ number: 4, name: 'hidden helm', worn: 2, in_game: false }),
+			item({ number: 5, name: 'charm', item_type: 10, worn: 3 })
 		];
-		expect(slotChoices(items, EQUIP_SLOTS[0]).map((c) => c.name)).toEqual(['helm']);
-		expect(slotChoices(items, EQUIP_SLOTS[16]).map((c) => c.name)).toEqual(['sword', ]);
-		expect(slotChoices(items, EQUIP_SLOTS[14]).map((c) => c.name)).toEqual(['boots', 'helm']);
-		expect(filterChoices(slotChoices(items, EQUIP_SLOTS[14]), 'HEL')).toHaveLength(1);
+		expect(equippableChoices(items).map((c) => c.name)).toEqual(['helm', 'sword']);
+	});
+
+	it('names the flagged slots', () => {
+		const flags = Array<boolean>(20).fill(false);
+		flags[15] = flags[16] = true;
+		expect(flaggedSlots(flags)).toEqual(['Off-Hand', 'Weapon']);
 	});
 });
 
@@ -89,6 +104,16 @@ describe('character client', () => {
 		await expect(c.evaluate({})).rejects.toMatchObject({ status: 422, message: 'pick a class and race' });
 		await expect(c.evaluate({})).rejects.toBeInstanceOf(Error);
 		void CharacterError;
+	});
+
+	it('posts equip and equip-state', async () => {
+		const f = vi.fn().mockImplementation(() => Promise.resolve(ok({})));
+		const c = createCharacterClient(f);
+		await c.equip({ character: newCharacter('a'), item: 5, slot: 3 });
+		expect(f.mock.calls[0][0]).toBe('/api/character/equip');
+		expect(JSON.parse(f.mock.calls[0][1].body)).toMatchObject({ item: 5, slot: 3 });
+		await c.equipState(newCharacter('a'));
+		expect(f.mock.calls[1][0]).toBe('/api/character/equip-state');
 	});
 
 	it('builds the bless query and encodes names', async () => {
