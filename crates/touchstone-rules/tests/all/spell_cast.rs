@@ -340,3 +340,227 @@ pub(crate) fn check_fixture(profile: Profile) {
         &fails[..fails.len().min(8)]
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Quicksilver (R7, R8, R9): CalculateSpellCast on a built spell. The building blocks are pinned by
+// fixtures/quicksilver/spells.json (quicksilver_vectors.rs); these check where they act.
+
+struct NoText;
+
+impl SpellText for NoText {
+    fn ability_stats(&self, _: i16, _: i16, _: bool, _: bool) -> String {
+        "x".to_string()
+    }
+    fn spell_name(&self, _: i32) -> String {
+        String::new()
+    }
+    fn monster_name(&self, _: i32) -> String {
+        String::new()
+    }
+}
+
+/// An instant spell of 100 to 200 at any level, one cast a round, resisted never.
+fn built_spell(targets: i32, abilities: &[(i32, i32)], dur: i32) -> Spell {
+    let mut slots = [AbilitySlot::default(); 10];
+    for (k, &(ability, value)) in abilities.iter().enumerate() {
+        slots[k] = AbilitySlot { ability, value };
+    }
+    Spell {
+        number: 7,
+        name: Some("test".to_string()),
+        short: None,
+        req_level: 1,
+        energy_cost: 1000,
+        mana_cost: 10,
+        min_base: 100,
+        max_base: 200,
+        diff: 0,
+        type_of_resists: 0,
+        targets,
+        dur,
+        att_type: 4,
+        magery: 1,
+        magery_lvl: 1,
+        cap: 0,
+        max_inc_lvls: 0,
+        max_inc: 0,
+        min_inc_lvls: 0,
+        min_inc: 0,
+        dur_inc_lvls: 0,
+        dur_inc: 0,
+        abilities: slots,
+        learnable: true,
+        learned_from: None,
+        casted_by: None,
+        classes: None,
+    }
+}
+
+/// A Mage (class 12) of level 40 with 130 Intellect.
+fn mage() -> SpellCasterProfile {
+    SpellCasterProfile {
+        spellcasting: 0,
+        max_mana: 500.0,
+        mana_regen: 10.0,
+        casting_stat: 130,
+        class: 12,
+        level: 40,
+        ..SpellCasterProfile::default()
+    }
+}
+
+fn cast(profile: Profile, sp: &Spell, who: &SpellCasterProfile, vs_mr: i32) -> SpellCastValues {
+    let spells = [sp.clone()];
+    let env = SpellCastEnv {
+        profile,
+        spells: &spells,
+        text: &NoText,
+        avg_level_max_all_stats: 0.0,
+    };
+    let req = CastRequest {
+        spell: sp.number,
+        cast_level: 20,
+        vs_mr,
+        ..CastRequest::default()
+    };
+    env.calculate_spell_cast(who, &req)
+}
+
+fn v120() -> Profile {
+    Profile::quicksilver_v120()
+}
+
+fn neutral() -> Profile {
+    Profile::Quicksilver(&touchstone_rules::quicksilver::Balance::NEUTRAL)
+}
+
+#[test]
+fn quicksilver_scales_a_damage_spell_by_stat_and_class() {
+    let who = mage();
+    // fixtures/quicksilver/spells.json kind damage: class 12 level 40 stat 130 turns 1000 into 1131
+    let scale = |a: i32| scale_spell_damage(v120(), a, &who);
+    assert_eq!(scale(1000), 1131);
+    let sp = built_spell(4, &[(1, 0)], 0);
+    let stock = cast(Profile::Stock, &sp, &who, 0);
+    assert_eq!((stock.n_min_cast, stock.n_max_cast), (100, 200));
+    assert_eq!(stock.n_avg_round_dmg, 150);
+    let qs = cast(v120(), &sp, &who, 0);
+    assert_eq!(qs.n_min_cast, scale(100));
+    assert_eq!(qs.n_max_cast, scale(200));
+    assert_eq!(qs.n_avg_round_dmg, scale(150));
+    assert_eq!(qs.n_min_round_dmg, scale(100));
+    assert!(qs.n_avg_round_dmg > stock.n_avg_round_dmg);
+    // the same spell cast by a character with no class and a 50 stat is untouched
+    let plain = SpellCasterProfile {
+        casting_stat: 50,
+        class: 0,
+        ..mage()
+    };
+    assert_eq!(cast(v120(), &sp, &plain, 0), stock_with(&sp, &plain));
+}
+
+fn stock_with(sp: &Spell, who: &SpellCasterProfile) -> SpellCastValues {
+    cast(Profile::Stock, sp, who, 0)
+}
+
+#[test]
+fn quicksilver_scales_damage_on_armour_before_magic_resist() {
+    let who = mage();
+    let sp = built_spell(4, &[(17, 0)], 0);
+    let stock = cast(Profile::Stock, &sp, &who, 80);
+    let qs = cast(v120(), &sp, &who, 80);
+    assert!(qs.n_avg_round_dmg > stock.n_avg_round_dmg);
+    // resisting 80 takes (80 - 50) / 2 = 15% off whatever the scaled roll is
+    let scaled = scale_spell_damage(v120(), 150, &who);
+    assert_eq!(
+        qs.n_avg_round_dmg,
+        (f64::from(scaled) * 0.85).round() as i32
+    );
+}
+
+#[test]
+fn quicksilver_leaves_heals_and_lasting_drains_alone() {
+    let who = mage();
+    let heal = built_spell(1, &[(18, 0)], 0);
+    assert_eq!(
+        cast(v120(), &heal, &who, 0),
+        cast(Profile::Stock, &heal, &who, 0)
+    );
+
+    let lasting = built_spell(4, &[(8, 0)], 5);
+    assert_eq!(
+        cast(v120(), &lasting, &who, 0),
+        cast(Profile::Stock, &lasting, &who, 0)
+    );
+
+    // a drain that does not last scales both what it deals and what it gives back
+    let drain = built_spell(4, &[(8, 0)], 0);
+    let stock = cast(Profile::Stock, &drain, &who, 0);
+    let qs = cast(v120(), &drain, &who, 0);
+    let scaled = scale_spell_damage(v120(), 150, &who);
+    assert_eq!(stock.n_avg_round_dmg, stock.n_avg_round_heals);
+    assert_eq!(qs.n_avg_round_dmg, scaled);
+    assert_eq!(qs.n_avg_round_heals, scaled);
+}
+
+#[test]
+fn quicksilver_area_spells_lose_the_resisting_share() {
+    let who = SpellCasterProfile {
+        casting_stat: 0,
+        class: 0,
+        ..mage()
+    };
+    // Full Attack Area, resist mode Never: stock never resists it
+    let area = built_spell(12, &[(1, 0)], 0);
+    let stock = cast(Profile::Stock, &area, &who, 100);
+    assert_eq!(stock.n_avg_round_dmg, 150);
+    assert_eq!(stock.n_full_resist_chance, 0);
+    // MR 100: the roll resists 50 times in 99 and then cuts min(25, 100 / 4) = 25%
+    let keep = 1.0 - 50.0 * 25.0 / 9900.0;
+    assert!((area_resist_keep(v120(), 100) - keep).abs() < 1e-12);
+    let qs = cast(v120(), &area, &who, 100);
+    assert_eq!(qs.n_avg_round_dmg, (150.0 * keep).round() as i32);
+    assert_eq!(qs.n_min_round_dmg, (100.0 * keep).round() as i32);
+    // the cast roll itself is not an expectation, and it is not a full resist
+    assert_eq!((qs.n_min_cast, qs.n_max_cast), (100, 200));
+    assert_eq!(qs.n_full_resist_chance, 0);
+    assert!(
+        qs.s_avg_round
+            .contains("51% chance for a monster to resist and take 25% less"),
+        "{}",
+        qs.s_avg_round
+    );
+    // no monster resistance, a single-target spell, or a heal: nothing to cut
+    assert_eq!(cast(v120(), &area, &who, 0).n_avg_round_dmg, 150);
+    let single = built_spell(4, &[(1, 0)], 0);
+    assert_eq!(cast(v120(), &single, &who, 100).n_avg_round_dmg, 150);
+    // a lasting area spell shows its cut in the "not including" list
+    let lasting = built_spell(12, &[(1, 0)], 5);
+    let text = cast(v120(), &lasting, &who, 100).s_avg_round;
+    assert!(
+        text.contains("not including 51% chance for a monster"),
+        "{text}"
+    );
+}
+
+#[test]
+fn quicksilver_neutral_balance_changes_nothing_in_a_cast() {
+    let who = mage();
+    for (targets, abilities, dur) in [
+        (4, vec![(1, 0)], 0),
+        (4, vec![(17, 0)], 0),
+        (12, vec![(1, 0)], 0),
+        (12, vec![(17, 0)], 3),
+        (4, vec![(8, 0)], 0),
+        (1, vec![(18, 0)], 0),
+    ] {
+        let sp = built_spell(targets, &abilities, dur);
+        for mr in [0, 1, 40, 100, 400] {
+            assert_eq!(
+                cast(neutral(), &sp, &who, mr),
+                cast(Profile::Stock, &sp, &who, mr),
+                "targets {targets} {abilities:?} dur {dur} mr {mr}"
+            );
+        }
+    }
+}

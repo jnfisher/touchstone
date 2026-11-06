@@ -704,6 +704,17 @@ fn area_resist(b: &Balance, mr: i32) -> (i32, i32) {
     (chance, (mr / div).clamp(0, max))
 }
 
+/// Quicksilver R9 for tests and callers that show it: the chance, in rolls out of the engine's 99,
+/// that a monster of magic resistance `mr` resists an area spell, and the cut it then takes in
+/// percent. `(0, 0)` in stock.
+#[must_use]
+pub fn area_resist_chance(profile: Profile, mr: i32) -> (i32, i32) {
+    match profile {
+        Profile::Stock => (0, 0),
+        Profile::Quicksilver(b) => area_resist(b, mr),
+    }
+}
+
 /// The text for R9 when it takes anything off: the chance a monster's roll resists, as a whole
 /// percent of the 99 rolls, and the cut it then takes.
 fn area_resist_note(profile: Profile, mr: i32) -> Option<String> {

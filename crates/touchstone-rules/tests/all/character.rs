@@ -6,8 +6,8 @@ use touchstone_model::{AbilitySlot, Class, Item, Spell};
 use touchstone_rules::Profile;
 use touchstone_rules::character::*;
 use touchstone_rules::spell_cast::casting_stat;
-use touchstone_rules::stats::get_class_magery;
 use touchstone_rules::spells::SpellText;
+use touchstone_rules::stats::get_class_magery;
 use touchstone_vb6 as vb;
 
 fn i(v: &Value) -> i64 {
@@ -448,7 +448,10 @@ pub(crate) fn check_fixture(profile: Profile) {
                     let st = |k: usize| stats.base_stat[k] as i32;
                     let want = casting_stat(get_class_magery(class), st(1), st(2), st(5));
                     if t.casting_stat != want {
-                        bad.push(format!("{id}: casting stat {}, want {want}", t.casting_stat));
+                        bad.push(format!(
+                            "{id}: casting stat {}, want {want}",
+                            t.casting_stat
+                        ));
                     }
                 }
                 (profile_json(&t), out["result.refs"][0].clone())
