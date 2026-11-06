@@ -160,6 +160,192 @@ case("nochar-shops-all", [keyed(named(shops), "AddShop2LV", [{"lv": True}], "row
 case("nochar-classes-all", [keyed(named(classes), "AddClass2LV", [{"lv": True}], "rows", table="tabClasses", index="pkClasses")])
 case("nochar-races-all", [keyed(named(races), "AddRace2LV", [{"lv": True}], "rows", table="tabRaces", index="pkRaces")])
 
+# ---------------------------------------------------------------------------------- B. weapons without a character
+def combat(speed=0, vs=(40, 5, 20), mode=5, level_box=None):
+    f = {"chkWeaponOptions": arr({0: {"Value": 5}, 3: {"Value": 1}, 4: {"Value": speed}}),
+         "txtWeaponExtras": arr({2: {"Text": str(vs[0])}, 3: {"Text": str(vs[1])}, 4: {"Text": str(vs[2])}}),
+         "cmbWeaponCombos": arr({1: {"ListIndex": 0, "ItemData": [mode]}})}
+    return f
+
+
+BS_WEAPONS = with_ability(items, WEAPONS, 116, 400)
+ABIL_WEAPONS = {a: with_ability(items, WEAPONS, a, 400) for a in (43, 22, 58, 135, 116, 105)}
+
+
+def nochar_weapon_cases():
+    plain = dict(NOCHAR)
+    case("nochar-weapons-plain", [populate("p5", False, 5), weapon_rows("rows", WEAPONS, "p5")], forms=plain)
+    f = dict(NOCHAR)
+    f.update(combat(1))
+    case("nochar-weapons-combat", [populate("p5", False, 5), weapon_rows("rows", stride(WEAPONS, 70), "p5", 0, 5)], forms=f)
+    # mode 0 reads the mode from cmbWeaponCombos(1); backstab needs the stealth profile
+    f4 = dict(NOCHAR)
+    f4.update(combat(0, (10, 3, 10), 4))
+    case("nochar-weapons-backstab", [populate("p4", False, 4), weapon_rows("rows", stride(BS_WEAPONS, 40) + stride(WEAPONS, 12, 3), "p4", 0, 0)],
+         forms=f4)
+    steps = [populate("p%d" % m, False, m) for m in range(1, 8)]
+    for m in range(1, 8):
+        steps.append(weapon_rows("lab%d" % m, stride(WEAPONS, 5, m), "p%d" % m, -1, m))
+    case("nochar-weapons-labels", steps, forms=dict(NOCHAR, **combat(0, (0, 0, 0), 5)))
+    steps = [populate("p5", False, 5)]
+    for a, keys in ABIL_WEAPONS.items():
+        # ability 43 shows the cast spell: FilterWeapons only offers it for weapons that have the ability, and a spell
+        # number of 0 would mean "the spell under the table cursor", which the rows cannot depend on
+        steps.append(weapon_rows("abil%d" % a, keys[:14] + ([] if a == 43 else stride(WEAPONS, 4, a)), "p5", a, 5))
+    case("nochar-weapons-abilities", steps, forms=dict(NOCHAR))
+    # surprise punch: no record read for the name, but the cursor must be on a record (the IIf arms read the table)
+    f = dict(NOCHAR)
+    f.update(combat(0, (0, 0, 0), 4))
+    case("nochar-weapons-surprise-punch", [populate("p4", False, 4), weapon_rows("rows", [WEAPONS[0]], "p4", 0, -4)], forms=f)
+
+
+nochar_weapon_cases()
+
+# ---------------------------------------------------------------------------------- C. armour passes, races
+ARM_SAMPLE = stride(ARMOURS, 60)
+case("nochar-armour-abilities", [item_rows("a%d" % a, with_ability(items, ARMOURS, a, 12), "AddArmour2LV", [False, a])
+                                 for a in (22, 58, 135, 105, 106, 4, 2)])
+case("nochar-armour-sort-tags", [
+    dict(item_rows("rows", ARM_SAMPLE, "AddArmour2LV", [False, 0], lv="shared"),
+         post=[{"call": "SetArmourACDRSortTags", "args": [{"lv": True}, False]},
+               {"call": "ArmourACDRTagsAreByDR", "args": [{"lv": True}]},
+               {"call": "SetArmourACDRSortTags", "args": [{"lv": True}, True]},
+               {"call": "ArmourACDRTagsAreByDR", "args": [{"lv": True}]}])])
+case("nochar-races-color", [
+    dict(keyed(named(races), "AddRace2LV", [{"lv": True}], "all", table="tabRaces", index="pkRaces", lv="shared"),
+         post=[{"call": "RaceColorCode", "args": [{"lv": True}]}]),
+    dict(keyed(named(races)[:5], "AddRace2LV", [{"lv": True}], "five", table="tabRaces", index="pkRaces", lv="shared"),
+         post=[{"call": "RaceColorCode", "args": [{"lv": True}]}]),
+    dict(keyed(named(races)[7:8], "AddRace2LV", [{"lv": True}], "one", table="tabRaces", index="pkRaces", lv="shared"),
+         post=[{"call": "RaceColorCode", "args": [{"lv": True}]}])])
+
+# ---------------------------------------------------------------------------------- D. spells without a character
+SPELL_STRIDE = stride(SPELLS, 120)
+case("nochar-spells", [populate("ps", False), spell_rows("rows", SPELL_STRIDE, "ps")], forms=dict(NOCHAR))
+case("nochar-spells-bless", [populate("ps", False), spell_rows("rows", stride(SPELLS, 150, 7), "ps", True, watch="cmbCharBless(0)")],
+     forms=dict(NOCHAR))
+
+# ---------------------------------------------------------------------------------- D2. edges of the form values
+EDGE_KEYS = stride(WEAPONS, 4, 9)
+for tag, extras in (("overflow", ("3000000000", "0", "0")), ("round", ("2.5", "3.5", "-0.5")), ("negative", ("-40", "-3", "-7"))):
+    f = dict(NOCHAR)
+    f.update(combat(0, extras, 5))
+    case("edge-weapon-extras-" + tag, [populate("p5", False, 5), weapon_rows("rows", EDGE_KEYS, "p5", 0, 0)], forms=f)
+EDGE_SPELLS = stride(SPELLS, 24, 5)
+for tag, box in (("half", "27.5"), ("tiny", "0.4"), ("overflow", "40000"), ("zero", "0"), ("neg", "-3")):
+    case("edge-spell-level-" + tag, [populate("ps", False, 0, 0, True), spell_rows("rows", EDGE_SPELLS, "ps")], forms={
+        "chkGlobalFilter": {"Value": 1}, "txtGlobalLevel": arr({0: {"Text": "50"}, 1: {"Text": box}}),
+        "chkSpellOptions": arr({0: {"Value": 1}, 1: {"Value": 5}, 2: {"Value": 1}}), "txtSpellOptions": arr({0: {"Text": "999999999999"}})})
+
+# ---------------------------------------------------------------------------------- D3. a lair party: no loaded character, level 0
+PARTY = {"chkGlobalFilter": {"Value": 1}, "optMonsterFilter": arr({1: {"Value": True}}),
+         "txtMonsterLairFilter": arr({k: {"Text": {0: "3", 5: "1200", 7: "40", 8: "250"}.get(k, "0")} for k in range(9)}),
+         "txtMonsterDamage": {"Text": "35"}}
+
+
+def party_populate(name, mode=0):
+    return {"call": "PopulateCharacterProfile", "args": [prof(), False, False, mode, 0, False], "as": name}
+
+
+for tag, calc, box in (("plain", 0, "27"), ("combat", 1, "27.5"), ("nolevel", 0, "0"), ("overflow", 1, "40000")):
+    case("party-spells-" + tag, [party_populate("ps"), spell_rows("rows", stride(SPELLS, 40, 3), "ps")], forms=dict(
+        PARTY, txtGlobalLevel=arr({0: {"Text": "50"}, 1: {"Text": box}}),
+        chkSpellOptions=arr({0: {"Value": calc}, 1: {"Value": 5}, 2: {"Value": calc}}), txtSpellOptions=arr({0: {"Text": "30"}})))
+f = dict(PARTY)
+f.update(combat(0, (10, 3, 10), 5))
+case("party-weapons", [party_populate("p5", 5), party_populate("p4", 4), weapon_rows("rows", stride(WEAPONS, 30, 2), "p5", 0, 5),
+                       weapon_rows("bs", stride(BS_WEAPONS, 10), "p4", 0, 4)], forms=f)
+
+# ---------------------------------------------------------------------------------- E. three characters
+CHARS = [("warrior", "ladder-c1-l50"), ("mage", "ladder-c12-l50"), ("mystic", "ladder-c15-l50")]
+PC = {c["id"]: c for c in PIPE["cases"]}
+
+
+def char_forms(base, **more):
+    f = json.loads(json.dumps(PC[base]["forms"]["frmMain"]))
+    f["txtGlobalLevel"]["$array"]["1"] = {"Text": f["txtGlobalLevel"]["$array"]["0"]["Text"]}
+    f.update(more)
+    return f
+
+
+def char_case(who, base, suffix, steps, **more):
+    cid = "%s-%s" % (who, suffix)
+    f = char_forms(base, **more)
+    case(cid, [{"call": "RefreshAll"}] + steps, forms=f, globals_=PC[base]["globals"])
+
+
+for who, base in CHARS:
+    eq = PC[base]["globals"]["nEquippedItem"]
+    mine = [n for n in (eq[16], eq[12]) if n in items and items[n]["ItemType"] == 1]
+    sample = sorted(set(stride(WEAPONS, 90) + mine))
+    char_case(who, base, "weapons-plain", [populate("p5", True, 5), weapon_rows("rows", sample, "p5")])
+    char_case(who, base, "weapons-combat", [populate("p5", True, 5), weapon_rows("rows", stride(WEAPONS, 60, 1) + mine, "p5", 0, 0)],
+              **combat(1, (30, 6, 15), 5))
+    bs = stride(BS_WEAPONS, 30) + mine
+    char_case(who, base, "weapons-backstab", [populate("p4", True, 4), weapon_rows("rows", bs, "p4", 0, 4)], **combat(0, (10, 3, 10), 4))
+    steps = [populate("p%d" % m, True, m) for m in range(1, 8)]
+    for m in range(1, 8):
+        steps.append(weapon_rows("lab%d" % m, stride(WEAPONS, 6, m) + mine, "p%d" % m, -1, m))
+    char_case(who, base, "weapons-labels", steps, **combat(0, (20, 4, 10), 5))
+    steps = [populate("p5", True, 5)]
+    for a in (43, 22, 58, 135, 116):
+        steps.append(weapon_rows("abil%d" % a, ABIL_WEAPONS[a][:10], "p5", a, 5))
+    char_case(who, base, "weapons-abilities", steps, **combat(0, (20, 4, 10), 5))
+    char_case(who, base, "spells", [populate("ps", False), spell_rows("rows", stride(SPELLS, 160, 3), "ps")])
+    char_case(who, base, "spells-combat", [populate("ps", False), spell_rows("rows", stride(SPELLS, 90, 11), "ps")],
+              chkSpellOptions=arr({0: {"Value": 1}, 1: {"Value": 5}, 2: {"Value": 1}}), txtSpellOptions=arr({0: {"Text": "35"}}))
+    char_case(who, base, "spells-combat2", [populate("ps", False), spell_rows("rows", stride(SPELLS, 60, 5), "ps")],
+              chkSpellOptions=arr({0: {"Value": 1}, 1: {"Value": 5}, 2: {"Value": 0}}), txtSpellOptions=arr({0: {"Text": "0"}}))
+    # global filter on but no loaded character (forced off): the level comes from txtGlobalLevel(1)
+    char_case(who, base, "spells-filter-level", [populate("ps", False, 0, 0, True), spell_rows("rows", stride(SPELLS, 60, 2), "ps")],
+              chkSpellOptions=arr({0: {"Value": 1}, 1: {"Value": 5}, 2: {"Value": 0}}), txtSpellOptions=arr({0: {"Text": "20"}}),
+              txtGlobalLevel=arr({0: {"Text": "50"}, 1: {"Text": "27"}}))
+
+# ---------------------------------------------------------------------------------- data for the Rust test
+EQUIPPED = {n for _, base in CHARS for n in PC[base]["globals"]["nEquippedItem"] if n in items}
+FULL_ITEMS = sorted(set(WEAPONS) | set(ARMOURS) | EQUIPPED)
+ITEM_FIELDS = ["Number", "Name", "Limit", "Encum", "ItemType", "Min", "Max", "ArmourClass", "DamageResist", "WeaponType",
+               "ArmourType", "Worn", "Accy", "StrReq", "Speed"]
+
+
+def item_row(n):
+    r = items[n]
+    return [r[k] for k in ITEM_FIELDS] + [[r["ClassRest-%d" % k] for k in range(10) if r["ClassRest-%d" % k]], ab(r, 20)]
+
+
+SPELL_FIELDS = ["Number", "Name", "Short", "ReqLevel", "EnergyCost", "ManaCost", "MinBase", "MaxBase", "Diff", "TypeOfResists",
+                "Targets", "Dur", "AttType", "Magery", "MageryLVL", "Cap", "MaxIncLVLs", "MaxInc", "MinIncLVLs", "MinInc",
+                "DurIncLVLs", "DurInc", "Learnable"]
+
+
+def spell_row(n):
+    r = spells[n]
+    return ([r["Number"], r["Name"] or "", r["Short"] or ""] + [r[k] for k in SPELL_FIELDS[3:]]
+            + [1 if r["Learned From"] else 0, ab(r, 10)])
+
+
+CLASS_FIELDS = ["Number", "Name", "MinHits", "MaxHits", "ExpTable", "MageryType", "MageryLVL", "WeaponType", "ArmourType", "CombatLVL"]
+RACE_FIELDS = ["Number", "Name", "mSTR", "mINT", "mWIL", "mAGL", "mHEA", "mCHM", "xSTR", "xINT", "xWIL", "xAGL", "xHEA", "xCHM",
+               "HPPerLVL", "ExpTable", "BaseCP"]
+# Textblocks a spell ability (148) can reach; GetAbilityStats prints parts of their Action text
+TB_NUMBERS = sorted({r["AbilVal-%d" % k] for r in spells.values() for k in range(10) if r["Abil-%d" % k] == 148 and r["AbilVal-%d" % k] in tbinfo})
+
+DATA = {
+    "item_fields": ITEM_FIELDS + ["ClassRest(nonzero)", "Abilities(ability,value)"],
+    "items": [item_row(n) for n in FULL_ITEMS],
+    "sundry_fields": ["Number", "Name", "Limit", "Encum", "ItemType"],
+    "sundry": [[n, items[n]["Name"], items[n]["Limit"], items[n]["Encum"], items[n]["ItemType"]] for n in OTHERS if n not in EQUIPPED],
+    "spell_fields": SPELL_FIELDS + ["LearnedFrom(1 if not empty)", "Abilities(ability,value)"],
+    "spells": [spell_row(n) for n in sorted(spells)],
+    "class_fields": CLASS_FIELDS + ["Abilities(ability,value)"],
+    "classes": [[classes[n][k] for k in CLASS_FIELDS] + [ab(classes[n], 10)] for n in sorted(classes)],
+    "race_fields": RACE_FIELDS + ["Abilities(ability,value)"],
+    "races": [[races[n][k] for k in RACE_FIELDS] + [ab(races[n], 10)] for n in sorted(races)],
+    "shops": [[n, shops[n]["Name"], shops[n]["ShopType"]] for n in sorted(shops)],
+    "monster_names": [[n, monsters[n] or ""] for n in sorted(monsters)],
+    "textblocks": [[n, tbinfo[n] or ""] for n in TB_NUMBERS],
+}
+
 scn = {
     "family": "rows",
     "description": "List-row builders (FAM-21 without monsters): AddWeapon2LV, AddArmour2LV, AddOtherItem2LV, AddSpell2LV, "
@@ -167,9 +353,10 @@ scn = {
     "notes": [],
     "database": True,
     "frm": PIPE["frm"],
-    "data": {},
+    "data": DATA,
     "globals": {"nNMRVer": 1.83, "gAvgLevelMaxAllStats": 0.0},
     "forms": SETUP_FORMS,
+    "read": {"accuracy_tag": "%c.lblInvenCharStat(10).Tag"},
     "cases": cases,
 }
 with open(OUT, "w") as f:

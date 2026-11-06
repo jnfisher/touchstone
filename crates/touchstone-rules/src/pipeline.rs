@@ -420,7 +420,13 @@ impl CharacterState {
     /// The slice of the profile `CalculateAttack` reads.
     #[must_use]
     pub fn attack_profile(&self) -> attack::CharacterProfile {
-        let p = &self.profile;
+        Self::attack_profile_of(&self.profile)
+    }
+
+    /// The same slice for any profile, such as one [`CharacterState::profile_for`] built for
+    /// another kind of attack, or the profile of "no character".
+    #[must_use]
+    pub fn attack_profile_of(p: &CharacterProfile) -> attack::CharacterProfile {
         attack::CharacterProfile {
             is_loaded_character: p.is_loaded_character,
             level: p.level,

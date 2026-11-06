@@ -556,7 +556,7 @@ class RecItems(ExtObject):
 class RecordingListViewShim(ControlShim):
     """A ListView that records the rows MME's Add*2LV procedures build. The scenario may preload rows:
     {"$recordlv": [{"Text": "1", "Tag": "x", "Sub": ["a", ["b", "tag"]]}]}; `dump()` is what a `%lv.` read returns:
-    per row [text, tag, [[text, tag, forecolor], ..]] with null for a tag or colour that was never assigned."""
+    per row [text, tag, cells] (see dump)."""
 
     def __init__(self, rows=None, decode=_plain):
         super().__init__({}, decode)
@@ -579,10 +579,16 @@ class RecordingListViewShim(ControlShim):
         return super().vb_get(name, args)
 
     def dump(self, enc):
+        """[Text, Tag, cells] per row; a cell is its Text alone when its Tag and ForeColor were never assigned,
+        else [Text, Tag, ForeColor] with null for what was not assigned. Tags are CStr of the assigned Variant."""
         def tag(x):
             return None if x is None else (x if isinstance(x, str) else V.c_str(x))
-        return [[r.text, tag(r.tag), [[s.text, tag(s.tag), None if s.fore is None else int(V.int_value(s.fore))]
-                                      for s in r.subs]] for r in self.rows]
+
+        def cell(s):
+            if s.tag is None and s.fore is None:
+                return s.text
+            return [s.text, tag(s.tag), None if s.fore is None else int(V.int_value(s.fore))]
+        return [[r.text, tag(r.tag), [cell(s) for s in r.subs]] for r in self.rows]
 
 
 class ControlArrayShim(ExtObject):

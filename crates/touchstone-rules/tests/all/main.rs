@@ -18,6 +18,7 @@ mod item_value;
 mod monster_glue;
 mod monster_sim;
 mod pipeline;
+mod rows;
 mod spell_cast;
 mod spells;
 mod stats;
