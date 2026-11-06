@@ -8,6 +8,7 @@ mod accuracy;
 mod attack;
 mod calculators;
 mod char_panel;
+mod character;
 mod exp;
 mod exp_per_hour;
 mod game_text;
