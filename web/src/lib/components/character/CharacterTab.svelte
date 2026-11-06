@@ -6,6 +6,7 @@
 	import { cardCls } from '../calc/styles';
 	import PasteDialog from '../paste/PasteDialog.svelte';
 	import CombatDialog from './CombatDialog.svelte';
+	import { combatPrefill } from '$lib/handoff.svelte';
 	import BlessPanel from './BlessPanel.svelte';
 	import DerivedPanel from './DerivedPanel.svelte';
 	import EquipPanel from './EquipPanel.svelte';
@@ -48,6 +49,14 @@
 
 	let pasting = $state(false);
 	let combat = $state(false);
+	let combatGoto = $state<{ backstab?: number; spell?: number }>();
+	// a menu's "Set Combat Backstab Weapon" / "Set as Combat Attack/Heal Spell" opens the setup on that choice
+	$effect(() => {
+		if (combatPrefill.pending && store.doc.class !== null && store.doc.race !== null) {
+			combatGoto = combatPrefill.take();
+			combat = true;
+		}
+	});
 	let fileInput = $state<HTMLInputElement>();
 	let importNote = $state<string>();
 
@@ -186,5 +195,5 @@
 {/if}
 
 {#if combat}
-	<CombatDialog {store} onclose={() => (combat = false)} />
+	<CombatDialog {store} goto={combatGoto} onclose={() => ((combat = false), (combatGoto = undefined))} />
 {/if}

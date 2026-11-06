@@ -928,6 +928,8 @@ class FormShim(ExtObject):
                 self.controls[nl] = ListViewShim(props["$listview"], decode)
             elif isinstance(props, dict) and "$recordlv" in props:
                 self.controls[nl] = RecordingListViewShim(props["$recordlv"], decode)
+            elif isinstance(props, dict) and "$cliplv" in props:
+                self.controls[nl] = ClipListViewShim(props["$cliplv"], decode)
             elif isinstance(props, dict):
                 self.controls[nl] = ControlShim(props, decode)
             else:
@@ -960,6 +962,102 @@ class FormShim(ExtObject):
 
     def vb_set(self, name, args, value):
         self.vars[name.lower()] = value
+
+
+class ClipColumn(ExtObject):
+    """A ColumnHeader: Text and Width (a hidden column has Width 0)."""
+
+    def __init__(self, text, width):
+        self.text = text
+        self.width = width
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "text":
+            return self.text
+        if n == "width":
+            return V.mk_i32(self.width)
+        raise VBError(438)
+
+    def vb_default(self, args):
+        return self.text
+
+
+class ClipHeaders(ExtObject):
+    """`lv.ColumnHeaders`: Count, For Each, 1-based indexing."""
+
+    def __init__(self, cols):
+        self.cols = cols
+
+    def vb_get(self, name, args):
+        if name.lower() == "count":
+            return V.I32(len(self.cols))
+        raise VBError(438)
+
+    def vb_default(self, args):
+        i = V.int_value(args[0])
+        if i < 1 or i > len(self.cols):
+            raise VBError(35600, "Index out of bounds")
+        return self.cols[i - 1]
+
+    def vb_iter(self):
+        return iter(list(self.cols))
+
+
+class ClipSubItems(_SubItems):
+    def vb_iter(self):
+        return iter(list(self.subs))
+
+
+class ClipItem(ListItemShim):
+    """A ListItem that also answers `SubItems(i)` (the text of sub-item i) and `Tag`; its ListSubItems can be walked."""
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "subitems":
+            i = V.int_value(args[0])
+            if i < 1 or i > len(self.subs):
+                raise VBError(35600, "Index out of bounds")
+            return self.subs[i - 1].text
+        if n == "tag":
+            return ""
+        if n == "listsubitems":
+            sub = ClipSubItems(self.subs)
+            return sub.vb_default(args) if args else sub
+        return super().vb_get(name, args)
+
+
+class ClipItems(_ListItems):
+    def vb_iter(self):
+        return iter(list(self.rows))
+
+
+class ClipListViewShim(ControlShim):
+    """A ListView for the clipboard builders (family clipboard): {"$cliplv": {"name": "lvWeapons", "columns": [["Name", 2000],
+    ["Type", 0]], "rows": [{"Text": "1", "Sub": ["sword"], "Sel": true}]}}. Columns have a Text and a Width (0 hides it);
+    `SelectedItem` is the first selected row (Nothing when none). Nothing in it changes."""
+
+    def __init__(self, spec, decode=_plain):
+        super().__init__({}, decode)
+        self.props["name"] = str(spec.get("name", ""))
+        self.cols = [ClipColumn(str(c[0]), int(c[1]) if len(c) > 1 else 1000) for c in spec.get("columns", [])]
+        self.rows = []
+        for r in spec.get("rows", []):
+            li = ClipItem(str(r.get("Text", "")), [str(x) for x in r.get("Sub", [])])
+            li.selected = bool(r.get("Sel", False))
+            self.rows.append(li)
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "listitems":
+            lst = ClipItems(self.rows)
+            return lst.vb_default(args) if args else lst
+        if n == "columnheaders":
+            heads = ClipHeaders(self.cols)
+            return heads.vb_default(args) if args else heads
+        if n == "selecteditem":
+            return next((r for r in self.rows if r.selected), NOTHING)
+        return super().vb_get(name, args)
 
 
 class ClipboardShim(ExtObject):

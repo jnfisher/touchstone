@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
-	import { api, type Item, type Spell, type TableName, type TableTypes } from '$lib/api';
+	import { api, type Item, type Shop, type Spell, type TableName, type TableTypes } from '$lib/api';
 	import ClassRaceBuilder from '$lib/components/ClassRaceBuilder.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import DamageQuestion from '$lib/components/DamageQuestion.svelte';
@@ -10,7 +10,11 @@
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopControls from '$lib/components/ShopControls.svelte';
 	import SpellEffect from '$lib/components/SpellEffect.svelte';
+	import RowContextMenu from '$lib/components/RowContextMenu.svelte';
 	import SplitPane from '$lib/components/SplitPane.svelte';
+	import { buildMenu, type ActionId, type MenuList } from '$lib/contextmenu';
+	import { vsMob, vsMobOptions } from '$lib/handoff.svelte';
+	import { createMenuActions, type MenuTarget } from '$lib/menuactions.svelte';
 	import { getCharacterStore, openLastCharacter } from '$lib/character.svelte';
 	import { getCompareStore } from '$lib/compare.svelte';
 	import { COMPARE_KINDS, type CompareKind } from '$lib/compare';
@@ -137,7 +141,9 @@
 				...(isMonsters
 					? { monsters: { ...$state.snapshot(monsterBoxes.controls), ...(list ? {} : { ask_damage: true }) } }
 					: {}),
-				...(list ? { numbers: $state.snapshot(list.numbers) } : {})
+				...(list ? { numbers: $state.snapshot(list.numbers) } : {}),
+				// "Set Weapon/Spell Combat Calc. to Mob" from the monsters' menu
+				...vsMobOptions(slug)
 			},
 			isMonsters
 		);
@@ -217,6 +223,107 @@
 	});
 	// A pane for another record would flash while the new one loads.
 	const livePane = $derived(pane && pane.kind === kind && pane.number === Number(selectedId) ? pane : undefined);
+
+	// ---- the right-click menu (PopUp*Menu) ----
+	const actions = createMenuActions();
+	let ctx = $state.raw<MenuTarget>();
+	const LIST_OF: Record<string, [MenuList, MenuList]> = {
+		weapons: ['weapons', 'weaponCompare'],
+		armour: ['armour', 'armourCompare'],
+		spells: ['spells', 'spellCompare'],
+		monsters: ['monsters', 'monsterCompare'],
+		shops: ['shops', 'shops'],
+		items: ['otherItems', 'otherItems'],
+		races: ['races', 'races'],
+		classes: ['classes', 'classes']
+	};
+	const LOC_OF: Record<string, [MenuList, MenuList]> = {
+		weapons: ['weaponLoc', 'weaponCompareLoc'],
+		armour: ['armourLoc', 'armourCompareLoc'],
+		spells: ['spellLoc', 'spellCompareLoc'],
+		shops: ['shopLoc', 'shopLoc'],
+		items: ['otherItemLoc', 'otherItemLoc'],
+		monsters: ['monsterDetail', 'monsterCompareLoc']
+	};
+	const pick = (m: Record<string, [MenuList, MenuList]>) => m[slug]?.[list ? 1 : 0];
+	const val = (t: string | undefined) => Number.parseFloat(t ?? '') || 0;
+
+	function rowMenu(row: EvalRow) {
+		const l = pick(LIST_OF);
+		if (!l) return;
+		const cells = row.cells.map((c) => c.text);
+		ctx = {
+			list: l,
+			number: row.number,
+			columns: payload?.columns.map((c) => c.header),
+			cells,
+			shop: isShops ? { charm: shopView.buying || shopView.selling ? shopView.charm : 0, showSell: shopView.selling } : undefined,
+			lairStats: slug === 'monsters' && nmr >= 1.83 && monsterBoxes.controls.lair && val(cells[2]) === 0 && val(cells[12]) > 0
+		};
+	}
+
+	function paneMenu(e: { part: 'line' | 'shopLine' | 'ref'; index: number }) {
+		const p = livePane;
+		if (!p) return;
+		const base = { columns: undefined, number: 0 };
+		if (e.part === 'ref') {
+			const r = p.references[e.index];
+			const l = pick(LOC_OF);
+			if (!r || !l) return;
+			ctx = {
+				...base,
+				list: l,
+				number: r.target?.table === 'items' ? r.target.number : 0,
+				columns: ['Where', ...r.cells.map(() => 'What')],
+				cells: [r.text, ...r.cells.map((c) => c.text)]
+			};
+		} else if (e.part === 'line') {
+			const ln = p.lines?.[e.index];
+			if (!ln) return;
+			ctx = {
+				...base,
+				list: list ? 'monsterCompareLoc' : 'monsterDetail',
+				number: Number(selectedId),
+				cells: [ln.label, ...ln.cells.map((c) => c.text)],
+				lines: p.lines?.map((x) => ({ text: x.label, subs: x.cells.map((c) => c.text) })),
+				line: ln.target ? { kind: ln.target.table === 'rooms' ? 'room' : ln.target.table.replace(/s$/, ''), number: ln.target.number } : undefined
+			};
+		} else {
+			const stock = (selected as Shop | undefined)?.stock?.filter((x) => x.item !== 0) ?? [];
+			const row = p.rows.filter((x) => x.kind === 'shop_line')[e.index];
+			const slot = stock[e.index];
+			if (!row) return;
+			ctx = {
+				...base,
+				list: 'shopDetail',
+				number: slot?.item ?? 0,
+				columns: ['#', 'Name', 'Max', 'Regen', 'Cost'],
+				cells: [String(slot?.item ?? ''), row.label, String(slot?.max ?? ''), '', row.value]
+			};
+		}
+	}
+
+	const menuItems = $derived(ctx ? buildMenu({ list: ctx.list, lairStats: ctx.lairStats, autoCalcDamage: true }) : []);
+
+	async function runMenu(id: ActionId) {
+		const t = ctx;
+		if (!t) return undefined;
+		const p = livePane;
+		// the pane belongs to the selected record: use it when it is the row's
+		const mine = p && t.number === p.number && t.list === (pick(LIST_OF) ?? t.list);
+		const full: MenuTarget = mine
+			? {
+					...t,
+					detail: t.detail ?? p.text,
+					references: p.references.map((r) => ({ text: r.text, subs: r.cells.map((c) => c.text) })),
+					lines: t.lines ?? p.lines?.map((x) => ({ text: x.label, subs: x.cells.map((c) => c.text) }))
+				}
+			: t;
+		return actions.run(id, full);
+	}
+	const vsNote = $derived(
+		slug === 'weapons' ? vsMob.weapons : slug === 'spells' ? vsMob.spells : undefined
+	);
 
 	let itemIndex = $state.raw<Map<number, Item>>();
 	async function follow(r: { target: RefTarget | null }) {
@@ -304,6 +411,20 @@
 		{/if}
 	</div>
 
+	{#if vsNote}
+		<div class="bg-card flex items-center gap-2 rounded-md border px-3 py-1 text-sm" data-testid="vs-mob">
+			<span>
+				Calculated against {vsNote.name}{slug === 'weapons' ? ` (AC ${vsNote.ac}, DR ${vsNote.dr}, dodge ${vsNote.dodge})` : ` (MR ${vsNote.mr})`}
+			</span>
+			<button
+				type="button"
+				class="border-input hover:bg-accent h-6 rounded-md border px-2 text-xs"
+				data-testid="vs-mob-clear"
+				onclick={() => (slug === 'weapons' ? vsMob.setWeapons(undefined) : vsMob.setSpells(undefined))}>Clear</button
+			>
+		</div>
+	{/if}
+
 	{#if slug === 'monsters' && !list}
 		<MonsterFilters />
 	{/if}
@@ -319,6 +440,7 @@
 		{:else if !table || (computedTab && !payload)}
 			<p class="text-muted-foreground" data-testid="loading">Loading {title.toLowerCase()}...</p>
 		{:else}
+			<RowContextMenu items={menuItems} onAction={runMenu} onBefore={() => (ctx = undefined)}>
 			<SplitPane storageKey="touchstone.split.{slug}" autoWidth={gridWidth} bind:collapsed={detailHidden}>
 				{#snippet left()}
 					{#if computedTab}
@@ -330,6 +452,7 @@
 							quickFilter={search}
 							storageKey={list ? `compare-${slug}` : slug}
 							onSelect={(r: EvalRow) => selection.set(selKey, r.number)}
+							onRowContext={(r: EvalRow) => rowMenu(r)}
 							onCount={(n) => (shown = n)}
 							onWidth={(w) => (gridWidth = w)}
 						/>
@@ -356,6 +479,7 @@
 							bind:compare
 							canCompare={slug === 'weapons' || slug === 'armour'}
 							onLink={follow}
+							onMenu={paneMenu}
 						>
 							{#snippet before()}
 								{#if isShops}<ShopControls note={shopNote} />{/if}
@@ -376,6 +500,7 @@
 					{/if}
 				{/snippet}
 			</SplitPane>
+			</RowContextMenu>
 		{/if}
 	</div>
 </div>

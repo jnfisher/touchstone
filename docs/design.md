@@ -143,3 +143,10 @@ selected positions and answer the new rows plus the character with its saved `ca
 (`SaveCharacter`'s loops, 50 each). Rows live in the paste store so a paste and the panel share one list.
 Questions go through the same stateless prompt loop as the paste dialog. The character's `carried` list feeds
 `refresh_all` (`gear_rows`), which is how CARRIED rows count for abilities and encumbrance.
+
+## Context menus and clipboard (P4-15)
+
+`contextmenu.ts` decides which items MME's PopUp menus show per list (pure, tested); `menuactions.svelte.ts` runs them against
+the stores; `RowContextMenu.svelte` renders them. Calculators and the combat setup open prefilled through `handoff.svelte.ts`.
+`POST /api/clipboard/{character,monster,shop,lines}` answer `{text, error}` from `touchstone_rules::clipboard`; the page copies with
+`navigator.clipboard` and falls back to a selectable dialog.

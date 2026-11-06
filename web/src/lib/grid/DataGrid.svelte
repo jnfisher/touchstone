@@ -41,7 +41,8 @@
 		onWidth,
 		multiSelect = false,
 		selectedIds,
-		onSelectionIds
+		onSelectionIds,
+		onRowContext
 	}: {
 		rows: T[];
 		columnDefs: ColDef<T>[];
@@ -64,6 +65,8 @@
 		selectedIds?: string[];
 		/** The user's selection changed (multi-select mode), as row ids. */
 		onSelectionIds?: (ids: string[]) => void;
+		/** A right-click on a row (the context menu's row); the row is selected first, as MME's lists do. */
+		onRowContext?: (row: T, ids: string[]) => void;
 	} = $props();
 
 	let host: HTMLDivElement;
@@ -214,6 +217,12 @@
 				if (e.rowIndex === null || e.rowPinned) return;
 				const node = e.api.getDisplayedRowAtIndex(e.rowIndex);
 				if (node && !node.isSelected()) node.setSelected(true, true, 'rowClicked');
+			},
+			onCellContextMenu: (e) => {
+				if (!e.data || e.node.rowPinned) return;
+				// MME's lists keep a multi-selection when the clicked row is in it
+				if (!e.node.isSelected()) e.node.setSelected(true, !multiSelect, 'rowClicked');
+				onRowContext?.(e.data, e.api.getSelectedNodes().map((n) => n.id ?? ''));
 			},
 			onModelUpdated: (e) => onCount?.(e.api.getDisplayedRowCount()),
 			onFirstDataRendered: () => {

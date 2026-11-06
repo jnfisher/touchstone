@@ -4,6 +4,7 @@ mod api;
 pub mod calc;
 pub mod character;
 pub mod class_race_builder;
+pub mod clipboard;
 pub mod combat_setup;
 pub mod compare;
 pub mod config;
