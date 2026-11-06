@@ -188,7 +188,7 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   on loaded tables, so there is no failure path.
 - `ReachIsMonsterOK` computes on demand in MME (the filter freezes the window for a few seconds). The server does the
   same for the "Reachable only" list filter; the monster pane shows "(double-click to compute)" until the user runs
-  Calculate Reachability, and the Monsters toolbar button stands in for the Options menu item and the double-click.
+  Calculate Reachability, and the header's Options menu item stands in for the double-click (the Monsters tab keeps a "Reachability computed" chip).
 - The result belongs to one load: reloading the data drops it, as loading another database does in MME.
 - The fixture runs on a slice of the stock database (about 5,000 rooms; the whole map is too large to commit). The
   port was also compared with the oracle on the full stock map (26,694 rooms, 87,147 edges): every edge column, the
@@ -206,3 +206,26 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   rooms; the port asks afresh, which gives the same text.
 - MapGetRoomLoc compares each existing row's Tag with the teleport's `map/room` text; a numeric Tag (NPC, shop, placed item,
   room spell) makes that a type mismatch that ends the procedure, so such rooms lose their command rows. Reproduced.
+
+## Options menu and shell (P4-31)
+
+- Not ported: Import Character from NMR, Export Character to NMR and Reload MME. The web app imports `.mmec` files from
+  the Character tab and the server reloads its data on its own timer.
+- Reset All Character Fields does not ask "Unload character file first (no save)?". The browser autosaves the open
+  character, so a reset that stayed linked to the file would overwrite it; the port always starts a blank, unsaved
+  character and leaves the stored file alone (MME's Yes answer). The other two questions are kept. MME asks the
+  compare-lists question after it has already cleared the learned spells, so a Cancel there leaves half a reset; the
+  port asks both questions first and changes nothing on Cancel.
+- Reset All Character Fields also puts the global filter bar back to its defaults, as MME's `CharReset` does with the
+  class, race, level and alignment boxes.
+- Remove All Filters resets the global filter bar and the Monsters boxes, then every explorer's search box and grid
+  column filters. MME's `FilterAll(False)` resets its own per-tab controls (armour types, weapon speed, the ability
+  filters, ...), which the web lists do not have; it leaves the global filter alone.
+- The two checked items are stored in `settings.json` (`jump_to_compare`, `shops_first`, off when absent as in
+  `LoadSettings`). "Jump to Equip/Lists on Add" opens the Compare tab on the list that was added to.
+- The menu shortcuts (Ctrl+P, Ctrl+D, Ctrl+J, Ctrl+F2, Ctrl+F5) are not bound: the browser owns most of them.
+- Back/forward history keeps the tab and the record selected on it. MME keeps only a back stack of 50 tabs (mouse
+  back button); the port adds a forward direction, Alt+Left/Alt+Right and toolbar buttons. A move replaces the browser
+  history entry, so the browser's back button keeps its own list.
+- The data version (`LoadInfo`'s version label, creation date, NMR version) is shown in an info popover, with the row
+  counts. MME's "this database lacks features" warnings for old NMR versions are not shown.

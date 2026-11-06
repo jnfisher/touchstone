@@ -8,6 +8,7 @@
 		type GridApi
 	} from 'ag-grid-community';
 	import { onMount } from 'svelte';
+	import { filterReset } from '$lib/explorer-state.svelte';
 	import { findNext, fitWidth, loadWidths, saveWidths, toTsv, type Widths } from './helpers';
 
 	ModuleRegistry.registerModules([AllCommunityModule]);
@@ -245,6 +246,10 @@
 		};
 	});
 
+	$effect(() => {
+		void filterReset.epoch;
+		api?.setFilterModel(null);
+	});
 	$effect(() => {
 		api?.setGridOption('quickFilterText', quickFilter);
 	});

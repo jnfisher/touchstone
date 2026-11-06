@@ -123,6 +123,10 @@ pub struct Settings {
     pub route_waypoint_interval: i32,
     /// `AutoLoadLastChar`: open the last character when the page starts.
     pub auto_load_last_char: bool,
+    /// `JumpToCompare` (Options > Jump to Equip/Lists on Add): adding to a compare list opens the Compare tab.
+    pub jump_to_compare: bool,
+    /// `ShopsFirstInRefs` (Options > Show shops first in item references).
+    pub shops_first: bool,
 }
 
 impl Default for Settings {
@@ -132,6 +136,9 @@ impl Default for Settings {
             monster_sim_rounds: SIM_ROUNDS_DEFAULT,
             route_waypoint_interval: WAYPOINT_DEFAULT,
             auto_load_last_char: true,
+            // LoadSettings reads a missing key as 0.
+            jump_to_compare: false,
+            shops_first: false,
         }
     }
 }

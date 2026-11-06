@@ -13,6 +13,7 @@ import { calcPrefill, combatPrefill, vsMob } from './handoff.svelte';
 import { dialogs } from './dialogs.svelte';
 import { selection } from './explorer-state.svelte';
 import { createItemManager } from './itemmanager.svelte';
+import { getSettingsStore } from './settings.svelte';
 import { api } from './api';
 import { castRows, chestClipText, counterRows } from './spelltools';
 
@@ -44,6 +45,8 @@ export interface Deps {
 	chars?: CharacterStore;
 	cmp?: CompareStore;
 	go?: (to: string) => unknown;
+	/** Options > Jump to Equip/Lists on Add (`mnuJumpToCompare.Checked`). */
+	jump?: () => boolean;
 }
 
 const COMPARE_OF_LIST: Partial<Record<MenuList, CompareKind>> = {
@@ -78,6 +81,19 @@ export function createMenuActions(deps: Deps = {}) {
 	const chars = deps.chars ?? getCharacterStore();
 	const cmp = deps.cmp ?? getCompareStore();
 	const go = deps.go ?? ((to: string) => goto(to));
+	const jump = deps.jump ?? (() => getSettingsStore().current.jump_to_compare);
+
+	/**
+	 * `CompareAddItem` and its siblings: on the list means off it, otherwise on the end; an add (not a removal)
+	 * opens the Compare tab on that list when the Options item is checked.
+	 */
+	async function addToCompare(kind: CompareKind, n: number) {
+		const had = cmp.lists[kind].includes(n);
+		cmp.toggle(kind, n);
+		if (had || !jump()) return;
+		cmp.setActive?.(kind);
+		await go('/compare');
+	}
 
 	async function copy(res: ClipResult): Promise<string> {
 		const out = await deliver(res);
@@ -114,14 +130,14 @@ export function createMenuActions(deps: Deps = {}) {
 			const at = cmp.lists[kind].indexOf(n);
 			if (at >= 0) cmp.removeAt(kind, at);
 		} else {
-			cmp.toggle(kind, n);
+			await addToCompare(kind, n);
 		}
 	}
 
 	async function addItemToCompare(n: number) {
 		const [c] = await compareClient.classify([n]);
-		if (c?.kind === 'weapon') cmp.toggle('weapons', n);
-		else if (c?.kind === 'armour') cmp.toggle('armour', n);
+		if (c?.kind === 'weapon') await addToCompare('weapons', n);
+		else if (c?.kind === 'armour') await addToCompare('armour', n);
 	}
 
 	async function addToItemManager(numbers: number[]): Promise<string> {
@@ -218,6 +234,7 @@ export function createMenuActions(deps: Deps = {}) {
 	}
 
 	return {
+		addToCompare,
 		/** Runs one menu item; resolves to a short message for the page to show. */
 		async run(id: ActionId, t: MenuTarget): Promise<string | undefined> {
 			const n = t.number ?? 0;
@@ -237,9 +254,9 @@ export function createMenuActions(deps: Deps = {}) {
 					if (t.list === 'monsterDetail' || t.list === 'monsterCompareLoc') {
 						const l = t.line;
 						if (!l) return undefined;
-						if (l.kind === 'monster') cmp.toggle('monsters', l.number);
+						if (l.kind === 'monster') await addToCompare('monsters', l.number);
 						else if (l.kind === 'item') await addItemToCompare(l.number);
-						else if (l.kind === 'spell') cmp.toggle('spells', l.number);
+						else if (l.kind === 'spell') await addToCompare('spells', l.number);
 					} else {
 						await toggleList('monsters', n, t.list === 'monsterCompare');
 					}

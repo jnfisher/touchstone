@@ -22,6 +22,11 @@ describe('detail panes', () => {
 		expect(paneKind('rooms')).toBeUndefined();
 	});
 
+	it('sends shops_first for the item pane only when Show shops first is on (mnuShopsFirst.Checked)', () => {
+		expect(paneBody(undefined, DEFAULT_FILTER, { shopsFirst: true }).shops_first).toBe(true);
+		expect(paneBody(undefined, DEFAULT_FILTER).shops_first).toBeUndefined();
+	});
+
 	it('sends the character only while the bar mirrors it', () => {
 		const doc = { class: 1, race: 1 } as never;
 		expect(paneBody(doc, DEFAULT_FILTER).character).toBe(doc);
