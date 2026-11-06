@@ -64,8 +64,9 @@ def _key(v):
 class Database:
     """Read-only handle on the converted stock database; tables are loaded on first use."""
 
-    def __init__(self, path, extra=None):
+    def __init__(self, path, extra=None, only=None):
         self.path = path
+        self.only = only or {}      # {"Monsters": [numbers]}: keep only the rows whose first column is listed
         self.extra = extra or {}    # {"Items": [{column: value}]}: invented rows appended after the stock ones
         self._tables = {}
         self._indexes = {}          # (table, index name) -> built index, shared by every recordset opened on it
@@ -97,6 +98,9 @@ class Database:
                                         "or query '%s'." % name)
                 rows = [tuple(_vb_value(x, d) for x, d in zip(r, decls))
                         for r in con.execute('SELECT * FROM "%s" ORDER BY rowid' % name)]
+                if name in self.only:
+                    keep = set(self.only[name])
+                    rows = [r for r in rows if r[0] in keep]
                 for extra in self.extra.get(name, []):
                     rows.append(tuple(_vb_value(extra.get(c), d) for c, d in zip(cols, decls)))
             finally:
