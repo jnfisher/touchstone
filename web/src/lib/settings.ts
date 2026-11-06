@@ -181,6 +181,11 @@ export function shownModels(quicksilver: boolean, b: ExpHrBlock): ExpHrBlock {
   return { ...b, model_a: false, model_b: false, model_c: false, model_d: true };
 }
 
+/** The Monsters list shows the model note when the profile turns off a model the stored settings have on. */
+export function modelsHidden(quicksilver: boolean, b: ExpHrBlock): boolean {
+  return quicksilver && (b.model_a || b.model_b || b.model_c);
+}
+
 export function noModelTicked(b: ExpHrBlock): boolean {
   return !MODELS.some((m) => b[m]);
 }

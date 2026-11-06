@@ -12,6 +12,7 @@ import {
   filterNumberText,
   noModelTicked,
   shownModels,
+  modelsHidden,
   QUICKSILVER_MODEL_NOTE,
   normalizeModels,
   predictKnob,
@@ -92,6 +93,13 @@ describe("models", () => {
     expect(shownModels(false, stored)).toBe(stored);
     expect(stored.model_a).toBe(true);
     expect(QUICKSILVER_MODEL_NOTE).toContain("Model D");
+  });
+
+  it("says when the Quicksilver rules hide a ticked model", () => {
+    const stored = defaultBlock();
+    expect(modelsHidden(true, { ...stored, model_a: true })).toBe(true);
+    expect(modelsHidden(true, { ...stored, model_a: false, model_b: false, model_c: false })).toBe(false);
+    expect(modelsHidden(false, { ...stored, model_a: true })).toBe(false);
   });
 
   it("turns A, B and C on when none is ticked", () => {

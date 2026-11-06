@@ -3,7 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { api, type Info } from '$lib/api';
-	import { infoLines } from '$lib/info';
+	import { infoLines, profileLines } from '$lib/info';
 	import { keyLines } from '$lib/sections';
 	import InfoIcon from '@lucide/svelte/icons/info';
 
@@ -19,6 +19,7 @@
 		}
 	}
 	const lines = $derived(info ? infoLines(info) : []);
+	const rules = $derived(info ? profileLines(info) : []);
 	const keys = keyLines();
 </script>
 
@@ -37,6 +38,15 @@
 		{:else}
 			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
 				{#each lines as l (l.label)}
+					<dt class="text-muted-foreground">{l.label}</dt>
+					<dd class="min-w-0 break-words text-right tabular-nums">{l.value}</dd>
+				{/each}
+			</dl>
+		{/if}
+		{#if rules.length}
+			<h2 class="mt-3 mb-1 text-sm font-semibold">Rules profile</h2>
+			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm" data-testid="profile-lines">
+				{#each rules as l (l.label)}
 					<dt class="text-muted-foreground">{l.label}</dt>
 					<dd class="min-w-0 break-words text-right tabular-nums">{l.value}</dd>
 				{/each}

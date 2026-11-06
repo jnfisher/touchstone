@@ -7,6 +7,7 @@
 	import DamageQuestion from '$lib/components/DamageQuestion.svelte';
 	import MonsterStatus from '$lib/components/MonsterStatus.svelte';
 	import MonsterFilters from '$lib/components/MonsterFilters.svelte';
+	import ProfileModelNotice from '$lib/components/ProfileModelNotice.svelte';
 	import SpellFilters from '$lib/components/SpellFilters.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopControls from '$lib/components/ShopControls.svelte';
@@ -506,6 +507,7 @@
 	{/if}
 
 	{#if slug === 'monsters' && !list}
+		<ProfileModelNotice />
 		<MonsterFilters />
 	{/if}
 	{#if slug === 'spells' && !list}
