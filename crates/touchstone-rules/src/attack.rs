@@ -1,8 +1,9 @@
 //! Swings, energy and weapon damage (FAM-07). Card P3-09.
 //!
 //! [`calculate_attack`] is the weapon/martial-arts damage calculator; the energy, Quick and Deadly,
-//! backstab and true-average helpers sit beside it. Stock rules only: `Profile` has no other
-//! variant, so MME's GreaterMUD branches are simply absent.
+//! backstab and true-average helpers sit beside it. MME's GreaterMUD branches are absent; a
+//! Quicksilver profile (`docs/quicksilver-profile.md`) changes the backstab (R1) and lets it crit (R3),
+//! the crit knee (R11) and, in later cards, the rest of part 1.
 //!
 //! MME reads a lot of state from globals; here it is plain data. [`CharacterProfile`] is the part
 //! of `tCharacterProfile` the calculator reads, [`EquippedGlobals`] is the `nGlobalChar*` weapon
@@ -335,11 +336,39 @@ pub fn get_quick_and_deadly_bonus(
 // ---------------------------------------------------------------------------------------------
 // Backstab damage and true average
 
-/// Port of modMMudFunc CalcBSDamage (stock): backstab damage for a level, stealth, weapon damage
-/// and bonus. Without class stealth the damage is cut to 75%. An error leaves the value MME had
-/// reached when it hit it.
+/// The flat part of a stab: the stealth term plus twice the level. Stock divides stealth by 10;
+/// Quicksilver (R1) divides by `backstab_stealth_div` and reads the level held to `scalecap`.
+fn stab_flat(profile: Profile, level: i16, stealth: i16) -> Res<f64> {
+    let (level, div) = match profile {
+        Profile::Stock => (level, 10),
+        Profile::Quicksilver(b) => (stab_level(b, level), b.backstab_stealth_div.max(1)),
+    };
+    Ok(f64::from(vb::mul_i16(level, 2)?) + vb::fix(f64::from(stealth) / f64::from(div)))
+}
+
+/// The level multiplier of a stab, in percent. Stock is `100 + level`; Quicksilver (R1) is
+/// `100 + L * backstab_level_pct / 100` with whole-percent truncation, `L` held to `scalecap`.
+fn stab_pct(profile: Profile, level: i16) -> Res<i32> {
+    match profile {
+        Profile::Stock => Ok(i32::from(vb::add_i16(level, 100)?)),
+        Profile::Quicksilver(b) => {
+            let gain = i64::from(stab_level(b, level)) * i64::from(b.backstab_level_pct) / 100;
+            Ok(i32::from(vb::add_i16(n16(gain)?, 100)?))
+        }
+    }
+}
+
+fn stab_level(b: &crate::quicksilver::Balance, level: i16) -> i16 {
+    level.min(i16::try_from(b.scalecap).unwrap_or(i16::MAX))
+}
+
+/// Port of modMMudFunc CalcBSDamage: backstab damage for a level, stealth, weapon damage and
+/// bonus. Without class stealth the damage is cut to 75%. An error leaves the value MME had
+/// reached when it hit it. Under Quicksilver the stealth divisor, the level multiplier and the
+/// level cap are the balance's (R1); the 75% cut and the order of the steps are unchanged.
 #[must_use]
 pub fn calc_bs_damage(
+    profile: Profile,
     level: i16,
     stealth: i16,
     damage: i16,
@@ -348,16 +377,15 @@ pub fn calc_bs_damage(
 ) -> i32 {
     let mut r: i32 = 0;
     let _ = (|| -> Res<()> {
-        let base = f64::from(vb::mul_i16(level, 2)?)
-            + vb::fix(f64::from(stealth) / 10.0)
+        let base = stab_flat(profile, level, stealth)?
             + f64::from(vb::mul_i16(damage, 2)?)
             + f64::from(bs_dmg_mod);
         r = vb::clng(base)?;
         if !class_stealth {
             r = vb::clng(vb::fix(f64::from(vb::mul_i32(r, 75)?) / 100.0))?;
         }
-        let lv = vb::add_i16(level, 100)?;
-        r = vb::clng(vb::fix(f64::from(vb::mul_i32(i32::from(lv), r)?) / 100.0))?;
+        let lv = stab_pct(profile, level)?;
+        r = vb::clng(vb::fix(f64::from(vb::mul_i32(lv, r)?) / 100.0))?;
         Ok(())
     })();
     r
@@ -800,6 +828,8 @@ fn attack_steps(
     let mut plus_min: i16 = 0;
     let mut plus_max: i16 = 0;
     let n_percent: f64 = 0.0;
+    // Set for a Quicksilver stab: its crit range tops out at this percentage of its maximum (R3).
+    let mut stab_crit_max_pct: Option<u32> = None;
     // Index 1..=3 as in MME; slot 0 is never used.
     let mut ma_skill = [0i16; 4];
     let mut ma_accy = [0i32; 4];
@@ -1226,10 +1256,16 @@ fn attack_steps(
             } else {
                 format!("backstab with {desc}")
             };
-            crit_chance = 0;
+            // R3: a Quicksilver stab keeps the crit chance (knee and cap applied above); it never
+            // had the Quick and Deadly bonus.
+            // A `backstab_crit_max_pct` of 0 is how the neutral balance says "no stab crit"
+            // (docs/differences.md); the engine would read it as a crit that always deals the max.
+            match profile.balance().map(|b| b.backstab_crit_max_pct) {
+                Some(pct) if pct > 0 => stab_crit_max_pct = Some(pct),
+                _ => crit_chance = 0,
+            }
             qnd_bonus = cur(0);
-            let t = vb::fix(f64::from(stealth) / 10.0) + f64::from(vb::mul_i16(level, 2)?);
-            let t = vb::clng(t)?;
+            let t = vb::clng(stab_flat(profile, level, stealth)?)?;
             dmg_min =
                 n32(i64::from(vb::mul_i32(dmg_min, 2)?) + i64::from(t) + i64::from(plus_bs_min))?;
             dmg_max =
@@ -1238,7 +1274,7 @@ fn attack_steps(
                 dmg_min = vb::clng(vb::fix(f64::from(vb::mul_i32(dmg_min, 75)?) / 100.0))?;
                 dmg_max = vb::clng(vb::fix(f64::from(vb::mul_i32(dmg_max, 75)?) / 100.0))?;
             }
-            let lv100 = i32::from(vb::add_i16(level, 100)?);
+            let lv100 = stab_pct(profile, level)?;
             dmg_min = vb::clng(vb::fix(f64::from(vb::mul_i32(lv100, dmg_min)?) / 100.0))?;
             dmg_max = vb::clng(vb::fix(f64::from(vb::mul_i32(lv100, dmg_max)?) / 100.0))?;
 
@@ -1294,6 +1330,7 @@ fn attack_steps(
                 pre_roll,
                 multiplier,
                 n_percent,
+                stab_crit_max_pct,
             },
         );
     }
@@ -1316,6 +1353,7 @@ fn attack_steps(
             pre_roll: 1.0,
             multiplier: 1.0,
             n_percent,
+            stab_crit_max_pct,
         },
     )
 }
@@ -1354,6 +1392,7 @@ struct Tail {
     pre_roll: f64,
     multiplier: f64,
     n_percent: f64,
+    stab_crit_max_pct: Option<u32>,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1377,6 +1416,7 @@ fn finish(
         pre_roll,
         multiplier,
         mut n_percent,
+        stab_crit_max_pct,
     } = t;
     let vs_dr = req.vs_dr;
 
@@ -1429,8 +1469,15 @@ fn finish(
 
     let (mut avg_crit, mut min_crit, mut max_crit) = (0i32, 0i32, 0i32);
     if crit_chance > 0 {
-        min_crit = vb::mul_i32(dmg_max, 2)?;
-        max_crit = vb::mul_i32(dmg_max, 4)?;
+        if let Some(pct) = stab_crit_max_pct {
+            // R3: from the stab's maximum up to a set percentage of it (64-bit, truncating).
+            min_crit = dmg_max;
+            max_crit = i32::try_from(i64::from(dmg_max) * i64::from(pct) / 100)
+                .map_err(|_| Vb6Error::Overflow)?;
+        } else {
+            min_crit = vb::mul_i32(dmg_max, 2)?;
+            max_crit = vb::mul_i32(dmg_max, 4)?;
+        }
         if min_crit > max_crit {
             max_crit = min_crit;
         }
@@ -1548,6 +1595,15 @@ fn finish(
                     .checked_add(extra_avg_swing)?;
                 let mid = vb::idiv(mid.to_f64(), 2.0)?;
                 detail.push_str(&format!("(Min/Avg/Max: {lo}/{mid}/{hi})"));
+            }
+            if stab_crit_max_pct.is_some() && avg_crit > 0 {
+                // R3: a Quicksilver stab can crit; show it as the other blows do.
+                if detail.ends_with(')') {
+                    detail.push(' ');
+                }
+                detail.push_str(&format!(
+                    "Avg/Max Crit: {avg_crit}/{max_crit} ({crit_chance}%)"
+                ));
             }
         } else {
             let shown = vb::fix(swings * 10.0) / 10.0;

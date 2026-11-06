@@ -1017,6 +1017,7 @@ pub async fn calc_backstab(
     let world = &loaded.world;
     find_weapon(world, req.weapon)?;
     let out = calc_bs(
+        loaded.profile,
         &BsInput {
             weapon: req.weapon,
             bs_min_text: &req.bs_min.0,

@@ -271,8 +271,8 @@ fn same<T: PartialEq + std::fmt::Debug>(
     }
 }
 
-#[test]
-fn calculators_fixture() {
+/// Runs every calculators fixture case under `prof`; the layer-1 identity harness reuses it.
+pub(crate) fn check_fixture(prof: Profile) {
     let fx = fixture::load("calculators");
     assert_eq!(fx.cases[0]["id"], "table");
     let table = &fx.cases[0]["inputs"];
@@ -367,7 +367,7 @@ fn calculators_fixture() {
                     CharacterProfile::default()
                 },
             };
-            let got = calc_swings(Profile::Stock, &input, &env);
+            let got = calc_swings(prof, &input, &env);
             same(&mut bad, id, "error", got.error, vb_error(c));
             same(
                 &mut bad,
@@ -460,7 +460,7 @@ fn calculators_fixture() {
                 global_filter: ctl(inputs, "chkGlobalFilter")["Value"].as_i64() == Some(1),
                 equipped: hands(inputs),
             };
-            let got = calc_bs(&input, &items);
+            let got = calc_bs(prof, &input, &items);
             same(&mut bad, id, "error", got.error, handled_error(c, "CalcBS"));
             same(
                 &mut bad,
@@ -612,4 +612,9 @@ fn calculators_fixture() {
         bad.iter().take(20).cloned().collect::<Vec<_>>().join("\n")
     );
     assert!(checked_cases > 1000, "only {checked_cases} cases ran");
+}
+
+#[test]
+fn calculators_fixture() {
+    check_fixture(Profile::Stock);
 }

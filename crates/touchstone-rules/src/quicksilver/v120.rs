@@ -234,6 +234,8 @@ pub(super) const BALANCE: Balance = Balance {
 pub(super) const NEUTRAL: Balance = Balance {
     backstab_stealth_div: 10,
     backstab_level_pct: 100,
+    // 0 turns the stab crit off (R3), the nearest the type comes to MME, where a stab never crits.
+    backstab_crit_max_pct: 0,
     opportunist_pct: 0,
     weave_pct: 0,
     weave_pct_magery1: 0,
@@ -242,6 +244,8 @@ pub(super) const NEUTRAL: Balance = Balance {
     rest_mana_mult: 1,
     meditate_mana_mult: 1,
     crit_knee: 40,
+    // R1: the stab reads the level held to this; MME's stab has no cap.
+    scalecap: KNEE_OUT_OF_REACH,
     spell_stat_knee: KNEE_OUT_OF_REACH,
     mr_stat_knee: KNEE_OUT_OF_REACH,
     dodge_agi_knee: KNEE_OUT_OF_REACH,
