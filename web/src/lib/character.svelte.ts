@@ -46,6 +46,9 @@ export function createCharacterStore(
   /** Counts the times a different character was opened (load, new, import, delete), so the Item
    * Manager can rebuild its list as LoadCharacter does; a paste or an edit does not count. */
   let epoch = $state(0);
+  /** Counts every time the open character was replaced wholesale (a load, a paste, new, import, delete), as MME's
+   * LoadCharacter and paste clear the calculated monster damage; an edit does not count. */
+  let replaced = $state(0);
   /** The name the character is stored under on the server, if it is stored. */
   let storedName: string | undefined;
 
@@ -114,6 +117,7 @@ export function createCharacterStore(
 
   function replace(next: CharacterDoc, stored: string | undefined) {
     clearTimeout(saveTimer);
+    replaced++;
     doc = next;
     storedName = stored;
     saveStatus = "idle";
@@ -151,6 +155,9 @@ export function createCharacterStore(
     },
     get loadEpoch() {
       return epoch;
+    },
+    get replaceEpoch() {
+      return replaced;
     },
     /** Apply an edit to the character; re-evaluates and autosaves. */
     edit(change: (d: CharacterDoc) => void) {

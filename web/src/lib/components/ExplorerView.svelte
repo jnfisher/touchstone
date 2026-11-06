@@ -4,6 +4,8 @@
 	import { api, type Item, type Spell, type TableName, type TableTypes } from '$lib/api';
 	import ClassRaceBuilder from '$lib/components/ClassRaceBuilder.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
+	import DamageQuestion from '$lib/components/DamageQuestion.svelte';
+	import MonsterDamageMenu from '$lib/components/MonsterDamageMenu.svelte';
 	import MonsterFilters from '$lib/components/MonsterFilters.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopControls from '$lib/components/ShopControls.svelte';
@@ -16,6 +18,8 @@
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
 	import { getMonsterFilterStore } from '$lib/monsters.svelte';
+	import { getDamageStore } from '$lib/monsterdamage.svelte';
+	import type { DamagePrompt } from '$lib/monsterdamage';
 	import { selection, shopView } from '$lib/explorer-state.svelte';
 	import {
 		buildLookups,
@@ -88,6 +92,21 @@
 	// character store is shared with the Character tab; edits re-fetch after a short pause.
 	const bar = getGlobalFilterStore();
 	const monsterBoxes = getMonsterFilterStore();
+	const damage = getDamageStore();
+	// MME clears the calculated monster damage when a character is loaded or pasted
+	$effect(() => {
+		const token = store.replaceEpoch;
+		if (slug === 'monsters' && !list) void damage.characterChanged(token);
+	});
+	// FilterMonsters' "calculate the monster damage first?" question, while the list waits for the answer
+	let question = $state<DamagePrompt>();
+	async function answer(a: 'yes' | 'no' | 'cancel') {
+		const q = question;
+		question = undefined;
+		if (!q || a === 'cancel') return;
+		if (a === 'yes' && (await damage.calculate(store.doc, q.mode, monsterBoxes.controls.party))) return;
+		await damage.dismiss(q);
+	}
 	let evaluated = $state.raw<{ tab: string; table: EvalTable }>();
 	let evalError = $state<string>();
 	const payload = $derived(evaluated && evaluated.tab === computedTab ? evaluated.table : undefined);
@@ -109,11 +128,15 @@
 		if (!tab) return;
 		// The Monsters list also shows damage by the character's attack choice with the bar off.
 		const isMonsters = tab === 'monsters';
+		// a calculation or clear changes what the list shows
+		if (isMonsters) void damage.version;
 		const body = evaluateBody(
 			$state.snapshot(store.doc),
 			$state.snapshot(bar.filter),
 			{
-				...(isMonsters ? { monsters: $state.snapshot(monsterBoxes.controls) } : {}),
+				...(isMonsters
+					? { monsters: { ...$state.snapshot(monsterBoxes.controls), ...(list ? {} : { ask_damage: true }) } }
+					: {}),
 				...(list ? { numbers: $state.snapshot(list.numbers) } : {})
 			},
 			isMonsters
@@ -123,8 +146,14 @@
 			async () => {
 				try {
 					const t = await evaluateClient.evaluate(tab, body, ctl.signal);
-					evaluated = { tab, table: t };
 					evalError = undefined;
+					if (t.prompt) {
+						// MME stops here and leaves the list as it was until the question is answered
+						question = t.prompt;
+						return;
+					}
+					question = undefined;
+					evaluated = { tab, table: t };
 				} catch (e) {
 					if (!ctl.signal.aborted) evalError = e instanceof Error ? e.message : String(e);
 				}
@@ -159,6 +188,7 @@
 			pane = undefined;
 			return;
 		}
+		if (k === 'monsters') void damage.version;
 		const showSell = isShops && shopView.selling;
 		const charm = isShops ? (shopView.buying || shopView.selling ? shopView.charm : 0) : undefined;
 		const body = paneBody($state.snapshot(store.doc), $state.snapshot(bar.filter), {
@@ -264,6 +294,9 @@
 				{on ? 'Remove from compare' : 'Add to compare'}
 			</button>
 		{/if}
+		{#if slug === 'monsters' && !list}
+			<MonsterDamageMenu />
+		{/if}
 		{#if explorer.pending.length}
 			<span class="text-muted-foreground text-xs" data-testid="pending">
 				Needs a character, coming later: {explorer.pending.join(', ')}
@@ -275,7 +308,10 @@
 		<MonsterFilters />
 	{/if}
 
-	<div class="min-h-0 flex-1">
+	<div class="relative min-h-0 flex-1">
+		{#if question}
+			<DamageQuestion prompt={question} onanswer={answer} />
+		{/if}
 		{#if error}
 			<p class="text-destructive" role="alert">Could not load {title.toLowerCase()}: {error}</p>
 		{:else if evalError && !payload}
