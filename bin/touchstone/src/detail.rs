@@ -7,24 +7,21 @@ use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
-use touchstone_model::{AbilitySlot, Monster, Spell, World};
+use touchstone_model::{AbilitySlot, Spell, World};
 use touchstone_rules::Profile;
-use touchstone_rules::abilities::{NO_ABILITY, item_has_ability, spell_has_ability};
 use touchstone_rules::ability_text::{
     AbilityEnv, NameLookup, get_ability_name, get_class_name, get_spell_name,
 };
 use touchstone_rules::monster_glue::{GlueEnv, calculate_monster_avg_dmg};
 use touchstone_rules::monster_sim::MonsterSimInput;
-use touchstone_vb6::Rnd;
 use touchstone_rules::spells::{
     PullArgs, get_spell_duration, get_spell_max_damage, get_spell_min_damage,
 };
-use touchstone_vb6::{Vb6Error, add_i16, cint, val};
+use touchstone_vb6::Rnd;
+use touchstone_vb6::val;
 
 use crate::calc::{ApiResult, bad, json, not_found};
 use crate::state::AppState;
-
-type Res<T> = Result<T, Vb6Error>;
 
 /// MME's database name lookups, answered from the loaded tables. A NULL name is the empty string
 /// MME's Access column would hold.
