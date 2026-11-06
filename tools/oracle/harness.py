@@ -186,6 +186,7 @@ class Env:
         for tn in ("scripting.dictionary", "dictionary"):
             it.new_hooks[tn] = shims.DictionaryShim
         self.lair_env = None
+        self.db_open = False        # scenario "db_open": `DB.OpenRecordset(table)` works (item detail's second recordsets)
         self.shared_lairs = {}
         it.intrinsic_hooks["inputbox"] = self._inputbox
         if paste_procs:
@@ -331,8 +332,10 @@ class Env:
                 rec.add("lv_refresh_sort", shops_first=shops_first, rows=len(getattr(lv, "rows", [])),
                         column=V.int_value(got[0]), data_type=V.int_value(got[1]), by_tag=bool(got[2]), ascending=bool(got[3]))
             return f
-        it.bind_proc("LV_RefreshSort", refresh_sort(False))
-        it.bind_proc("LV_RefreshSort_ShopsFirst", refresh_sort(True))
+        # a family that stubs them itself (filters) keeps its stub
+        for n, sf in (("LV_RefreshSort", False), ("LV_RefreshSort_ShopsFirst", True)):
+            if n.lower() not in it.ext_procs:
+                it.bind_proc(n, refresh_sort(sf))
         for n, v in (("ldtstring", 0), ("ldtnumber", 1), ("ldtDateTime", 2)):     # modListViewExt's ListDataType
             it.bind(n, V.I32(v))
         # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
@@ -418,7 +421,7 @@ class Env:
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
         it.bind("Forms", shims.FormsCollection(self.loaded_forms))
-        if self.db and "db" in self.it.globals:
+        if self.db and self.db_open and "db" in self.it.globals:
             self.it.global_cell("DB").v = shims.DbShim(self.db)
         for g, table in shims.RECORDSET_GLOBALS.items():
             cell = it.globals.get(g.lower())
@@ -826,6 +829,7 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     database = db_path() if scn.get("database") else None
     env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
               paste_procs=bool(scn.get("paste_procs")))
+    env.db_open = bool(scn.get("db_open"))
     if "lairs" in scn.get("shims", []):
         env.enable_lair_shims()
         env.shared_lairs = (scn.get("data") or {}).get("lairs") or {}

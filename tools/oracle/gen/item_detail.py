@@ -428,6 +428,7 @@ scn = {
         "data holds the records the cases can reach (items, every spell, class, race and monster name, shops, rooms, textblocks).",
     ],
     "database": True,
+    "db_open": True,
     "shims": ["lairs"],
     "frm": PIPE["frm"],
     "data": DATA,
