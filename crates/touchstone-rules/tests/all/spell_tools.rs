@@ -223,7 +223,9 @@ fn spell_tools() {
         let id = case["id"].as_str().unwrap();
         let inp = &case["inputs"];
         let only_in_game = inp["globals"]["bOnlyInGame"].as_bool().unwrap_or(false);
-        let avg = inp["globals"]["gAvgLevelMaxAllStats"].as_f64().unwrap_or(0.0);
+        let avg = inp["globals"]["gAvgLevelMaxAllStats"]
+            .as_f64()
+            .unwrap_or(0.0);
         seen += 1;
         if id.starts_with("neg-") {
             // expected: FindNegates' result rows
@@ -286,11 +288,15 @@ fn spell_tools() {
             if !row["Sel"].as_bool().unwrap_or(false) {
                 continue; // nothing selected: MME leaves quietly
             }
-            let n = int(&Value::from(row["Text"].as_str().unwrap().parse::<i64>().unwrap()));
+            let n = int(&Value::from(
+                row["Text"].as_str().unwrap().parse::<i64>().unwrap(),
+            ));
             let nm = names(&fx.header["data"]);
             let opt = LocationOptions {
                 nmr_ver: 0.0,
-                hide_record_numbers: inp["globals"]["bHideRecordNumbers"].as_bool().unwrap_or(false),
+                hide_record_numbers: inp["globals"]["bHideRecordNumbers"]
+                    .as_bool()
+                    .unwrap_or(false),
                 global_filter: false,
                 charm_tag: String::new(),
                 attack_type: 0,

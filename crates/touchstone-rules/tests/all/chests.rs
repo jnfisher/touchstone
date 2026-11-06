@@ -146,19 +146,20 @@ fn chests() {
             .find(|e| e["kind"] == "msgbox")
             .map(|e| e["text"].as_str().unwrap().to_string());
         // expected: lvOtherItemLoc's rows [percent text, tag, [[item text, item number, null]]]
-        let want: Vec<(String, String, String, String)> = case["outputs"]["cmdSundryChests_Click.cap"]["rows"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| {
-                (
-                    r[0].as_str().unwrap().to_string(),
-                    r[1].as_str().unwrap().to_string(),
-                    r[2][0][0].as_str().unwrap().to_string(),
-                    r[2][0][1].as_str().unwrap().to_string(),
-                )
-            })
-            .collect();
+        let want: Vec<(String, String, String, String)> =
+            case["outputs"]["cmdSundryChests_Click.cap"]["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| {
+                    (
+                        r[0].as_str().unwrap().to_string(),
+                        r[1].as_str().unwrap().to_string(),
+                        r[2][0][0].as_str().unwrap().to_string(),
+                        r[2][0][1].as_str().unwrap().to_string(),
+                    )
+                })
+                .collect();
         match chest_contents(&w, n, hide) {
             ChestResult::NoSuchItem(k) => {
                 assert_eq!(msg, Some(format!("Item #{k} not found.")), "{id}");

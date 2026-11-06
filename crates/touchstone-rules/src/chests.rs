@@ -78,7 +78,11 @@ fn item_name(world: &World, n: i32, hide: bool) -> String {
 /// The textblock text the chest's spell points at (the first `castsp` ability of the first `Abil`
 /// that is the chest spell ability 43), lower-cased, as `sData`.
 fn chest_data(world: &World, item: &touchstone_model::Item) -> Option<String> {
-    for slot in item.abilities.iter().filter(|a| a.ability == 43 && a.value > 0) {
+    for slot in item
+        .abilities
+        .iter()
+        .filter(|a| a.ability == 43 && a.value > 0)
+    {
         let Some(spell) = world.get_spell(slot.value) else {
             continue;
         };

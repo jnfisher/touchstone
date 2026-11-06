@@ -194,12 +194,7 @@ pub struct NegateRow {
     pub text: String,
 }
 
-fn hit_ability(
-    ability: i32,
-    value: i32,
-    q: &NegateQuery,
-    level_hit: impl Fn(i32) -> bool,
-) -> bool {
+fn hit_ability(ability: i32, value: i32, q: &NegateQuery, level_hit: impl Fn(i32) -> bool) -> bool {
     match ability {
         73 | 124 => value > 0 && q.abilities.contains(&value),
         122 | 153 => value > 0 && q.spells.contains(&value),
@@ -233,20 +228,16 @@ pub fn find_negates(
             .negate_spell
             .iter()
             .any(|&s| s > 0 && q.spells.contains(&s));
-        let hit = negated
-            || item
-                .abilities
-                .iter()
-                .filter(|a| a.ability > 0)
-                .any(|a| hit_ability(a.ability, a.value, q, |v| v > 0 && level > 0 && level < v));
+        let hit =
+            negated
+                || item.abilities.iter().filter(|a| a.ability > 0).any(|a| {
+                    hit_ability(a.ability, a.value, q, |v| v > 0 && level > 0 && level < v)
+                });
         if hit {
             out.push(NegateRow {
                 kind: NegateKind::Item,
                 number: item.number,
-                text: format!(
-                    "Item: {} ({})",
-                    item.name, item.number
-                ),
+                text: format!("Item: {} ({})", item.name, item.number),
             });
         }
     }
@@ -264,15 +255,11 @@ pub fn find_negates(
                 .find("item #")
                 .is_some_and(|p| casted_by.to_lowercase()[..p].chars().count() >= 1)
         };
-        let hit = spell
-            .abilities
-            .iter()
-            .filter(|a| a.ability > 0)
-            .any(|a| {
-                hit_ability(a.ability, a.value, q, |v| {
-                    v > 0 && level > 0 && level < v && (spell.learnable || item_cast())
-                })
-            });
+        let hit = spell.abilities.iter().filter(|a| a.ability > 0).any(|a| {
+            hit_ability(a.ability, a.value, q, |v| {
+                v > 0 && level > 0 && level < v && (spell.learnable || item_cast())
+            })
+        });
         if hit {
             out.push(NegateRow {
                 kind: NegateKind::Spell,
