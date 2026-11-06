@@ -112,8 +112,8 @@ seeks each key in the table's global recordset and calls the procedure with a Li
 key a fresh ListView and stores `null` (no row) or the row it built; `"shared"` fills one ListView and stores all rows,
 after the `post` calls ran on it (their results and the rows after each go to `<as>.post`). `watch` names a control
 element whose list gains entries from `AddItem` (`NewIndex` and `ItemData` work); `<as>.watch` holds `[text, ItemData]`
-or null per key. A row is `[Text, Tag, cells]`; a cell is its Text alone, or `[Text, Tag, ForeColor]` when a Tag or
-ForeColor was assigned (null for the one that was not). Texts are `CStr` of what was assigned and tags `CStr` of the
+or null per key. A row is `[Text, Tag, cells]` (plus the row's own ForeColor as a fourth element when MME assigned one); a cell is its Text alone, or `[Text, Tag, ForeColor]` when a Tag or
+ForeColor was assigned (null for the one that was not). `"hwnd": n` in the `rows` spec gives the ListView an hWnd other than 0 (frmMain's lists read 0), for code that asks whether it was handed `lvMonsters`. Texts are `CStr` of what was assigned and tags `CStr` of the
 Variant assigned. A control given as `{"$recordlv": [rows]}` is a recording ListView too (rows preloaded as
 `{"Text", "Tag", "Sub": [text | [text, tag]]}`).
 
