@@ -125,10 +125,6 @@ function abilityGroup(slots: AbilitySlot[], extra: DetailExtra | undefined): Det
 	if (ab.class_ok.length) rows.push(row('Class OK', ab.class_ok.join(', '), true));
 	return rows.length ? [group('Abilities', rows)] : [];
 }
-function listRefs(label: string, nums: number[], map: Map<number, string> | undefined): DetailRow[] {
-	const set = nums.filter((n) => n !== 0);
-	return set.length ? [row(label, set.map((n) => ref(map, n)).join(', '), true)] : [];
-}
 
 const num = <T>(id: string, header: string, get: (r: T) => number, width = 80): ColumnSpec<T> => ({
 	id,
@@ -149,65 +145,15 @@ const numberCol = <T extends { number: number }>(): ColumnSpec<T> =>
 // ---------- items: Weapons, Armour, Sundry ----------
 
 
-const acText = (r: Item, round: boolean) =>
-	`${round ? Math.ceil(r.armour_class / 10) : r.armour_class / 10}/${r.damage_resist / 10}`;
-
-function itemDetail(r: Item, lk: Lookups, extra?: DetailExtra): DetailGroup[] {
-	const isWeapon = r.item_type === 1;
-	const isArmour = r.item_type === 0 && r.worn !== 0;
-	const stats = [
-		row('Number', r.number),
-		row('Type', E.itemType(r.item_type)),
-		row('Encumbrance', r.encum),
-		row('Price', `${putCommas(r.price)} ${E.costType(r.currency).toLowerCase()}`),
-		row('Limit', r.limit),
-		row('Uses', r.use_count)
-	];
-	if (isWeapon)
-		stats.push(
-			row('Weapon type', E.weaponType(r.weapon_type)),
-			row('Damage', `${r.min} - ${r.max}`),
-			row('Speed', r.speed),
-			row('Strength required', r.str_req)
-		);
-	if (isArmour || r.armour_class || r.damage_resist)
-		stats.push(
-			row('Worn', E.wornType(r.worn)),
-			row('Armour type', E.armourType(r.armour_type)),
-			row('AC / DR', acText(r, false))
-		);
-	if (r.accy) stats.push(row('Accuracy', r.accy));
-	const out = [
-		group(r.name, stats),
-		group('Flags', [
-			row('In game', yes(r.in_game)),
-			row('Gettable', yes(r.gettable)),
-			row('Not droppable', yes(r.not_droppable)),
-			row('Destroyed on death', yes(r.destroy_on_death)),
-			row('Retained after uses', yes(r.retain_after_uses))
-		])
-	];
-	const restrictions = [
-		...listRefs('Classes barred', r.class_rest, lk.classes),
-		...listRefs('Races barred', r.race_rest, lk.races),
-		...listRefs('Negates spells', r.negate_spell, lk.spells)
-	];
-	if (restrictions.length) out.push(group('Restrictions', restrictions));
-	out.push(...abilityGroup(r.abilities, extra));
-	const where = [
-		...(r.obtained_from ? [row('Obtained from', r.obtained_from, true)] : []),
-		...(r.references ? [row('References', r.references, true)] : [])
-	];
-	if (where.length) out.push(group('Locations', where));
-	return out;
-}
+/** The record's name; everything else in the pane comes from the server (`/api/detail`). */
+const titleOnly = (name: string): DetailGroup[] => [group(name, [])];
 
 const itemBase = {
-	needs: ['classes', 'races', 'spells'] as TableName[],
+	needs: [] as TableName[],
 	rowId: (r: Item) => r.number,
 	title: (r: Item) => r.name,
 	defaultSort: { col: 'name', dir: 'asc' as const },
-	detail: itemDetail
+	detail: (r: Item): DetailGroup[] => titleOnly(r.name)
 };
 const namedOk = (r: Item) => r.name !== '';
 
@@ -273,39 +219,7 @@ const spells: Explorer<'spells'> = {
 	title: spellName,
 	defaultSort: { col: 'name', dir: 'asc' },
 	pending: [],
-	detail: (s, _lk, extra) => {
-		const out = [
-			group(spellName(s), [
-				row('Number', s.number),
-				row('Short', text(s.short)),
-				row('Magery', E.mageryName(s.magery, s.magery_lvl)),
-				row('Required level', s.req_level),
-				row('Mana cost', s.mana_cost),
-				row('Energy cost', s.energy_cost),
-				row('Difficulty', s.diff),
-				row('Targets', E.spellTargets(s.targets)),
-				row('Attack type', E.spellAttackType(s.att_type)),
-				row('Resist type', s.type_of_resists),
-				row('Learnable', yes(s.learnable))
-			]),
-			group('Effect', [
-				row('Base', `${s.min_base} - ${s.max_base}`),
-				row('Duration', s.dur),
-				row('Cap level', s.cap),
-				row('Max grows', `+${s.max_inc} per ${s.max_inc_lvls} levels`),
-				row('Min grows', `+${s.min_inc} per ${s.min_inc_lvls} levels`),
-				row('Duration grows', `+${s.dur_inc} per ${s.dur_inc_lvls} levels`)
-			])
-		];
-		out.push(...abilityGroup(s.abilities, extra));
-		const where = [
-			...(s.learned_from ? [row('Learned from', s.learned_from, true)] : []),
-			...(s.casted_by ? [row('Cast by', s.casted_by, true)] : []),
-			...(s.classes ? [row('Classes', s.classes, true)] : [])
-		];
-		if (where.length) out.push(group('Locations', where));
-		return out;
-	}
+	detail: (s) => titleOnly(spellName(s))
 };
 
 // ---------- monsters ----------
@@ -417,7 +331,7 @@ const shopOk = (s: Shop) => {
 const shops: Explorer<'shops'> = {
 	slug: 'shops',
 	table: 'shops',
-	needs: ['classes'],
+	needs: [],
 	include: (s) => s.in_game && shopOk(s),
 	// The list comes from the server (POST /api/evaluate/shops): MME's columns and cells.
 	computed: 'shops',
@@ -426,26 +340,10 @@ const shops: Explorer<'shops'> = {
 	title: (s) => s.name,
 	defaultSort: { col: 'name', dir: 'asc' },
 	pending: [],
-	detail: (s, lk) => {
-		const out = [
-			group(s.name, [
-				row('Number', s.number),
-				row('Type', E.shopType(s.shop_type)),
-				row('Level range', `${s.min_lvl} - ${s.max_lvl}`),
-				row('Markup', `${s.markup_pct}%`),
-				row('Class restriction', s.class_rest ? ref(lk.classes, s.class_rest) : 'None'),
-				row('In game', yes(s.in_game))
-			])
-		];
-		// The stock list with charm-adjusted prices comes from the server (ShopPrices).
-		if (s.assigned_to) out.push(group('Locations', [row('Assigned to', s.assigned_to, true)]));
-		return out;
-	}
+	detail: (s) => titleOnly(s.name)
 };
 
 // ---------- races and classes ----------
-
-const range = (a: number, b: number) => `${a}-${b}`;
 
 const races: Explorer<'races'> = {
 	slug: 'races',
@@ -459,26 +357,7 @@ const races: Explorer<'races'> = {
 	title: (r) => r.name,
 	defaultSort: { col: 'num', dir: 'asc' },
 	pending: [],
-	detail: (r, _lk, extra) => {
-		const out = [
-			group(r.name, [
-				row('Number', r.number),
-				row('Exp', `${r.exp_table}%`),
-				row('HP per level', r.hp_per_lvl),
-				row('Base CP', r.base_cp)
-			]),
-			group('Stat ranges', [
-				row('Strength', range(r.m_str, r.x_str)),
-				row('Intellect', range(r.m_int, r.x_int)),
-				row('Willpower', range(r.m_wil, r.x_wil)),
-				row('Agility', range(r.m_agl, r.x_agl)),
-				row('Health', range(r.m_hea, r.x_hea)),
-				row('Charm', range(r.m_chm, r.x_chm))
-			])
-		];
-		out.push(...abilityGroup(r.abilities, extra));
-		return out;
-	}
+	detail: (r) => titleOnly(r.name)
 };
 
 const classes: Explorer<'classes'> = {
@@ -493,22 +372,7 @@ const classes: Explorer<'classes'> = {
 	title: (c) => c.name,
 	defaultSort: { col: 'num', dir: 'asc' },
 	pending: [],
-	detail: (c, _lk, extra) => {
-		const out = [
-			group(c.name, [
-				row('Number', c.number),
-				row('Exp', `${c.exp_table + 100}%`),
-				row('Weapons', E.classWeaponType(c.weapon_type)),
-				row('Armour', E.armourType(c.armour_type)),
-				row('Magic', E.mageryName(c.magery_type, c.magery_lvl)),
-				row('Combat level', c.combat_lvl - 2),
-				row('HP per level', range(c.min_hits, c.min_hits + c.max_hits))
-			])
-		];
-		// Ability 59 only marks the class as usable, which MME leaves out of its Abilities text.
-		out.push(...abilityGroup(c.abilities.filter((a) => a.ability !== 59), extra));
-		return out;
-	}
+	detail: (c) => titleOnly(c.name)
 };
 
 // ---------- rooms ----------

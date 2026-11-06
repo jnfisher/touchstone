@@ -319,7 +319,7 @@ fn fixture_world(data: &Value, dat_ver: &str) -> World {
             abilities: pairs(&r[17]),
         })
         .collect();
-    let world = World::new(WorldParts {
+    World::new(WorldParts {
         info: Info {
             nmr_version: "v1.8.3".to_owned(),
             dat_file_version: dat_ver.to_owned(),
@@ -340,8 +340,7 @@ fn fixture_world(data: &Value, dat_ver: &str) -> World {
         lairs: vec![],
         tbinfo,
     })
-    .unwrap();
-    world
+    .unwrap()
 }
 
 /// The loaded character of a case, as the wire character (global filter on, as the explorer sends).

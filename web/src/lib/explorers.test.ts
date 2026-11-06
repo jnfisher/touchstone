@@ -74,37 +74,17 @@ describe('explorer definitions', () => {
 		expect(spellInGame({ ...base, magery: 5 }, 1.83)).toBe(true);
 	});
 
-	it('builds a detail pane with a titled first group', () => {
+	it('leaves the item, spell, shop, class and race panes to the server', () => {
+		// Expected: the rows of these panes are MME's own text from /api/detail; only the name is local.
 		const w = item({ name: 'Sword', abilities: slots([43, 9]) });
-		const g = explorerFor('weapons')!.detail(w, lk);
-		expect(g[0].title).toBe('Sword');
-		// The text is on its way: no raw numbers meanwhile.
-		expect(g.find((x) => x.title === 'Abilities')).toBeUndefined();
-	});
-
-	it('shows the server text for abilities, raw slots only if it failed', () => {
-		const w = item({ name: 'Sword', abilities: slots([22, 5], [43, 9]) });
-		const ex = explorerFor('weapons')!;
-		const raw = ex.detail(w, lk, { abilitiesFailed: true }).find((x) => x.title === 'Abilities')!;
-		expect(raw.rows[0]).toEqual({ label: 'Ability 22', value: '5', long: false });
-		const text = ex
-			.detail(w, lk, {
-				abilities: {
-					table: 'items',
-					number: 1,
-					lines: [
-						{ ability: 22, value: 5, name: 'Accuracy', text: 'Accuracy +5', detail: '+5' },
-						{ ability: 80, value: 0, name: 'Magical', text: 'Magical', detail: '' }
-					],
-					class_ok: ['Paladin']
-				}
-			})
-			.find((x) => x.title === 'Abilities')!;
-		expect(text.rows).toEqual([
-			{ label: 'Accuracy', value: '+5', long: false },
-			{ label: 'Magical', value: 'Yes', long: false },
-			{ label: 'Class OK', value: 'Paladin', long: true }
-		]);
+		for (const slug of ['weapons', 'armour', 'items'] as const) {
+			const g = explorerFor(slug)!.detail(w, lk);
+			expect(g).toEqual([{ title: 'Sword', rows: [] }]);
+		}
+		for (const slug of ['spells', 'shops', 'classes', 'races'] as const) {
+			const g = explorerFor(slug)!.detail({ name: 'x', abilities: slots() } as never, lk);
+			expect(g.map((x) => x.rows.length)).toEqual([0]);
+		}
 	});
 
 	it('adds the monster max damage row once it is known', () => {
