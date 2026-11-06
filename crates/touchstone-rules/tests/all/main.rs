@@ -13,6 +13,7 @@ mod exp;
 mod exp_per_hour;
 mod game_text;
 mod gear;
+mod hit_calc;
 mod item_value;
 mod monster_sim;
 mod spell_cast;

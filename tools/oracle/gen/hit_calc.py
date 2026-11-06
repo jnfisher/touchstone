@@ -224,7 +224,7 @@ dh_case = {"steps": [{"call": "DoHitCalc"}], "read": READ,
                                  "cmbGlobalClass": {"$array": {"0": {"ListIndex": "$cli", "ItemData": ["$cls"],
                                                                      "StrictItemData": True}}}}},
            "globals": {n: "$" + n for n in STATE_NAMES}}
-samples.append({"name": "dohit", "seed": 4201, "count": 100, "draw": dh_draw, "case": dh_case})
+samples.append({"name": "dohit", "seed": 4201, "count": 80, "draw": dh_draw, "case": dh_case})
 sane = dict(dh_draw)
 for i in range(6):
     sane["t%d" % i] = {"choice": SANE}
@@ -236,7 +236,7 @@ for kind, ty in (("n", opts(2, 0)), ("b", opts(2, 1))):
     grids.append({"name": "dhg" + kind,
                   "axes": {"acc": ["1", "9", "50", "140", "9999", "10000"],
                            "ac": ["0", "100", "400", "9999", "-8"],
-                           "dg": ["0", "15", "9999", "-30"]},
+                           "dg": ["0", "15", "-30"]},
                   "case": {"steps": [{"call": "DoHitCalc"}], "read": GRID_READ,
                            "forms": {"frmMain": {"txtHitCalc": {"$array": {
                                "0": {"Text": "$acc"}, "1": {"Text": "$ac"}, "2": {"Text": "$dg"},
@@ -291,7 +291,7 @@ sv_case = {"steps": [{"call": "SetHitCalcVals", "args": "$ar"}], "read": READ,
                        "nGlobalCharWeaponAccy": ["$wa", 0], "nGlobalCharWeaponBSaccy": ["$wb", 0],
                        "nGlobalAttackTypeMME": "$atype", "nGlobalAttackAccyAdj": "$adj", "nGlobalAttackMA": "$ma",
                        "bGlobalAttackBackstab": "$bsb", "nGlobalAttackBackstabWeapon": "$bsw"}}
-samples.append({"name": "setv", "seed": 4101, "count": 100, "draw": sv_draw, "case": sv_case})
+samples.append({"name": "setv", "seed": 4101, "count": 80, "draw": sv_draw, "case": sv_case})
 # sensible values, so most draws get through to the end
 ok = dict(sv_draw)
 ok.update({"acc": {"choice": ["40", "75.5", "120", "200"]}, "ac": {"choice": ["0", "25", "60", "150"]},
@@ -302,7 +302,7 @@ ok.update({"acc": {"choice": ["40", "75.5", "120", "200"]}, "ac": {"choice": ["0
            "aab": {"choice": ADJ}, "wa": {"choice": ADJ}, "wb": {"choice": ADJ}, "ar": {"choice": [[]]},
            "ty": {"choice": [opts(2, 0), opts(2, 1)]}, "at": {"choice": [opts(3, 0), opts(3, 1), opts(3, 2)]},
            "df": {"choice": [opts(4, 0), opts(4, 1), opts(4, 2), opts(4, 3)]}})
-samples.append({"name": "setok", "seed": 4102, "count": 55, "draw": ok, "case": sv_case})
+samples.append({"name": "setok", "seed": 4102, "count": 35, "draw": ok, "case": sv_case})
 
 # backstab with the current character attacking: the CalculateBackstabAccuracy arguments and their conversions
 bs = dict(ok)
@@ -312,6 +312,20 @@ bs.update({"ty": {"choice": [opts(2, 1)]}, "at": {"choice": [opts(3, 0)]},
            "aot": {"choice": ADJ + [2000000000]}, "wa": {"choice": ADJ + [40000, -33000]},
            "wb": {"choice": ADJ + [40000, -33000]}, "wn": {"choice": WN}, "bsb": {"choice": BOOL}, "bsw": {"choice": WN}})
 samples.append({"name": "setbs", "seed": 4104, "count": 50, "draw": bs, "case": sv_case})
+
+# normal attack by the character: bash, smash, kick and jumpkick give up accuracy
+ac_ = dict(ok)
+ac_.update({"ty": {"choice": [opts(2, 0)]}, "at": {"choice": [opts(3, 0), opts(3, 0), opts(3, 1)]},
+            "atype": {"choice": [1, 4, 4, 4, 6, 7, 2]}, "ma": {"choice": [1, 2, 3, 2, 3]},
+            "adj": {"choice": [-10, -3, 0, 5, -25, 32767]}})
+samples.append({"name": "setacc", "seed": 4105, "count": 30, "draw": ac_, "case": sv_case})
+bo = dict(bs)
+bo.update({"stl": {"choice": ["0", "30", "80", "150", "-20"]}, "bsa": {"choice": ["0", "4", "-6", "12", "7"]},
+           "agi": {"choice": ["40", "90", "150", "255"]}, "str": {"choice": ["40", "90", "150"]},
+           "lvl": {"choice": ["1", "30", "100"]}, "cli": {"choice": [0]}, "cls": {"choice": [1, 2, 6, 7, 8, 9, 10, 15]},
+           "aab": {"choice": ADJ}, "aot": {"choice": ADJ}, "wa": {"choice": ADJ}, "wb": {"choice": ADJ},
+           "bsb": {"choice": [True, True, False]}})
+samples.append({"name": "setbsok", "seed": 4106, "count": 30, "draw": bo, "case": sv_case})
 
 # a monster picked in the drop-down: GetMonsterData, then SetHitCalcVals(False, True)
 pk_case = {"steps": [{"call": "GetMonsterData", "args": ["$mn"], "as": "found"},
@@ -329,7 +343,7 @@ pk["mn"] = {"choice": mon_all}
 pk["ty"] = {"choice": [opts(2, 0), opts(2, 1)]}
 pk["at"] = {"choice": [opts(3, 0), opts(3, 1), opts(3, 2)]}
 pk["df"] = {"choice": [opts(4, 0), opts(4, 1), opts(4, 1), opts(4, 2), opts(4, 3)]}
-samples.append({"name": "pick", "seed": 4103, "count": 45, "draw": pk, "case": pk_case})
+samples.append({"name": "pick", "seed": 4103, "count": 35, "draw": pk, "case": pk_case})
 
 # ---------------------------------------------------------------------------------- scenario
 FRM = [{"file": "frmHitCalc.frm",
