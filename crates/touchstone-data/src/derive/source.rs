@@ -1,6 +1,9 @@
 //! The silvermere columns the derivations need and the model has no field for.
+use std::collections::HashMap;
+
 use rusqlite::Connection;
 
+use super::script::{Block, Blocks, has_action};
 use crate::silvermere::Result;
 
 /// A room's generation settings (silvermere `rooms`).
@@ -24,7 +27,16 @@ pub(super) struct Known {
     pub genindex: i64,
 }
 
+/// Exit types that cast a spell when the room is entered: Cast (22) and Spell Trap (24). The
+/// spell is the first parameter, or the second when the first is 0.
+const EXIT_CAST: i64 = 22;
+const EXIT_SPELL_TRAP: i64 = 24;
+
 pub(super) struct Source {
+    /// The text blocks by number.
+    pub blocks: Blocks,
+    /// `(spell, map, room)` of every room exit that casts a spell, ordered by room, map.
+    pub exit_spells: Vec<(i32, i32, i32)>,
     /// Ordered by map, room.
     pub rooms: Vec<GenRoom>,
     /// Ordered by number.
@@ -76,7 +88,43 @@ impl Source {
         let room_items = stmt
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut stmt =
+            conn.prepare("SELECT number, part, link, text FROM text_blocks ORDER BY number, part")?;
+        let mut blocks: Blocks = HashMap::new();
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, i32>(0)?,
+                r.get::<_, i32>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })?;
+        for row in rows {
+            let (number, link, text) = row?;
+            // The link of the first part is the block's; later parts only continue the text.
+            let b = blocks.entry(number).or_insert_with(|| Block {
+                link,
+                text: String::new(),
+                acts: false,
+            });
+            b.text.push_str(&text);
+        }
+        for b in blocks.values_mut() {
+            b.acts = has_action(&b.text);
+        }
+        let mut stmt = conn.prepare(
+            "SELECT CASE WHEN e.par1 > 0 THEN e.par1 ELSE e.par2 END, r.map, r.room \
+             FROM room_exits e JOIN rooms r ON r.id = e.room_id \
+             WHERE e.exit_type IN (?1, ?2) AND (e.par1 > 0 OR e.par2 > 0) \
+             ORDER BY r.room, r.map",
+        )?;
+        let exit_spells = stmt
+            .query_map([EXIT_CAST, EXIT_SPELL_TRAP], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(Self {
+            blocks,
+            exit_spells,
             rooms,
             known,
             room_items,

@@ -15,14 +15,55 @@ Rules that must not trust a `none` field (all are values NMR computes from other
 rules function that needs one derives it from the base data instead of reading the field):
 monster `avg_dmg*`, `avg_lair_exp`, `script_value`, `in_game`; `Lairs.avg_walk`, `avg_dmg*`.
 
-**Derived by T-014** (`touchstone_data::derive`, run inside `load_world()` on the same snapshot):
-the `Lairs` table and `Rooms.lair`, monster `summoned_by`, item `obtained_from`, spell
-`learnable`, `learned_from`, `casted_by` and `classes`. Match rates against the stock `.mdb` are
-in `docs/data-parity.md`. They are *partial* where marked below: the part that comes out of
-text-block scripts is not reproduced, so the text is a prefix-compatible subset of NMR's, never
-a different list. The derivations read each other (monsters, then items, then spells), so an
-item that only a script hands out reads as not obtainable and a spell it teaches loses that
-source.
+**Derived by T-014 and T-016** (`touchstone_data::derive`, run inside `load_world()` on the same
+snapshot): the `Lairs` table and `Rooms.lair`, monster `summoned_by`, item `obtained_from`, spell
+`learnable`, `learned_from`, `casted_by` and `classes`, and TBInfo `action` and `called_from`.
+Match rates against the stock `.mdb` are in `docs/data-parity.md`. T-016 added the part that comes
+out of text-block scripts (see "Text-block scripts" below). The derivations read each other
+(monsters, then items, then spells, then the scripts those make reachable), so they run again
+until nothing changes (six passes on the stock game and on Quicksilver 1.20).
+
+### Text-block scripts (T-016)
+
+NMR reads every script the game can reach. `derive/script.rs` reads a block's lines and
+`derive/walk.rs` walks the graph; the rules below were learned from the stock `.mdb` and
+reproduce it exactly except where "Not reproduced" says otherwise.
+
+- **Lines.** A line whose first segment (before the first `:`) starts with a clause keyword is a
+  list of clauses. Otherwise, if the last word of that segment is a whole number, it is a
+  *random line* and the number is a cumulative percentage (the entry's share is the difference
+  to the previous random line, so an out-of-order line gives a negative share and a typo such
+  as `40;message 2914` takes `2914` as the number); otherwise it is a pattern line (an ask or
+  command pattern) and its first segment is skipped.
+- **References.** A clause whose first word is a number, or `text n`, points at a block that is
+  shown; `random n` at a random block (`Textblock(rndm) #n`); `testskill s v n` and
+  `checkspell s n` at a block that is run. A block that is only shown has no `action` (its link
+  is followed); a block that is run, or reached by a link from a shown block, is a script only if
+  one of its clauses starts with a keyword other than `message` and `addevil` (the word must be
+  the keyword itself). A `checkspell` branch counts only if the spell tested is in the game.
+  Roots (room commands, monster ask trees, spell text blocks) are always scripts.
+- **Roots.** Room commands (`Rooms.cmd`) and the text-block ability (148; the value, or the
+  spell's base value when it is 0) of spells that are in the game; the ask tree of monsters in
+  the game. A spell is in the game when an item teaches it or something casts it; a room casts
+  through its occupant spell and through Cast (22) and Spell Trap (24) exits.
+- **Order.** The walk takes the smallest block first, in two phases: first the room roots, the
+  roots of monsters that are in the game through a room, a lair or a summon spell, and the spells
+  monsters cast; then everything else. A block more than two links from its root waits for the
+  second phase. Entries on a record are ordered by the pass of the derivation loop that first
+  produced them, so what rooms, lairs and drops give comes before what only scripts reach.
+- **Effects.** `summon n` (monster n), `giveitem n`, `cast n` and `learnspell n` are listed as
+  `Textblock #b(p%)` on the target, with the share of the line when it is a random line, once
+  for each block and share. An item given or a spell taught in a block that a monster's ask tree
+  reaches is credited to the monster instead (`NPC #m`, once per monster).
+- **Not reproduced.** (1) `Item #n(p%)` is estimated as the chance that one use of chest item
+  n gives the item, from its spell's block, treating every `random` clause as an independent draw
+  and a random block as one line picked by share; of several chests that cast one spell only the
+  first is listed; the figure matches NMR when the chest's blocks give items directly and is
+  higher than NMR's (by 1% to 25% of itself) when random blocks call random blocks, and the rule
+  behind NMR's figure is not known. (2) A few lists are in a different order (see each field).
+  (3) The 26 rooms silvermere has beyond the `.mdb` (record numbers in `docs/data-parity.md`)
+  run scripts the `.mdb` never read; the monsters, items and spells those scripts reach, and the
+  TBInfo rows for their blocks, appear only on the silvermere side.
 
 ## Items (`items`, `item_abilities`, `item_classes`, `item_races`, `item_negates`)
 
@@ -54,7 +95,7 @@ source.
 | `negate_spell[0..9]` | direct | `item_negates.spell` by slot |
 | `abilities[0..19]` | direct | `item_abilities.ability`, `.value` by slot |
 | `in_game` | none | always `true`: a row in the server's table is in the game |
-| `obtained_from` | derived, partial | `Room m/r` (placed or hidden in the room; sorted by room number then map, as the `.mdb`), `Shop #n` / `Shop(sell) #n` (shop buys it, no quantity) / `Shop(nogen) #n` (stocked, never restocked) for shops in the game, `Monster #n(p%)` for monsters in the game, joined with `, ` in that order, cut to 1,996 characters with the last replaced by `+`. 66% of items match exactly. Of the 659 that differ, 588 differ only by entries the loader does not produce: `Textblock #n(p%)` (an item given by a text-block line, p from the line's cumulative percentage), `NPC #n` (given through a monster's ask tree) and `Item #n(p%)` (a chest that opens into it). Those need a reachability walk of the text-block scripts. The other 71 are mostly monsters that are in the game only through a script (so they read as not in the game here), a few monsters the `.mdb` lists with a different slot percentage than silvermere's drop table, and the rooms and shop 65 that exist only in silvermere's world (the 26 extra rooms) |
+| `obtained_from` | derived, partial | `Room m/r` (placed or hidden in the room; sorted by room number then map, as the `.mdb`), `Shop #n` / `Shop(sell) #n` (shop buys it, no quantity) / `Shop(nogen) #n` (stocked, never restocked) for shops in the game, `Monster #n(p%)` for monsters in the game (a monster with two slots of the item and one percentage once), `Textblock #b(p%)` for scripts that give it, `Item #n(p%)` for a chest item that opens into it, then `NPC #m` for a monster whose ask tree gives it; joined with `, `, cut to 1,996 characters with the last replaced by `+`. Entries are ordered by the pass that first produced them (rooms, shops and drops of monsters that are in the game through a room or lair come first). 87.5% of items match exactly. Of the 244 that differ: 185 list the right chests with different percentages (`Item #n(p%)`, see "Not reproduced" above); 22 list a shop the `.mdb` does not (the shops in game because of silvermere's extra rooms); 16 have the right entries in another order (script entries of spells cast by items); 9 + 6 + 3 list a room, monster or block that exists only because of the 26 extra rooms; 3 others |
 | `references` | none | `None`; NMR's cross-reference text |
 
 Not mapped (no model field): descriptions, hidden descriptions, `level`, `energy`, the `cash_*`
@@ -102,7 +143,7 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | `drops[n]` | direct | `monster_items.item`, `.pct` by slot (`uses` is dropped). An empty slot is 0/0; the `.mdb` keeps a stale percentage on some empty slots (615 of them), which has no source and no meaning |
 | `abilities[n]` | direct | `monster_abilities.ability`, `.value` by slot |
 | `in_game` | none | always `true` |
-| `summoned_by` | derived, partial | `Room m/r` (the room's specific monster), then the rooms whose generation range covers the monster, joined with `,`: `Group: m/r` or, for a lair room, `[group-min-max][max]Group(lair): m/r`; then `Spell #n` for summon spells (ability 12; the monster is its value, or the spell's base value when that is 0); rooms and spells ordered by room number then map and spell number. Cut at 20,000 characters like the `.mdb`. 89% of monsters match. The 116 that differ: 101 only by `Textblock #n(p%)` entries (scripts that summon the monster, not reproduced); the other 15 by the order or set of `Spell #n` entries, the one room silvermere has beyond the `.mdb` (monsters 266 to 268) and the 20,000 cut (monster 229) |
+| `summoned_by` | derived, partial | `Room m/r` (the room's specific monster), then the rooms whose generation range covers the monster, joined with `,`: `Group: m/r` or, for a lair room, `[group-min-max][max]Group(lair): m/r`; then `Spell #n` for summon spells that are in the game (ability 12; the monster is its value, or every monster from the spell's base value to its base maximum when that is 0), then `Textblock #b(p%)` for the scripts that summon it (`summon n`), each kind in the order its entries were produced; rooms and spells ordered by room number then map and spell number. Cut at 20,000 characters like the `.mdb`. 97.5% of monsters match. Of the 27 that differ, 24 involve the 26 rooms silvermere has beyond the `.mdb` (a `Group: 1/288` entry for monsters 266 to 268, and scripts of the extra rooms that summon monsters 1093 to 1112) and 3 list the right entries in another order (monsters 239, 891, 1315) |
 
 ## Spells (`spells`, `spell_abilities`)
 
@@ -126,10 +167,10 @@ container coins, hit/miss/destroy messages, `textnum`, `robable`, `active`.
 | `min_inc_lvls`, `min_inc` | direct | `spells.minlvls`, `spells.mininc` |
 | `dur_inc_lvls`, `dur_inc` | direct | `spells.durlvls`, `spells.durinc` |
 | `abilities[n]` | direct | `spell_abilities.ability`, `.value` by slot |
-| `learnable` | derived, partial | true when some item in the game teaches the spell (item ability 42, value = spell). 96.7% match; the 46 others are taught only by an NPC (a monster's ask script with `learnspell`) |
-| `learned_from` | derived, partial | `Item #n` for those items, by item number, joined with `, `. 96.6% match; the misses are the NPC-taught spells (`NPC #n`) and spells whose scroll the `.mdb` does not count as obtainable |
-| `classes` | derived, partial | `(*)` when a teaching item has no class restriction, else `(c,c)` of the classes the items name. The `.mdb` also gives `(12)`-style values for NPC-taught spells (the class line of the ask script); those are not reproduced. 96.7% match |
-| `casted_by` | derived, partial | `Monster #n` (mid spell, hit spell, spell attack, death or create spell; monsters in the game), then `Room m/r` (occupant spell), then `Spell #n` (spells with ability 151 naming it), joined with `, `, cut to 250 characters. 62% match: 317 of the 518 misses are only `Textblock`, `Item` or `NPC` entries (casts from scripts and item effects, not reproduced); most of the rest are the **order of the monsters**, which in the `.mdb` follows an NMR scan order the loader could not recover (the set is right, the loader sorts by monster number) |
+| `learnable` | derived | true when some item in the game teaches the spell (item ability 42, value = spell) or a script in the game has a `learnspell` clause for it. 99.35% match; the 9 others are taught by a script of the extra rooms (block 4356) |
+| `learned_from` | derived | `Item #n` for those items, by item number, then `NPC #m` (a monster whose ask tree reaches the `learnspell` clause, once per monster) or `Textblock #b` (any other script), joined with `, `. 99.35% match; the 9 others are the extra rooms' block 4356 |
+| `classes` | derived | `(*)` when a teaching item has no class restriction or a `learnspell` line has no `class n` clause, else `(c,c)` of the classes the items and lines name. 99.35% match; the 9 others are the extra rooms' block 4356 |
+| `casted_by` | derived, partial | `Room m/r` (occupant spell, or a Cast or Spell Trap exit), `Monster #n` (mid spell, hit spell, spell attack, death or create spell; monsters in the game), `Spell #n` (spells in the game with ability 151 or 153 naming it; with value 0 every spell from the base value to the base maximum), `Textblock #b(p%)` (`cast n` clauses of scripts) and `Item #n` (obtainable items with ability 43), joined with `, `, each entry placed by the pass that first produced it, cut to 249 characters (248 and a `+`). 97.5% match. Of the 34 that differ, 14 involve the 26 extra rooms (their monsters and blocks), 16 list the right entries in another order (the `.mdb` orders monsters and items by NMR's own rounds, which the passes only approximate) and 4 are other cases |
 
 Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 
@@ -204,8 +245,8 @@ Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 |---|---|---|
 | `number` | direct | `text_blocks.number`, one row per block |
 | `link_to` | direct | `text_blocks.link` of the block's first part |
-| `action` | none | `None`; NMR's parsed ASK keywords/actions of the text. Not attempted by T-014: it needs the full text-block script parser (the same one `called_from` below and the `Textblock`/`NPC` entries above wait for) |
-| `called_from` | derived | comma-joined `Monster #n` (monster `talktext`), `Room map/room` (room `cmdtext`) and `Textblock #n` (another block linking here); empty when nothing points at it. Item text references are not included (the model has no `textnum`). NMR also lists blocks referenced from inside another block's script (`Textblock #998(6%)`, `Textblock(rndm) #997`), which needs the script parser (not done by T-014, see `action` above); about half of the blocks that have a caller differ for that reason. The `.mdb` has 3 blocks silvermere lacks (11, 60, 134) and silvermere has 944 the `.mdb` lacks (block 0 and the 10000 series). |
+| `action` | derived | the text of the block (all its parts joined) when the block is read as a script (a root, a `random` target, or a `testskill`, `checkspell` or link target with an action keyword), else `None`. 100% of the paired rows match |
+| `called_from` | derived | `Room map/room` (room command; room number then map), `Monster #n` (ask tree of a monster in the game), `Spell #n` (text-block ability of a spell in the game), then `Textblock #b` (a bare number, `text n`, `testskill`, `checkspell` or a link), `Textblock(rndm) #b` (`random n`) and `(p%)` when the calling line is a random line; entries ordered by the pass that first produced them and by the walk; cut to 249 characters. Rows exist only for blocks the game can reach, as in the `.mdb` (silvermere has 3,267 blocks, the `.mdb` 2,326 rows): the walk reaches 34 blocks the `.mdb` has no row for, all from the commands of the 26 extra rooms, and the `.mdb` has 3 rows (11, 60, 134) silvermere has no block for. 99.4% of the paired rows match; the 13 others are 10 that list monsters of the extra rooms and 3 (500, 9383, 9396) with the right entries in another order. Item text references are not included (the model has no `textnum`) |
 
 ## Info
 
@@ -254,6 +295,11 @@ What this means for the Q cards:
   is the string `1.20.0` on this database.
 - The spell, item and monster rows that 1.20 changes already arrive through the loader, so section 2
   of `docs/quicksilver-profile.md` holds: nothing in it needs porting.
-- The derived fields (`obtained_from`, `learned_from`, `casted_by`, `summoned_by`, lairs) keep their
-  stock caveats. There is no NMR reference for a 1.20 world, so their match rates cannot be measured
-  as `docs/data-parity.md` does for stock.
+- The derived fields (`obtained_from`, `learned_from`, `casted_by`, `summoned_by`, lairs, TBInfo
+  `action` and `called_from`) keep their stock caveats. There is no NMR reference for a 1.20 world,
+  so their match rates cannot be measured as `docs/data-parity.md` does for stock.
+- T-016: the text-block derivation runs on this database (the data test
+  `quicksilver_derives_the_script_fields_quickly` in `tests/all/derive.rs`). It settles in six
+  passes. A whole `load_world()` takes about 0.6 s with the derivation in a release build on the
+  development machine, 0.35 s of that the derivation (the base load was 0.3 s), so a live reload
+  stays cheap on a small board.
