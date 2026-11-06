@@ -12,6 +12,7 @@ from .builtins import BUILTINS, CONSTANTS
 from .parser import parse_module, parse_file, decode_source
 
 OMIT = object()
+_PLAIN = frozenset((V.I16, V.I32, V.U8, V.Cur, V.F32, float, str, bool))
 EXIT = -1
 REFTYPES = (Var, ElemRef, FieldRef)
 
@@ -391,9 +392,14 @@ class Interpreter:
         fr = Frame(mod, proc, this, cp)
         params = proc.params
         np_ = len(params)
-        slots = [OMIT] * np_
-        pos = 0
+        nv = len(vals)
         extra = None
+        if cp.no_paramarray and nv <= np_ and names.count(None) == nv:
+            slots = vals + [OMIT] * (np_ - nv) if nv < np_ else vals
+            vals = ()           # positional arguments are already in place
+        else:
+            slots = [OMIT] * np_
+        pos = 0
         for k, v in enumerate(vals):
             nm = names[k]
             if nm is None:
@@ -413,6 +419,12 @@ class Interpreter:
         for i, p in enumerate(params):
             v = slots[i]
             code = cp.param_codes[i]
+            if type(v) in _PLAIN and not p.is_array and not p.paramarray:
+                # plain value argument: coerce unless it already has the declared type
+                if code in V.COERCE and type(v) is not V.EXACT_TYPE.get(code):
+                    v = V.COERCE[code](v)
+                fv[p.low] = Var(v, code)
+                continue
             if p.paramarray:
                 a = VBArray("variant")
                 items = [x.get() if isinstance(x, REFTYPES) else x for x in (extra or [])]
@@ -458,11 +470,11 @@ class Interpreter:
         # locals
         for low, code, factory in cp.locals:
             fv[low] = factory(self)
-        for low, cell in cp.statics_for(this).items():
-            fv[low] = cell
+        if cp.static_cells:
+            for low, cell in cp.static_cells.items():
+                fv[low] = cell
         if proc.kind in ("function", "get"):
-            rc = cp.ret_code
-            fv[proc.low] = Var(cp.ret_default(self), rc)
+            fv[proc.low] = Var(cp.ret_default(self), cp.ret_code)
         self.depth += 1
         if self.depth > self.max_depth:
             self.depth -= 1
@@ -482,7 +494,6 @@ class Interpreter:
         while True:
             try:
                 while pc < n:
-                    fr.pc = pc
                     r = instrs[pc](fr)
                     if r is None:
                         pc += 1
@@ -492,6 +503,7 @@ class Interpreter:
                         pc = r
                 return
             except VBError as e:
+                fr.pc = pc        # only the error path needs the failing instruction's index
                 mode = fr.on_error
                 if mode is None or fr.handling:
                     raise

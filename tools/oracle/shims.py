@@ -68,6 +68,21 @@ class Database:
         self.path = path
         self.extra = extra or {}    # {"Items": [{column: value}]}: invented rows appended after the stock ones
         self._tables = {}
+        self._indexes = {}          # (table, index name) -> built index, shared by every recordset opened on it
+
+    def index_for(self, tname, iname, cols, rows):
+        """Row order, first-row-per-key map and row->position map for one index, built once per
+        database load (every case reopens its recordsets, and MME sets .Index on each)."""
+        key = (tname.lower(), iname.lower())
+        ix = self._indexes.get(key)
+        if ix is None:
+            keys = [tuple(_key(r[i]) for i in cols) for r in rows]
+            order = sorted(range(len(rows)), key=lambda i: (keys[i], i))
+            m = {}
+            for i in order:
+                m.setdefault(keys[i], i)       # Jet's Seek "=" finds the first match
+            ix = self._indexes[key] = (order, (len(cols), m), {row: pos for pos, row in enumerate(order)})
+        return ix
 
     def table(self, name):
         t = self._tables.get(name)
@@ -130,6 +145,7 @@ class Recordset(ExtObject):
             self._cols, self._rows = self.db.table(self.tname)
             self._colix = {c.lower(): i for i, c in enumerate(self._cols)}
             self.order = list(range(len(self._rows)))
+            self._posmap = None
             self.pos = 0
             self._seek_map = None
 
@@ -143,21 +159,16 @@ class Recordset(ExtObject):
         if name == "":
             self.index = ""
             self.order = list(range(len(self._rows)))
+            self._posmap = None
             self._seek_map = None
             return
         spec = INDEXES.get(name.lower())
         if spec is None or spec[0].lower() != self.tname.lower():
             raise VBError(3015, "'%s' is not an index in this table." % name)
         kcols = [self._colix[c.lower()] for c in spec[1]]
-        keys = [tuple(_key(r[i]) for i in kcols) for r in self._rows]
-        self.order = sorted(range(len(self._rows)), key=lambda i: (keys[i], i))
+        self.order, self._seek_map, self._posmap = self.db.index_for(self.tname, name, kcols, self._rows)
         self.index = name
-        # first record in index order for each key (Jet's Seek "=" finds the first match)
-        m = {}
-        for i in self.order:
-            m.setdefault(keys[i], i)
-        self._seek_map = (len(kcols), m)
-        self.pos = 0 if self.order else 0
+        self.pos = 0
 
     # -- cursor
     def _current(self):
@@ -244,7 +255,7 @@ class Recordset(ExtObject):
         if n == "bookmark":
             idx, row = value
             self._set_index(idx)
-            self.pos = self.order.index(row)
+            self.pos = self._posmap[row] if self._posmap is not None else self.order.index(row)
             return
         raise VBError(438)
 
@@ -266,7 +277,7 @@ class Recordset(ExtObject):
             # a short key matches on the leading columns
             hit = None
             for k, i in m.items():
-                if k[:len(key)] == key and (hit is None or self.order.index(i) < self.order.index(hit)):
+                if k[:len(key)] == key and (hit is None or self._posmap[i] < self._posmap[hit]):
                     hit = i
         else:
             hit = m.get(key)
@@ -275,7 +286,7 @@ class Recordset(ExtObject):
             self.pos = len(self.order)      # DAO leaves the cursor undefined; EOF is what MME observes
         else:
             self.no_match = False
-            self.pos = self.order.index(hit)
+            self.pos = self._posmap[hit]
 
 
 # --------------------------------------------------------------------------- forms and controls

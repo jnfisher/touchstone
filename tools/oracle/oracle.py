@@ -5,7 +5,7 @@
     python3 -I tools/oracle/oracle.py report [--json]  # unbound names and procedures that run without shims
     python3 -I tools/oracle/oracle.py call PROC [ARG...]   # call one procedure with simple arguments
     python3 -I tools/oracle/oracle.py gen FAMILY|--all [--out DIR]   # write fixtures/rules/<family>.json
-    python3 -I tools/oracle/oracle.py check [FAMILY...]    # regenerate into a temp dir, diff with the committed fixtures
+    python3 -I tools/oracle/oracle.py check [-j N] [FAMILY...]    # regenerate into a temp dir, diff with the committed fixtures
 
 MME source comes from the cache that tools/mme-fetch.sh fills (never from the repository).
 """
@@ -211,38 +211,81 @@ def cmd_gen(args):
     return 0
 
 
+# Rough CPU seconds of the slow families (`gen`, one core). Only used to decide how many pieces a family
+# is split into for `check`; a stale number costs speed, never correctness.
+COST_HINTS = {"combat": 150, "paste_party": 270, "textblock": 50, "monster_glue": 40, "monster_glue_char": 70,
+              "item_match": 40, "exp": 25, "gear2": 25, "gear": 20}
+PIECE_SECONDS = 45
+
+
+def _check_worker(task):
+    """Build one family (or one piece of it) in a worker process."""
+    import time
+    import harness
+    fam, k, n = task
+    t = time.time()
+    if n == 1:
+        return fam, k, n, harness.build_fixture(fam), time.time() - t
+    return fam, k, n, harness.build_fixture(fam, part=(k, n)), time.time() - t
+
+
 def cmd_check(args):
     import difflib
-    import tempfile
     import time
     import harness
     fams = args.families or harness.families()
+    jobs = args.jobs or min(4, os.cpu_count() or 1)
+    jobs = max(1, jobs)
     bad = 0
     t0 = time.time()
-    with tempfile.TemporaryDirectory() as tmp:
+
+    def report(fam, data, secs):
+        committed = os.path.join(harness.rules_dir(), fam + ".json")
+        if not os.path.exists(committed):
+            print("%s: MISSING fixtures/rules/%s.json" % (fam, fam))
+            return 1
+        with open(committed, "rb") as f:
+            old = f.read()
+        if old == data:
+            print("%s: current (%.1fs)" % (fam, secs), flush=True)
+            return 0
+        print("%s: STALE" % fam)
+        diff = difflib.unified_diff(old.decode().splitlines(), data.decode().splitlines(),
+                                    "committed", "regenerated", lineterm="", n=0)
+        for i, line in enumerate(diff):
+            if i >= 40:
+                print("  ... (diff truncated)")
+                break
+            print("  " + line[:200])
+        return 1
+
+    if jobs == 1:
         for fam in fams:
-            data = harness.build_fixture(fam)
-            with open(os.path.join(tmp, fam + ".json"), "wb") as f:
-                f.write(data)
-            committed = os.path.join(harness.rules_dir(), fam + ".json")
-            if not os.path.exists(committed):
-                print("%s: MISSING fixtures/rules/%s.json" % (fam, fam))
-                bad += 1
-                continue
-            old = open(committed, "rb").read()
-            if old == data:
-                print("%s: current" % fam)
-                continue
-            bad += 1
-            print("%s: STALE" % fam)
-            diff = difflib.unified_diff(old.decode().splitlines(), data.decode().splitlines(),
-                                        "committed", "regenerated", lineterm="", n=0)
-            for i, line in enumerate(diff):
-                if i >= 40:
-                    print("  ... (diff truncated)")
-                    break
-                print("  " + line[:200])
-    print("checked %d families in %.1fs" % (len(fams), time.time() - t0))
+            fam, _, _, data, secs = _check_worker((fam, 0, 1))
+            bad += report(fam, data, secs)
+    else:
+        import multiprocessing
+        tasks = []
+        for fam in fams:
+            n = max(1, min(jobs, -(-COST_HINTS.get(fam, 0) // PIECE_SECONDS)))
+            tasks += [(fam, k, n) for k in range(n)]
+        # the costliest pieces first, so the slowest family does not start last
+        tasks.sort(key=lambda t: -COST_HINTS.get(t[0], 0) / t[2])
+        pieces = {}
+        spent = {}
+        with multiprocessing.get_context("fork").Pool(jobs) as pool:
+            for fam, k, n, data, secs in pool.imap_unordered(_check_worker, tasks, chunksize=1):
+                spent[fam] = spent.get(fam, 0) + secs
+                if n == 1:
+                    bad += report(fam, data, secs)
+                    continue
+                pieces.setdefault(fam, []).append(data)
+                if len(pieces[fam]) == n:
+                    import harness as h
+                    head = pieces[fam][0][0]
+                    allc = [c for part in pieces[fam] for c in part[1]]
+                    bad += report(fam, h.assemble_fixture(head, allc), spent[fam])
+    print("checked %d families in %.1fs (jobs=%d)" % (len(fams), time.time() - t0, jobs))
     return 1 if bad else 0
 
 
@@ -262,6 +305,7 @@ def main(argv=None):
     g.add_argument("--out")
     k = sub.add_parser("check")
     k.add_argument("families", nargs="*")
+    k.add_argument("--jobs", "-j", type=int, default=0, help="worker processes (default min(4, cpu count))")
     a = ap.parse_args(argv)
     return {"parse": cmd_parse, "report": cmd_report, "call": cmd_call, "gen": cmd_gen, "check": cmd_check}[a.cmd](a)
 
