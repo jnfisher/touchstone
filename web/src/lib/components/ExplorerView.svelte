@@ -13,7 +13,7 @@
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
 	import { getMonsterFilterStore } from '$lib/monsters.svelte';
-	import { selection, shopView } from '$lib/explorer-state.svelte';
+	import { roomsView, selection, shopView } from '$lib/explorer-state.svelte';
 	import {
 		buildLookups,
 		listRows,
@@ -21,6 +21,7 @@
 		type AnyExplorer,
 		type Lookups
 	} from '$lib/explorers';
+	import { isRoomList } from '$lib/rooms';
 	import { toColDefs } from '$lib/grid/columns';
 	import DataGrid from '$lib/grid/DataGrid.svelte';
 
@@ -151,8 +152,16 @@
 	const livePane = $derived(pane && pane.kind === kind && pane.number === Number(selectedId) ? pane : undefined);
 
 	let itemIndex = $state.raw<Map<number, Item>>();
-	async function follow(r: { target: RefTarget | null }) {
+	async function follow(r: { target: RefTarget | null; text?: string; label?: string; cells?: { text: string }[] }) {
 		if (!r.target) return;
+		if (r.target.table === 'rooms' && r.target.key && isRoomList(r.target.key)) {
+			// GotoLocation -> ShowRoomCmdRoomList: the row's text (its first sub-item's when it has one) and percent
+			const withCells = (r.cells?.length ?? 0) > 0;
+			roomsView.list = { key: r.target.key, rowText: withCells ? r.cells![0].text : (r.text ?? ''), percent: withCells ? (r.text ?? '').trim() : '' };
+			selection.set('rooms', r.target.key);
+			void goto('/rooms');
+			return;
+		}
 		let items = itemIndex;
 		if (r.target.table === 'items' && !items) {
 			items = itemIndex = new Map((await api.table('items')).map((i) => [i.number, i]));

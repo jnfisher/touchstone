@@ -14,7 +14,7 @@ const lk = { nmr: 1.83 };
 
 describe('explorer definitions', () => {
 	it('covers every data tab, each with unique column ids', () => {
-		for (const s of SECTIONS.filter((s) => s.slug !== 'character' && s.slug !== 'compare')) {
+		for (const s of SECTIONS.filter((s) => s.slug !== 'character' && s.slug !== 'compare' && s.slug !== 'rooms')) {
 			const ex = explorerFor(s.slug);
 			expect(ex, s.slug).toBeDefined();
 			const ids = ex!.columns.map((c) => c.id);
@@ -22,10 +22,10 @@ describe('explorer definitions', () => {
 			// the server's columns carry the default sort of a computed tab
 			if (ex!.defaultSort && !ex!.computed) expect(ids).toContain(ex!.defaultSort.col);
 		}
-		expect(Object.keys(EXPLORERS)).toHaveLength(9);
+		expect(Object.keys(EXPLORERS)).toHaveLength(8);
 	});
 
-	// Every data explorer but rooms is built by the server (POST /api/evaluate/{tab}).
+	// Every data explorer is built by the server (POST /api/evaluate/{tab}); Rooms has its own tab.
 	it('lists the eight computed tabs from the server', () => {
 		const computed = Object.values(EXPLORERS)
 			.filter((e) => e!.computed)

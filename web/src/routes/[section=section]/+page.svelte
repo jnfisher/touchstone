@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import CharacterTab from '$lib/components/character/CharacterTab.svelte';
 	import ExplorerView from '$lib/components/ExplorerView.svelte';
+	import RoomsTab from '$lib/components/RoomsTab.svelte';
 	import { explorerFor } from '$lib/explorers';
 	import { SECTIONS } from '$lib/sections';
 
@@ -12,6 +13,8 @@
 
 {#if slug === 'character'}
 	<CharacterTab />
+{:else if slug === 'rooms'}
+	<RoomsTab />
 {:else if explorer}
 	<!-- Keyed by tab so each tab gets its own grid, search text and scroll position. -->
 	{#key slug}
