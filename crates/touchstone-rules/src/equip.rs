@@ -340,9 +340,9 @@ pub fn clear_all(equipped: &[i32; EQUIP_SLOTS]) -> EquipOutcome {
 #[must_use]
 pub fn clear_unheld(equipped: &[i32; EQUIP_SLOTS], hold: &[bool; EQUIP_SLOTS]) -> EquipOutcome {
     let mut out = EquipOutcome::unchanged(equipped);
-    for x in 0..EQUIP_SLOTS {
-        if !hold[x] && out.equipped[x] != 0 {
-            out.equipped[x] = 0;
+    for (slot, held) in out.equipped.iter_mut().zip(hold) {
+        if !held && *slot != 0 {
+            *slot = 0;
             out.changed = true;
         }
     }
@@ -360,13 +360,13 @@ pub fn reconcile(
     rule: &ListRule,
 ) -> EquipOutcome {
     let mut out = EquipOutcome::unchanged(equipped);
-    for x in 0..EQUIP_SLOTS {
-        let keep = equipped[x] > 0
+    for (x, &n) in equipped.iter().enumerate() {
+        let keep = n > 0
             && world
-                .get_item(equipped[x])
+                .get_item(n)
                 .is_some_and(|i| in_list(profile, world, i, x, rule));
-        out.equipped[x] = if keep { equipped[x] } else { 0 };
-        if equipped[x] > 0 {
+        out.equipped[x] = if keep { n } else { 0 };
+        if n > 0 {
             out.changed = true;
         }
     }

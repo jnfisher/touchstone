@@ -3,6 +3,7 @@ mod calc;
 mod character;
 mod common;
 mod detail;
+mod equip;
 mod evaluate;
 
 mod health {
