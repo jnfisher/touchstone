@@ -27,8 +27,8 @@ pub(super) struct Known {
     pub genindex: i64,
 }
 
-/// Exit types that cast a spell when the room is entered: Cast (22, spell in the second
-/// parameter) and Spell Trap (24, spell in the first).
+/// Exit types that cast a spell when the room is entered: Cast (22) and Spell Trap (24). The
+/// spell is the first parameter, or the second when the first is 0.
 const EXIT_CAST: i64 = 22;
 const EXIT_SPELL_TRAP: i64 = 24;
 
@@ -112,10 +112,9 @@ impl Source {
             b.acts = has_action(&b.text);
         }
         let mut stmt = conn.prepare(
-            "SELECT CASE e.exit_type WHEN ?1 THEN e.par2 ELSE e.par1 END, r.map, r.room \
+            "SELECT CASE WHEN e.par1 > 0 THEN e.par1 ELSE e.par2 END, r.map, r.room \
              FROM room_exits e JOIN rooms r ON r.id = e.room_id \
-             WHERE e.exit_type IN (?1, ?2) \
-               AND (CASE e.exit_type WHEN ?1 THEN e.par2 ELSE e.par1 END) > 0 \
+             WHERE e.exit_type IN (?1, ?2) AND (e.par1 > 0 OR e.par2 > 0) \
              ORDER BY r.room, r.map",
         )?;
         let exit_spells = stmt

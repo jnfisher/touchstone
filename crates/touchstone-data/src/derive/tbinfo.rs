@@ -12,8 +12,8 @@ use super::history::{Field, History};
 use super::scripts::{Scripts, spell_blocks, spell_in_game};
 use super::source::{Source, clip};
 
-/// Column width of `TBInfo.Called From`.
-const WIDTH: usize = 250;
+/// Column width of `TBInfo.Called From`: a longer list keeps its first 248 characters and a `+`.
+const WIDTH: usize = 249;
 
 /// The rows' numbers and what calls each of them, before ordering.
 pub(super) fn entries(

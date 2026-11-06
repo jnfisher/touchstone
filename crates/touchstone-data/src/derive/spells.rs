@@ -16,12 +16,12 @@ use super::walk::Origin;
 
 /// Item ability that teaches the spell in its value.
 const ABILITY_TEACH: i32 = 42;
-/// Spell ability that casts the spell in its value.
-const ABILITY_CAST: i32 = 151;
+/// Spell abilities that cast the spell in their value: cast, and cast again when it ends.
+const ABILITIES_CAST: [i32; 2] = [151, 153];
 /// Item ability that casts the spell in its value.
 const ABILITY_ITEM_CAST: i32 = 43;
 /// Column width of `Spells.Casted By`.
-const WIDTH: usize = 250;
+const WIDTH: usize = 249;
 
 /// The spells a monster casts: death, create, mid spells, hit spells and spell attacks.
 pub(super) fn monster_casts(m: &Monster) -> Vec<i32> {
@@ -117,11 +117,21 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &m
             .push(format!("Textblock #{block}{}", percent(pct)));
     }
 
+    // Spells that are part of the game cast the spell in the ability's value, or every spell in
+    // the spell's base range when that is 0.
     let mut casters: HashMap<i32, BTreeSet<i32>> = HashMap::new();
-    for s in &parts.spells {
-        for a in s.abilities.iter().filter(|a| a.ability == ABILITY_CAST) {
-            if a.value > 0 {
-                casters.entry(a.value).or_default().insert(s.number);
+    for s in parts
+        .spells
+        .iter()
+        .filter(|s| super::scripts::spell_in_game(s))
+    {
+        for a in s
+            .abilities
+            .iter()
+            .filter(|a| ABILITIES_CAST.contains(&a.ability))
+        {
+            for cast in super::scripts::ability_range(a.value, s) {
+                casters.entry(cast).or_default().insert(s.number);
             }
         }
     }

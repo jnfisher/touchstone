@@ -19,8 +19,6 @@ const WIDTH: usize = 20000;
 /// Spell ability that summons a monster.
 const ABILITY_SUMMON: i32 = 12;
 const ROOM_LAIR: i64 = 3;
-/// A base range wider than this is no list of monsters (guards a corrupt spell row).
-const MAX_SUMMON_RANGE: i32 = 100;
 
 pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
     let mut specific: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
@@ -68,15 +66,7 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &m
     by_number.sort_by_key(|s| s.number);
     for s in by_number {
         for a in s.abilities.iter().filter(|a| a.ability == ABILITY_SUMMON) {
-            // The monster is the ability's value, or the spell's base values when that is 0: a
-            // base range summons any monster in it.
-            let range = if a.value > 0 {
-                a.value..=a.value
-            } else if s.min_base > 0 && s.max_base >= s.min_base {
-                s.min_base..=s.max_base.min(s.min_base + MAX_SUMMON_RANGE)
-            } else {
-                1..=0
-            };
+            let range = super::scripts::ability_range(a.value, s);
             for monster in range {
                 let list = spells.entry(monster).or_default();
                 if !list.contains(&s.number) {
