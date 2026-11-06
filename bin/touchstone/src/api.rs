@@ -11,7 +11,7 @@ use axum::routing::{get, post};
 use serde_json::json;
 
 use crate::state::AppState;
-use crate::{calc, character, detail, equip, evaluate, paste, settings};
+use crate::{calc, character, combat_setup, detail, equip, evaluate, paste, settings};
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -35,6 +35,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/character/bless-spells",
             get(character::bless_spells_route),
+        )
+        .route(
+            "/api/character/combat-options",
+            post(combat_setup::options_route),
+        )
+        .route(
+            "/api/character/combat-preview",
+            post(combat_setup::preview_route),
         )
         .route("/api/character/equip", post(equip::equip_route))
         .route("/api/character/equip-state", post(equip::equip_state_route))

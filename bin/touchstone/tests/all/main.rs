@@ -1,6 +1,7 @@
 mod api;
 mod calc;
 mod character;
+mod combat_setup;
 mod common;
 mod detail;
 mod equip;

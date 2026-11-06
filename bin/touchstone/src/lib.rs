@@ -3,6 +3,7 @@
 mod api;
 pub mod calc;
 pub mod character;
+pub mod combat_setup;
 pub mod config;
 mod detail;
 pub mod equip;
