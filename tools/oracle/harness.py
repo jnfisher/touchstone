@@ -181,7 +181,12 @@ class Env:
         for name in SHIMMED_PROCS:
             it.procs.pop(name.lower(), None)
         self._bind_procs()
+        if frm:
+            self._bind_paste_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
+        it.intrinsic_hooks["inputbox"] = self._inputbox
+        self.inputbox_answers = []
+        self.loaded_forms = []
         self.class_names = {m.name: m for m in it.modules.values() if m.is_class}
         self.cells = []
         for m in it.modules.values():
@@ -221,6 +226,35 @@ class Env:
         if self.msgbox_answers:       # a case's "msgbox": the answers to the boxes MME shows, in order
             return V.I16(self.msgbox_answers.pop(0))
         return shims.msgbox_result(buttons)
+
+    def _bind_paste_procs(self):
+        """Procedures of frmMain that code cut from it calls and that only touch the screen, the disk or the
+        game window (family paste_char): recorded or ignored. SaveCharacter reports success."""
+        it, rec = self.it, self.rec
+
+        def save(it_, prompt=False, name=V.MISSING):
+            rec.add("save", prompt=bool(prompt), file="" if name is V.MISSING else V.c_str(name))
+            return V.I16(0)
+
+        def file_exists(it_, name=""):
+            n = V.c_str(name).lower()
+            return n.endswith(".mmec") and "missing" not in n
+
+        it.bind_proc("SaveCharacter", save)
+        it.bind_proc("FileExists", file_exists)
+        it.procs.pop("fileexists", None)
+        for n in ("RefreshAll", "LoadCharacter", "ClearMonsterDamageVsCharALL", "ClearSavedDamageVsMonster",
+                  "LV_Sort_ColumnClickOrSticky", "RefreshListviewItemColors_ItemManager"):
+            it.bind_proc(n, lambda it_, *a: None)
+
+    def _inputbox(self, it, *a):
+        """InputBox(prompt, title, default): a case's "inputbox" answers in order, else the default (OK pressed)."""
+        text = V.c_str(a[0]) if a else ""
+        default = V.c_str(a[2]) if len(a) > 2 and a[2] is not V.MISSING else ""
+        self.rec.add("inputbox", text=text, default=default)
+        if self.inputbox_answers:
+            return self.inputbox_answers.pop(0)
+        return default
 
     def _bind_procs(self):
         it = self.it
@@ -293,7 +327,7 @@ class Env:
         self.rec.events.clear()
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
-        it.bind("Forms", shims.FormsCollection())
+        it.bind("Forms", shims.FormsCollection(self.loaded_forms))
         for g, table in shims.RECORDSET_GLOBALS.items():
             cell = it.globals.get(g.lower())
             if cell is not None:
@@ -434,11 +468,41 @@ class Env:
             if m["lo"] is not None:
                 return [one([V.I16(i)]) for i in range(int(m["lo"]), int(m["hi"]) + 1)]
             return one([V.I16(int(m["ci"]))] if m["ci"] is not None else [])
+        if expr.startswith("%f."):
+            # a control of another form: "%f.frmMonsterAttackSim.txtUserAC.Text", "%f.frmX.ctl(2).Tag"
+            m = re.match(r"^%f\.(\w+)\.(\w+)(?:\((\d+)\))?\.(\w+)$", expr)
+            if not m:
+                raise OracleFatal("bad read expression %r" % expr)
+            form = self.it.externals[m[1].lower()]
+            args = [V.I16(int(m[3]))] if m[3] is not None else []
+            ctl = form.vb_get(m[2], args)
+            if not isinstance(ctl, shims.ExtObject):
+                # `form.txtX = v` (default property) landed in the form's variables: it is the control's Text
+                return encode(V.c_str(ctl))
+            return encode(ctl.vb_get(m[4], []))
+        if expr.startswith("%combo."):
+            # the elements of a frmMain combo array that hold more than the None entry or select something:
+            # {"<index>": {"n": ListCount, "sel": ListIndex, "data": [ItemData..]}}
+            ctl = self.it.externals["frmmain"].controls[expr[7:].lower()]
+            out = {}
+            for i in sorted(ctl):
+                c = ctl[i]
+                n = int(c.vb_get("listcount", []))
+                sel = int(c.vb_get("listindex", []))
+                if n > 1 or sel != 0:       # a combo holding only its None entry is left out
+                    out[str(i)] = {"n": n, "sel": sel, "data": [int(c.vb_get("itemdata", [V.I16(k)])) for k in range(n)]}
+            return out
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
+        if expr.startswith("%gt."):
+            # a global array without its trailing zeros
+            v = encode(self.it.get_global(expr[4:]))
+            while v and v[-1] == 0:
+                v.pop()
+            return v
         m = self._READ.match(expr)
         if not m:
             raise OracleFatal("bad read expression %r" % expr)
@@ -451,13 +515,21 @@ class Env:
         return encode(self.get(obj, prop, [V.I16(int(x)) for x in idx.split(",")]))
 
     def run_case(self, case, setup):
+        self.loaded_forms = list(case.get("loaded_forms", setup.get("loaded_forms", [])))
         self.reset(case.get("rnd"))
         self.msgbox_answers = list(case.get("msgbox", []))
+        self.inputbox_answers = [str(x) for x in case.get("inputbox", [])]
         # a case's controls replace the family-wide setup's controls of the same name, form by form
         forms = {}
         for src in (setup.get("forms"), case.get("forms")):
             for fname, props in (src or {}).items():
-                forms.setdefault(fname, {}).update(props)
+                cur = forms.setdefault(fname, {})
+                for k, v in props.items():
+                    if isinstance(v, dict) and "$array+" in v:
+                        # a control array element-wise over the family-wide one: elements given here are laid over theirs, property by property
+                        base = (cur.get(k) or {}).get("$array", {}) if isinstance(cur.get(k), dict) else {}
+                        v = {"$array": {**base, **{i: {**base.get(i, {}), **e} for i, e in v["$array+"].items()}}}
+                    cur[k] = v
         self.set_forms(forms)
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))

@@ -93,7 +93,7 @@ fn auto_append(base: &str, add: &str, glue: &str) -> String {
 }
 
 /// `ExtractValueFromString` of modSyntaxsFunc.
-fn extract_value(whole: &str, search: &str) -> i32 {
+pub(crate) fn extract_value(whole: &str, search: &str) -> i32 {
     extract_value_inner(whole, search).unwrap_or(0)
 }
 

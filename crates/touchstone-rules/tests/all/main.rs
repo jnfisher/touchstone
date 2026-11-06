@@ -20,6 +20,7 @@ mod item_value;
 mod mega_stat;
 mod monster_glue;
 mod monster_sim;
+mod paste_char;
 mod pipeline;
 mod spell_cast;
 mod spells;
