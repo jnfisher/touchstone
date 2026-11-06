@@ -191,14 +191,19 @@ class Env:
     def _load_form_procs(self, mme, spec):
         """Scenario key "frm": procedures and variables cut out of a form (see frm.py), loaded as one
         module. The form's controls, named bare in that code, forward to the frmMain shim."""
-        raw = open(os.path.join(mme, spec.get("file", "frmMain.frm")), "rb").read()
-        self.it.load_source(frm_mod.build_source(raw, spec), name="frmMainProcs", kind="bas")
-        for name in frm_mod.control_names(raw):
-            self.it.bind(name, shims.ControlProxy(self, name))
+        # a list of specs cuts procedures from several forms (the calculator windows); each form's
+        # controls forward to the same frmMain shim, so a case must use one form's controls only
+        for k, one in enumerate(spec if isinstance(spec, list) else [spec]):
+            raw = open(os.path.join(mme, one.get("file", "frmMain.frm")), "rb").read()
+            self.it.load_source(frm_mod.build_source(raw, one), name="frmMainProcs%s" % (k or ""), kind="bas")
+            for name in frm_mod.control_names(raw):
+                if name.lower() not in self.it.externals:
+                    self.it.bind(name, shims.ControlProxy(self, name))
+        specs = spec if isinstance(spec, list) else [spec]
         self.it.bind("objToolTip", shims.NoopShim())
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
-        for n in spec.get("stub_procs", []):                          # display-only helpers (tool-tip text)
+        for n in [n for one in specs for n in one.get("stub_procs", [])]:   # display-only helpers (tool-tip text)
             self.it.bind_proc(n, lambda it_, *a: "")
 
     # -- shims
@@ -228,7 +233,7 @@ class Env:
         def false(it_, *a):
             return False
 
-        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText"):
+        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors"):
             it.bind_proc(n, noop)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
@@ -364,7 +369,11 @@ class Env:
                 args.append(cell)
                 refs.append(cell)
             elif isinstance(a, dict) and "udt" in a:
-                args.append(self.make_udt(a))
+                u = self.make_udt(a)
+                if a.get("out"):   # a Type argument the callee fills (ByRef): its final fields land in "<as>.refs"
+                    u = Var(u, a["udt"].lower())
+                    refs.append(u)
+                args.append(u)
             else:
                 args.append(decode(a))
         if "." in target:
