@@ -14,8 +14,7 @@ touches:
   - bin/touchstone/src/rooms.rs
   - bin/touchstone/src/detail.rs
   - bin/touchstone/src/clipboard.rs
-  - bin/touchstone/src/paste.rs
-  - bin/touchstone/src/item_manager.rs
+  - bin/touchstone/src/api.rs
   - bin/touchstone/tests/
   - web/src/
   - web/tests/

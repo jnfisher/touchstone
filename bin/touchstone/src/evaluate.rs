@@ -1585,6 +1585,7 @@ pub fn evaluate_with(
 ///
 /// # Errors
 /// As [`prepare`].
+#[allow(clippy::too_many_arguments)] // one request's inputs, each from a different source
 pub fn evaluate_with_damage(
     world: &World,
     tab: Tab,

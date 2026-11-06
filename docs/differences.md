@@ -206,3 +206,12 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   rooms; the port asks afresh, which gives the same text.
 - MapGetRoomLoc compares each existing row's Tag with the teleport's `map/room` text; a numeric Tag (NPC, shop, placed item,
   room spell) makes that a type mismatch that ends the procedure, so such rooms lose their command rows. Reproduced.
+
+## Spells filters, hide record numbers, builder width (P4-33)
+
+- `bHideRecordNumbers` is the `hide_record_numbers` key of `settings.json` (MME: `HideRecordNumbers` in settings.ini, off
+  unless 1). The server reads it for the explorer lists, detail panes, the ability list, spell casts, chests and the Rooms
+  tab; the Rooms tab's own checkbox is gone. The monster-heal text of the character's combat setup and the Item Manager and
+  paste paths still show record numbers (they pass false; follow-up).
+- The Spells list's "remove filters" call (the Spell Book's) and the Kai auto-learn switch are not endpoint options.
+- The class/race builder's text is shrunk (8 to 12 px) to fit the detail pane instead of scrolling; the text is unchanged.
