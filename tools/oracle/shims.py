@@ -567,3 +567,119 @@ def msgbox_result(buttons):
     default = (b >> 8) & 3
     table = {0: (1,), 1: (1, 2), 2: (3, 4, 5), 3: (6, 7, 2), 4: (6, 7), 5: (4, 2)}.get(base, (1,))
     return V.I16(table[min(default, len(table) - 1)])
+
+
+class DictionaryShim(ExtObject):
+    """Scripting.Dictionary: insertion-ordered, binary (case-sensitive) text keys, numeric keys by value.
+    Only what MME's lair code touches: Exists, Add, Count, Keys, Item (read and write)."""
+
+    vb_typename = "Dictionary"
+
+    def __init__(self):
+        self.items = {}
+
+    @staticmethod
+    def _k(v):
+        return v if isinstance(v, str) else V.as_float(v)
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "exists":
+            return self._k(args[0]) in self.items
+        if n == "add":
+            k = self._k(args[0])
+            if k in self.items:
+                raise VBError(457, "This key is already associated with an element of this collection")
+            self.items[k] = (args[0], args[1])
+            return None
+        if n == "count":
+            return V.I32(len(self.items))
+        if n == "keys":
+            return _KeyList([kv[0] for kv in self.items.values()])
+        if n == "item":
+            return self.vb_default(args)
+        raise VBError(438)
+
+    def vb_set(self, name, args, value):
+        if name.lower() in ("", "item"):
+            k = self._k(args[0])
+            self.items[k] = (self.items[k][0] if k in self.items else args[0], value)
+            return
+        raise VBError(438)
+
+    def vb_default(self, args):
+        k = self._k(args[0])
+        if k not in self.items:
+            self.items[k] = (args[0], "")
+        return self.items[k][1]
+
+
+class _KeyList(ExtObject):
+    def __init__(self, keys):
+        self.keys = keys
+
+    def vb_iter(self):
+        return iter(self.keys)
+
+
+class FakeMonsters(ExtObject):
+    """tabMonsters positioned on one invented row: only `.Fields("name")` reads (lair cases)."""
+
+    def __init__(self, row):
+        self.row = row
+
+    def vb_get(self, name, args):
+        if name.lower() == "fields":
+            return _field(self.row, args[0]) if args else _FakeFields(self.row)
+        raise VBError(438)
+
+
+def _field(row, name):
+    v = row[V.c_str(name)]
+    return V.mk_i32(v) if isinstance(v, int) else v      # DAO hands back a Long for an integer column
+
+
+class _FakeFields(ExtObject):
+    def __init__(self, row):
+        self.row = row
+
+    def vb_default(self, args):
+        return _field(self.row, args[0])
+
+
+class FakeDB(ExtObject):
+    """`DB` for CalculateAverageLairs: OpenRecordset of its Monsters query answers with the case's
+    invented rows, filtered the way the query's Like "*(lair)*" does (Jet: case-insensitive)."""
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    def vb_get(self, name, args):
+        if name.lower() == "openrecordset":
+            return FakeRows([r for r in self.rows if "(lair)" in r["Summoned By"].lower()])
+        raise VBError(438)
+
+
+class FakeRows(ExtObject):
+    def __init__(self, rows):
+        self.rows = rows
+        self.pos = 0
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "eof":
+            return self.pos >= len(self.rows)
+        if n == "movefirst":
+            self.pos = 0
+        elif n == "movenext":
+            self.pos += 1
+        elif n == "movelast":
+            self.pos = max(len(self.rows) - 1, 0)
+        elif n == "close":
+            pass
+        elif n == "fields":
+            row = self.rows[self.pos]
+            return _field(row, args[0]) if args else _FakeFields(row)
+        else:
+            raise VBError(438)
+        return None
