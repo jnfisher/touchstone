@@ -8,6 +8,7 @@ pub mod ability_text;
 pub mod accuracy;
 pub mod attack;
 pub mod character;
+pub mod char_panel;
 pub mod exp;
 pub mod exp_per_hour;
 pub mod game_text;

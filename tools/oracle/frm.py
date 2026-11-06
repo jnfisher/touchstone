@@ -10,6 +10,9 @@ A procedure can be cut short: `{"cut": "<line>", "append": ["<vb line>", ...]}` 
 the first line equal to `cut` (after trimming) up to the procedure's end and puts the appended lines in
 its place. That is how a scenario ends CalcCharacterStats where a later card takes over, and how it
 copies a local the form never stores (nEncumPCT) into a probe control.
+
+`{"subs": {proc: {"<line>": "<vb line>"}}}` replaces whole lines of a procedure (matched after trimming) with
+other text, e.g. an InputBox call with a read of a control; a line that is not found is an error.
 """
 import re
 
@@ -49,12 +52,15 @@ def _decl_line(code, name):
 
 
 def build_source(raw, spec):
-    """spec: {"decls": [name], "procs": [name], "cuts": {proc: {"cut": line, "append": [lines]}}}"""
+    """spec: {"decls": [name], "procs": [name], "cuts": {proc: {"cut": line, "append": [lines]}}, "subs": {proc: {line: new}}}"""
     _, code = _code_lines(raw)
     out = ["Option Explicit", "Option Base 0"]
     out += [_decl_line(code, n) for n in spec.get("decls", [])]
     for name in spec["procs"]:
         body = _proc_lines(code, name)
+        for old, new in ((spec.get("subs") or {}).get(name) or {}).items():
+            idx = next(i for i, l in enumerate(body) if l.strip() == old)
+            body[idx] = new
         cut = (spec.get("cuts") or {}).get(name)
         if cut:
             idx = next(i for i, l in enumerate(body) if l.strip() == cut["cut"])
