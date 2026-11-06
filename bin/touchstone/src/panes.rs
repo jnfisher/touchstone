@@ -13,13 +13,12 @@ use serde::{Deserialize, Serialize};
 use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::ability_text::AbilityEnv;
-use touchstone_rules::character::set_char_defense_description;
 use touchstone_rules::detail::class_race::{pull_class_detail, pull_race_detail};
 use touchstone_rules::detail::item::{
     DetailKind as ItemKind, ItemDetailEnv, ItemDetailOptions, pull_item_detail,
 };
 use touchstone_rules::detail::monster::{
-    DamageCaches, MonsterDetailInputs, MonsterRow, NoReach, pull_monster_detail,
+    DamageCaches, MonsterDetailInputs, MonsterRow, pull_monster_detail,
 };
 use touchstone_rules::detail::shop::{ShopDetailOptions, pull_shop_detail};
 use touchstone_rules::detail::spell::{SpellDetailOptions, pull_spell_detail};
@@ -37,6 +36,7 @@ use crate::detail::WorldNames;
 use crate::evaluate::{
     Ctx, EvaluateBody, GlobalFilterBody, Options, prepare, run_settings, with_monster_env,
 };
+use crate::monster_damage::{Snapshot, char_defense_description};
 use crate::state::AppState;
 
 /// The panes this endpoint serves.
@@ -331,6 +331,13 @@ fn target_of(r: &LocationRow) -> Option<Target> {
                 None
             }
         }
+        // GotoLocation: a room command row opens its room, or the list of rooms when it has several
+        // (a key with `|` or `-`)
+        LocationKind::RoomCmd => (tag.contains('/')).then(|| Target {
+            table: "rooms",
+            number: 0,
+            key: Some(tag.to_owned()),
+        }),
         _ => None,
     }
 }
@@ -382,6 +389,10 @@ struct Shared<'a> {
     charm_tag: String,
     strength_tag: String,
     attack_type_mme: i32,
+    /// The monster damage a calculation left (nothing calculated until one runs).
+    damage: &'a Snapshot,
+    /// The arrays after the monster pane ran: it fills in monsters it simulated on the spot, and MME keeps those.
+    written: std::cell::RefCell<Option<DamageCaches>>,
 }
 
 impl Shared<'_> {
@@ -634,15 +645,16 @@ fn line_json(world: &World, r: &MonsterRow) -> LineJson {
     }
 }
 
-/// `PullMonsterDetail` for the current character and the lair/party boxes. The damage arrays are the ones MME
-/// starts with (nothing calculated), rebuilt per request: no endpoint calculates monster damage, so nothing could
-/// have written them.
+/// `PullMonsterDetail` for the current character and the lair/party boxes, over the damage arrays and flags in `sh.damage`
+/// (what a calculation left, or MME's start-up values).
 fn monster_pane(
     world: &World,
     sh: &Shared,
     number: i32,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
+    loaded_reach: Option<std::sync::Arc<touchstone_rules::reachability::Reach>>,
+    waypoint_interval: i32,
 ) -> Result<PaneJson, (StatusCode, String)> {
     let ctx = sh.ctx;
     let controls = &sh.body.options.monsters;
@@ -652,9 +664,27 @@ fn monster_pane(
     if ctx.state.is_some() {
         ab.global_level_text = Some(&ctx.level_text);
     }
-    let rows = with_monster_env(ctx, controls, exp, sim_rounds, &ab, |env, s| {
-        let defense_desc = set_char_defense_description(s.cctx, &s.state.character, "")
-            .map_or_else(String::new, |d| d.description);
+    let computed = loaded_reach;
+    let names = |m: i32, r: i32| {
+        world
+            .get_room(m, r)
+            .map(|x| x.name.clone().unwrap_or_default())
+    };
+    let pane_reach = touchstone_rules::reachability::PaneReach {
+        reach: computed.as_deref(),
+        opts: touchstone_rules::reachability::ReachRowOptions {
+            level: if ctx.filter_on {
+                ctx.who.level
+            } else {
+                touchstone_vb6::val(&ctx.level_text) as i32
+            },
+            hide_record_numbers: sh.body.hide_record_numbers,
+            waypoint_interval,
+        },
+        names: &names,
+    };
+    let rows = with_monster_env(ctx, controls, exp, sim_rounds, sh.damage, &ab, |env, s| {
+        let defense_desc = char_defense_description(s.cctx, s.state).unwrap_or_default();
         let sim_chr = s.state.sim_inputs();
         let charm = touchstone_vb6::cstr(s.state.stats.stat_with_bonus[5]);
         let inputs = MonsterDetailInputs {
@@ -667,14 +697,14 @@ fn monster_pane(
             settings: s.settings,
             possy: &s.possy,
             spawn_chance: &s.spawn_chance,
-            vs_char_defense_config: "",
+            vs_char_defense_config: &sh.damage.char_config,
             char_defense_description: &defense_desc,
-            party_damage_calculated: false,
-            dont_prompt_calc_party: false,
+            party_damage_calculated: sh.damage.party_calculated,
+            dont_prompt_calc_party: sh.damage.dont_prompt_party(&controls.party()),
             bless_caption: s.state.bless_mana.unwrap_or(0.0),
             charm_tag: &charm,
             sim_chr: &sim_chr,
-            reach: &NoReach,
+            reach: &pane_reach,
         };
         let mut caches = DamageCaches {
             vs_party: env.callouts.vs_party.to_vec(),
@@ -685,13 +715,16 @@ fn monster_pane(
             .lookup_limit
             .and_then(|l| i16::try_from(l).ok())
             .unwrap_or(100);
-        pull_monster_detail(env, &ab, &inputs, &mut caches, number, limit)
+        let rows = pull_monster_detail(env, &ab, &inputs, &mut caches, number, limit);
+        *sh.written.borrow_mut() = Some(caches);
+        rows
     })?;
     let mut out = empty("monsters", number);
     out.lines = rows.iter().map(|r| line_json(world, r)).collect();
     Ok(out)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build(
     loaded: &crate::state::Loaded,
     pane: Pane,
@@ -699,7 +732,9 @@ fn build(
     body: DetailBody,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
-) -> Result<PaneJson, (StatusCode, String)> {
+    waypoint_interval: i32,
+    damage: &Snapshot,
+) -> Result<(PaneJson, Option<DamageCaches>), (StatusCode, String)> {
     let world = &loaded.world;
     let eval = EvaluateBody {
         character: body.character.clone(),
@@ -722,10 +757,12 @@ fn build(
         charm_tag,
         strength_tag,
         attack_type_mme,
+        damage,
+        written: std::cell::RefCell::new(None),
     };
     let mut lairs = StoredLairs(loaded.lair_cache());
     let missing = |what: &str| not_found(format!("no {what} {number}"));
-    Ok(match pane {
+    let out = match pane {
         Pane::Items => {
             world.get_item(number).ok_or_else(|| missing("item"))?;
             item_pane(world, &mut lairs, &sh, number)
@@ -750,9 +787,18 @@ fn build(
             world
                 .get_monster(number)
                 .ok_or_else(|| missing("monster"))?;
-            monster_pane(world, &sh, number, exp, sim_rounds)?
+            monster_pane(
+                world,
+                &sh,
+                number,
+                exp,
+                sim_rounds,
+                loaded.reach.get(),
+                waypoint_interval,
+            )?
         }
-    })
+    };
+    Ok((out, sh.written.take()))
 }
 
 async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) -> ApiResult {
@@ -761,11 +807,31 @@ async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) 
     };
     let loaded = state.current();
     let (exp, sim_rounds) = run_settings(&state, body.character.as_ref());
+    let waypoint_interval = state.settings().map_or(25, |s| s.route_waypoint_interval);
+    let damage = state
+        .monster_damage()
+        .snapshot(loaded.info.load_count, &loaded.world);
     // The lair cache is built on first use and the item pane can be long: keep it off the reactor.
-    let out =
-        tokio::task::spawn_blocking(move || build(&loaded, pane, number, body, &exp, sim_rounds))
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    let held = loaded.clone();
+    let (out, written) = tokio::task::spawn_blocking(move || {
+        build(
+            &held,
+            pane,
+            number,
+            body,
+            &exp,
+            sim_rounds,
+            waypoint_interval,
+            &damage,
+        )
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    if let Some(w) = written {
+        state
+            .monster_damage()
+            .keep_written(loaded.info.load_count, &loaded.world, &w);
+    }
     json(&out)
 }
 

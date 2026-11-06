@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_sim, panes, paste, settings, spell_tools,
+    item_manager, monster_damage, monster_sim, panes, paste, reach, rooms, settings, spell_tools,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -47,6 +47,22 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/class-race-builder/spellbook",
             post(class_race_builder::spellbook_route),
+        )
+        .route(
+            "/api/monster-damage/calculate",
+            post(monster_damage::calculate_route),
+        )
+        .route(
+            "/api/monster-damage/clear",
+            post(monster_damage::clear_route),
+        )
+        .route(
+            "/api/monster-damage/dismiss",
+            post(monster_damage::dismiss_route),
+        )
+        .route(
+            "/api/monster-damage/status",
+            get(monster_damage::status_route),
         )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
@@ -82,12 +98,18 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/item-manager/delete", post(item_manager::delete_route))
         .route("/api/item-manager/copy", post(item_manager::copy_route))
         .route("/api/item-manager/add", post(item_manager::add_route))
+        .route("/api/reachability/status", get(reach::status_route))
+        .route("/api/reachability/compute", post(reach::compute_route))
         .route("/api/paste/character", post(paste::character_route))
         .route("/api/paste/party", post(paste::party_route))
         .route(
             "/api/paste/party/continue",
             post(paste::party_continue_route),
         )
+        .route("/api/rooms/find-text", get(rooms::find_text_route))
+        .route("/api/rooms/find-exits", post(rooms::find_exits_route))
+        .route("/api/rooms/cmd-rooms", post(rooms::cmd_rooms_route))
+        .route("/api/rooms/{map}/{room}", get(rooms::room_route))
         .route("/api/clipboard/character", post(clipboard::character_route))
         .route("/api/clipboard/monster", post(clipboard::monster_route))
         .route("/api/clipboard/shop", post(clipboard::shop_route))

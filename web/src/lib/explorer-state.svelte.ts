@@ -15,3 +15,5 @@ export const shopView = $state({ charm: 0, buying: true, selling: false });
 
 /** The Spells tab's option boxes (`chkSpellOptions`, `txtSpellOptions(0)`): Calc. Combat, the "vs MR" box and "vs Anti-Magic". */
 export const spellBar = $state({ calcCombat: false, vsMr: '0', antiMagic: false });
+/** A room-command row followed from another tab (`ShowRoomCmdRoomList`): the Rooms tab lists its rooms. */
+export const roomsView = $state<{ list?: { key: string; rowText: string; percent: string } }>({});

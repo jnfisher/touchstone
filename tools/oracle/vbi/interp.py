@@ -296,6 +296,8 @@ class Interpreter:
             return Var(self.make_array(d.dims, code, module), "array:" + code)
         if d.typespec is not None and d.typespec.new and code in self.classes:
             return Var(self.instantiate(self.classes[code]), code)
+        if d.typespec is not None and d.typespec.new and code in self.new_hooks:
+            return Var(self.new_hooks[code](), code)      # `Dim c As New Collection`
         return Var(self.default_value(code), code)
 
     def instantiate(self, cls):

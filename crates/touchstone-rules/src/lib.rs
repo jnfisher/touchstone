@@ -34,6 +34,8 @@ pub mod monster_sim;
 pub mod paste_char;
 pub mod paste_party;
 pub mod pipeline;
+pub mod reachability;
+pub mod rooms;
 pub mod rows;
 pub mod spell_book;
 pub mod spell_cast;

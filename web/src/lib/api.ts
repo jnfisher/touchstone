@@ -284,6 +284,16 @@ export interface ShopPrices {
 	levels: TrainLevel[];
 }
 
+export interface ReachabilityStatus {
+	computed: boolean;
+	rooms: number;
+	edges: number;
+	random_groups: number;
+	level_bands: number;
+	monsters: number;
+	located: number;
+}
+
 /** `GET /api/exp`: exp needed to reach each level and the cost to train to it. */
 export interface ExpRow {
 	level: number;
@@ -585,6 +595,14 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		},
 		async monsterMaxDamage(n: number): Promise<MonsterMaxDamage> {
 			return getJson(maxDamagePath(n));
+		},
+		/** `GET /api/reachability/status`: whether `Options > Calculate Reachability` has been run for this load. */
+		async reachabilityStatus(): Promise<ReachabilityStatus> {
+			return getJson('/api/reachability/status');
+		},
+		/** `POST /api/reachability/compute`: `ReachRecompute`. */
+		async computeReachability(): Promise<ReachabilityStatus> {
+			return postJson('/api/reachability/compute', {});
 		},
 		async info(): Promise<Info> {
 			return (await shared('/api/info', false)) as Info;

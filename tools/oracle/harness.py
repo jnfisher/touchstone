@@ -23,6 +23,25 @@ MODULES = ["modMain.bas", "modMMudDatabase.bas", "modMMudFunc.bas", "modSyntaxsF
            "clsMonsterAttackSim.cls", "modExpPerHour.bas"]
 STOCK_MDB_SHA = "eba20f06af8dc08df755eb6dcd9763b023794f12e809cbab6762236d64d7345f"
 
+# Procedures dropped from a module before it is loaded: modReachability's debug CSV writer uses file I/O statements,
+# which the interpreter does not run (the card skips it).
+# Modules whose private state survives from case to case when a scenario asks (`"persist": true`): a result that is
+# expensive to build and only read afterwards (modReachability).
+PERSISTENT_MODULES = {"modreachability"}
+
+CUT_PROCS = {"modReachability.bas": ["ReachWriteDebugCSV"]}
+
+
+def cut_procs(path, names):
+    from vbi.parser import decode_source
+    text = decode_source(open(path, "rb").read())
+    for n in names:
+        text, k = re.subn(r"(?ms)^(?:Public |Private )?(?:Sub|Function) %s\b.*?^End (?:Sub|Function)[ \t]*\r?\n" % n, "", text)
+        if k != 1:
+            raise OracleFatal("cannot cut %s from %s" % (n, path))
+    return text
+
+
 # Procedures of the loaded modules that are replaced by recorded no-ops (UI, Win32, files, shutdown).
 SHIMMED_PROCS = ["DebugLogPrint", "AppTerminate", "Sleep", "SendMessage", "GetWindowLong", "SetWindowLong",
                  "SetWindowPos", "Unload", "SetClipboardText"]
@@ -166,16 +185,21 @@ class _Dump:
 # ----------------------------------------------------------------------------- environment
 
 class Env:
-    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False, db_only=None):
+    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False, db_only=None,
+                 persist=False):
         self.mme = mme
         shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra, db_only) if database else None
         self.rec = shims.Recorder()
+        self.tip = None
         self.msgbox_answers = []
         self.stubbed = []       # scenario stubs that replace a procedure of a loaded module (ExpandCombo)
         it = self.it = Interpreter()
         for f in (modules or MODULES):
-            it.load_file(os.path.join(mme, f))
+            if f in CUT_PROCS:
+                it.load_source(cut_procs(os.path.join(mme, f), CUT_PROCS[f]), name=f.rsplit(".", 1)[0], kind="bas")
+            else:
+                it.load_file(os.path.join(mme, f))
         if frm:
             self._load_form_procs(mme, frm)
         it.ensure_ready()
@@ -188,6 +212,7 @@ class Env:
         it.intrinsic_hooks["msgbox"] = self._msgbox
         for tn in ("scripting.dictionary", "dictionary"):
             it.new_hooks[tn] = shims.DictionaryShim
+        it.new_hooks["collection"] = shims.CollectionShim
         self.lair_env = None
         self.db_open = False        # scenario "db_open": `DB.OpenRecordset(table)` works (item detail's second recordsets)
         self.shared_lairs = {}
@@ -199,9 +224,12 @@ class Env:
         self.loaded_forms = []
         self.class_names = {m.name: m for m in it.modules.values() if m.is_class}
         self.cells = []
+        self.pending_setup = []     # scenario "setup_calls": procedures run once, before the first case
         for m in it.modules.values():
             if m.is_class:
                 continue
+            if m.name.lower() in PERSISTENT_MODULES and persist:
+                continue            # the reachability family computes once and queries many times
             for low, cell in m.cells.items():
                 self.cells.append((cell, m.varmap[low], m))
 
@@ -234,6 +262,16 @@ class Env:
         self.it.bind("objToolTip", shims.NoopShim())
         if "frmprogressbar" not in self.it.externals:      # the progress bar of a long search is only drawn
             self.it.bind("frmProgressBar", shims.ChainNoopShim())
+        if any(one.get("tooltip_recorder") for one in specs):
+            # the map cell tooltip text is what the room family reads back ("%tip"); ScaleMode constants of ConvertScale's arguments
+            self.tip = shims.TipShim()
+            self.it.bind("objToolTip", self.tip)
+            for n, v in (("vbTwips", 1), ("vbPixels", 3), ("vbModeless", 0), ("vbModal", 1)):
+                self.it.bind(n, V.I32(v))
+        for n in [n for one in specs for n in one.get("record_procs", [])]:
+            # a procedure the code under test calls for its effect on the screen: the call and its arguments are the output
+            self.it.bind_proc(n, lambda it_, *a, n=n: self.rec.add("call", name=n, args=[
+                V.c_str(x) if isinstance(x, str) else V.int_value(x) for x in a if x is not V.MISSING]) and None)
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         self.it.bind_proc("RGB", lambda it_, r, g, b: V.mk_i32(V.int_value(r) + 256 * V.int_value(g) + 65536 * V.int_value(b)))
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
@@ -314,7 +352,7 @@ class Env:
             return False
 
         for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "RefreshLearnedSpellColors",
-                  "LV_AssignRowSeqIfMissing"):
+                  "LV_AssignRowSeqIfMissing", "Load", "EnsureAppForeground"):
             it.bind_proc(n, noop)
 
         def set_clipboard_text(it_, text=""):
@@ -364,6 +402,9 @@ class Env:
         # matching is done here with Python's re (ASCII classes, as in VBScript).
         it.bind_proc("RegExpFindv2", self._regexp_find)
         it.procs.pop("regexpfindv2", None)
+        for n, v in (("dbOpenSnapshot", 4), ("dbForwardOnly", 8), ("vbModeless", 0)):     # DAO / form constants (modReachability)
+            it.bind(n, V.I32(v))
+        it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         it.bind_proc("EnsureDatabaseConnection", false)
         it.procs.pop("ensuredatabaseconnection", None)
 
@@ -439,6 +480,8 @@ class Env:
         it.depth = 0
         it.rnd.state = 0x50000 if rnd is None else rnd & 0xFFFFFF
         self.rec.events.clear()
+        if self.tip is not None:
+            self.tip.text = None
         self.saved = {}
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
@@ -591,6 +634,22 @@ class Env:
                 raise OracleFatal("unknown procedure %s" % target)
             r = self.it.call_proc(proc, None, args, [None] * len(args))
         return r
+
+    def each_step(self, objs, step, results):
+        """Step `{"call", "each": [[leading args]..], "args": [trailing args], "as"}`: one call per element, the
+        trailing args (ByRef ones too) built afresh each time; `<as>` holds the results, `<as>.refs` each call's
+        ByRef values."""
+        res, refs_all = [], []
+        for lead in step["each"]:
+            refs = []
+            args = [decode(a) for a in (lead if isinstance(lead, list) else [lead])]
+            args += self.build_args(step.get("args", []), objs, refs)
+            r = self.invoke(objs, step["call"], args)
+            res.append(encode(r) if r is not None else None)
+            refs_all.append([encode(c.v) for c in refs])
+        results[step["as"]] = res
+        if any(refs_all):
+            results[step["as"] + ".refs"] = refs_all
 
     def call(self, objs, step, results):
         target = step["call"]
@@ -752,6 +811,12 @@ class Env:
             # a recording ListView of another form: "%lvf.frmResults.lvResults" -> [text, tag, cells] per row
             fname, ctl = expr[5:].split(".", 1)
             return self.it.externals[fname.lower()].vb_get(ctl, []).dump(encode)
+        if expr.startswith("%flv."):
+            # the recording ListView of another form: "%flv.frmResults.lvResults"
+            _, fname, cname = expr.split(".")
+            return self.it.externals[fname.lower()].vb_get(cname, []).dump(encode)
+        if expr == "%tip":
+            return self.tip.text if self.tip is not None else None
         if expr.startswith("%lvn."):
             # a frmMain recording ListView reduced to Text and Tag per row (the record number and the attack kind)
             # as "number" or "number:tag" strings, to keep the fixtures small
@@ -766,6 +831,29 @@ class Env:
                 ctl = form.vb_get(m[1], [V.I16(k)])
                 data = ctl.items.get("itemdata", {})
                 out.append([int(V.int_value(data.get(j, 0))) for j in sorted(ctl.items.get("list", {}))])
+            return out
+        if expr.startswith("%m."):
+            # a module-level (Private) variable: "%m.modReachability.nEdges"; "name:count" keeps an array's first
+            # `count` elements (count is another variable of the module)
+            _, mod, name = expr.split(".")
+            name, _, cnt = name.partition(":")
+            m = self.it.modules[mod.lower()]
+            v = encode(m.cells[name.lower()].v)
+            return v[:int(V.int_value(m.cells[cnt.lower()].v))] if cnt else v
+        if expr.startswith("%digest."):
+            # FNV-1a (64 bit) of the first n elements of module arrays joined by 0x1f:
+            # "%digest.modReachability.nEdges:eFrom,eTo" -> {name: hex}
+            _, mod, rest = expr.split(".")
+            count, names = rest.split(":")
+            m = self.it.modules[mod.lower()]
+            n = int(V.int_value(m.cells[count.lower()].v))
+            out = {}
+            for nm in names.split(","):
+                data = [str(encode(x)) for x in (m.cells[nm.lower()].v.data or [])][:n]
+                h = 0xcbf29ce484222325
+                for b in "\x1f".join(data).encode("utf-8"):
+                    h = ((h ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+                out[nm] = "%016x" % h
             return out
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
@@ -808,6 +896,8 @@ class Env:
             self.it.bind("objWorkingListView", shims.PickListShim(case["work_list"]))
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
+        while self.pending_setup:
+            self.invoke({}, self.pending_setup.pop(0), [])
         self.lair_env = case.get("lair_env")
         if self.lair_env and "summoned_by" in self.lair_env:
             sb = self.lair_env["summoned_by"]
@@ -829,7 +919,9 @@ class Env:
                     # The instance also stands in for an (unset) object-typed module global.
                     self.it.global_cell(spec["global"]).v = objs[name]
             for st in steps:
-                if "rows" in st:
+                if "each" in st:
+                    self.each_step(objs, st, out)
+                elif "rows" in st:
                     self.rows_step(objs, st, out)
                 elif "select" in st:
                     self.select_step(st, out)
@@ -881,7 +973,8 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
     env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
-              paste_procs=bool(scn.get("paste_procs")), db_only=scn.get("db_only"))
+              paste_procs=bool(scn.get("paste_procs")), db_only=scn.get("db_only"), persist=bool(scn.get("persist")))
+    env.pending_setup = list(scn.get("setup_calls", []))
     env.db_open = bool(scn.get("db_open"))
     if "lairs" in scn.get("shims", []):
         env.enable_lair_shims()
@@ -905,6 +998,10 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     }
     if "data" in scn:
         header["data"] = scn["data"]      # tables the Rust test needs once, shared by every case
+    if scn.get("data_from_db"):
+        # the rows of the (db_only) database the family runs on, in the compact form the Rust test reads
+        import reach_data
+        header["data"] = reach_data.rows(database, scn.get("db_only"))
     head = '{"header":' + _Dump.dumps(header) + ','
     out = []
     for i, c in enumerate(cases):

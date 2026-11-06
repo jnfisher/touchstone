@@ -173,7 +173,7 @@ fn mid_c(c: &[char], start: i32, length: i32) -> String {
         .collect()
 }
 
-fn lcase(s: &str) -> String {
+pub(crate) fn lcase(s: &str) -> String {
     s.chars()
         .map(|c| {
             if c.is_ascii() {
@@ -194,7 +194,7 @@ fn cur_int(v: i64) -> Currency {
 }
 
 /// `CStr(Currency)`.
-fn cur_str(c: Currency) -> String {
+pub(crate) fn cur_str(c: Currency) -> String {
     let s = c.scaled();
     let sign = if s < 0 { "-" } else { "" };
     let a = s.unsigned_abs();
@@ -208,7 +208,7 @@ fn cur_str(c: Currency) -> String {
 }
 
 /// `Round(c, digits)` on a Currency (exact, half to even), digits 0 or 2.
-fn round_cur(c: Currency, digits: u32) -> Currency {
+pub(crate) fn round_cur(c: Currency, digits: u32) -> Currency {
     let q = 10i64.pow(4 - digits);
     let s = c.scaled();
     let d = s.div_euclid(q);
@@ -222,7 +222,7 @@ fn round_cur(c: Currency, digits: u32) -> Currency {
 }
 
 /// Port of modSyntaxsFunc `ExtractNumbersFromString`: the first number in the text.
-fn extract_numbers(s: &str) -> f64 {
+pub(crate) fn extract_numbers(s: &str) -> f64 {
     let mut n = String::new();
     let mut ignore_decimal = false;
     for c in s.chars() {

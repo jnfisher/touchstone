@@ -9,10 +9,18 @@ import {
 
 export function createMonsterFilterStore(storage: Pick<Storage, 'getItem' | 'setItem'> | undefined) {
 	let controls = $state<MonsterControls>(readControls(storage));
+	// Bumped when reachability is (re)computed: the list and the pane ask the server again.
+	let reachRev = $state(0);
 	const keep = () => writeControls(storage, controls);
 	return {
 		get controls() {
 			return controls;
+		},
+		get reachRev() {
+			return reachRev;
+		},
+		bumpReach() {
+			reachRev += 1;
 		},
 		set(change: Partial<Omit<MonsterControls, 'party' | 'extras'>>) {
 			controls = { ...controls, ...change };

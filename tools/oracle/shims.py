@@ -6,6 +6,7 @@
 
 Nothing here reads MME source; the VB side is whatever the interpreter loaded.
 """
+import re
 import sqlite3
 
 from vbi import values as V
@@ -99,8 +100,14 @@ class Database:
                 rows = [tuple(_vb_value(x, d) for x, d in zip(r, decls))
                         for r in con.execute('SELECT * FROM "%s" ORDER BY rowid' % name)]
                 if name in self.only:
-                    keep = set(self.only[name])
-                    rows = [r for r in rows if r[0] in keep]
+                    keep = self.only[name]
+                    if keep and isinstance(keep[0], list):
+                        # a table keyed by two columns (Rooms: map, room): keep the listed [first, second] pairs
+                        pairs = {(int(a), int(b)) for a, b in keep}
+                        rows = [r for r in rows if (int(r[0]), int(r[1])) in pairs]
+                    else:
+                        keep = set(keep)
+                        rows = [r for r in rows if r[0] in keep]
                 for extra in self.extra.get(name, []):
                     rows.append(tuple(_vb_value(extra.get(c), d) for c, d in zip(cols, decls)))
             finally:
@@ -110,6 +117,13 @@ class Database:
         return t
 
     def open_recordset(self, name):
+        m = re.match(r"(?is)^\s*SELECT\s+\*\s+FROM\s+(\w+)(?:\s+ORDER\s+BY\s+(\w+))?\s*;?\s*$", name)
+        if m:
+            # a forward-only snapshot of a whole table (modReachability): Fields returns Field objects
+            rs = Recordset(self, m.group(1))
+            rs.snapshot = True
+            rs.order_by = m.group(2)
+            return rs
         return Recordset(self, name)
 
 
@@ -142,6 +156,8 @@ class Recordset(ExtObject):
         self.pos = 0          # position within `order`; len(order) means EOF, -1 BOF
         self.no_match = False
         self.closed = False
+        self.snapshot = False
+        self.order_by = None
 
     # -- lazily loaded data
     def _load(self):
@@ -149,6 +165,9 @@ class Recordset(ExtObject):
             self._cols, self._rows = self.db.table(self.tname)
             self._colix = {c.lower(): i for i, c in enumerate(self._cols)}
             self.order = list(range(len(self._rows)))
+            if self.order_by:
+                oc = self._colix[self.order_by.lower()]
+                self.order.sort(key=lambda i: (_key(self._rows[i][oc]), i))
             self._posmap = None
             self.pos = 0
             self._seek_map = None
@@ -203,6 +222,8 @@ class Recordset(ExtObject):
         n = name.lower()
         self._load()
         if n == "fields":
+            if self.snapshot and args:
+                return FieldObj(self, args[0])
             return self.field(args[0]) if args else _Fields(self)
         if n == "nomatch":
             return self.no_match
@@ -1175,6 +1196,25 @@ def msgbox_result(buttons):
     return V.I16(table[min(default, len(table) - 1)])
 
 
+class TipShim(ExtObject):
+    """objToolTip that keeps the text of the last SetToolTipItem(hWnd, id, left, top, right, bottom, text, flag)
+    call (the map cell tooltip, family rooms); every other member does nothing."""
+
+    def __init__(self):
+        self.text = None
+
+    def vb_get(self, name, args):
+        if name.lower() == "settooltipitem" and len(args) >= 7:
+            self.text = V.c_str(args[6])
+        return None
+
+    def vb_set(self, name, args, value):
+        return None
+
+    def vb_default(self, args):
+        return None
+
+
 class DictionaryShim(ExtObject):
     """Scripting.Dictionary: insertion-ordered, binary (case-sensitive) text keys unless CompareMode is set to
     vbTextCompare (1), numeric keys by value. Only what MME's lair code touches: Exists, Add, Count, Keys,
@@ -1226,6 +1266,67 @@ class DictionaryShim(ExtObject):
         if k not in self.items:
             self.items[k] = (args[0], "")
         return self.items[k][1]
+
+
+class CollectionShim(ExtObject):
+    """VB Collection: Add(item[, key]), Count, Item(index or key), Remove, For Each in insertion order.
+    Only what modReachability touches (Add, Count, Item, enumeration)."""
+
+    vb_typename = "Collection"
+
+    def __init__(self):
+        self.items = []
+        self.keys = {}
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "add":
+            if len(args) > 1 and args[1] is not V.MISSING and args[1] is not None:
+                k = V.c_str(args[1]).lower()
+                if k in self.keys:
+                    raise VBError(457, "This key is already associated with an element of this collection")
+                self.keys[k] = len(self.items)
+            self.items.append(args[0])
+            return None
+        if n == "count":
+            return V.I32(len(self.items))
+        if n == "item":
+            return self.vb_default(args)
+        raise VBError(438)
+
+    def vb_default(self, args):
+        k = args[0]
+        if isinstance(k, str):
+            i = self.keys.get(k.lower())
+            if i is None:
+                raise VBError(5, "Invalid procedure call or argument")
+            return self.items[i]
+        i = V.int_value(k)
+        if i < 1 or i > len(self.items):
+            raise VBError(9, "Subscript out of range")
+        return self.items[i - 1]
+
+    def vb_iter(self):
+        return iter(list(self.items))
+
+
+class FieldObj(ExtObject):
+    """A DAO Field object (`Set f = rs.Fields("x")`): `.Value` is the current row's value, and it is also the default."""
+
+    def __init__(self, rs, which):
+        self.rs = rs
+        self.which = which
+        rs._load()
+        if isinstance(which, str) and which.lower() not in rs._colix:
+            raise VBError(3265, "Item not found in this collection.")      # raised at the Set, as DAO does
+
+    def vb_get(self, name, args):
+        if name.lower() == "value":
+            return self.rs.field(self.which)
+        raise VBError(438)
+
+    def vb_default(self, args):
+        return self.rs.field(self.which)
 
 
 class _KeyList(ExtObject):
