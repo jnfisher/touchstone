@@ -503,12 +503,33 @@ fn all_with_progress_reports_each_monster_and_changes_nothing() {
         &party,
         &mut sim,
         &mut rnd,
-        &mut |done, total| seen.push((done, total)),
+        &mut |done, total| {
+            seen.push((done, total));
+            true
+        },
     )
     .unwrap();
     assert_eq!(plain, with);
     let n = world.monsters.len();
     assert_eq!(seen, (1..=n).map(|k| (k, n)).collect::<Vec<_>>());
+
+    // F-001: a progress call that answers false stops the walk after that monster; what was done is the plain walk's
+    // beginning (the caller that asked to stop throws it away)
+    let (mut sim, mut rnd) = fresh();
+    let stopped = calculate_monster_damage_vs_char_all_with(
+        &world,
+        &env,
+        false,
+        100,
+        &chr,
+        &party,
+        &mut sim,
+        &mut rnd,
+        &mut |done, _| done < 3,
+    )
+    .unwrap();
+    assert_eq!(stopped.len(), 3);
+    assert_eq!(stopped[..], plain[..3]);
 }
 
 // Hand-derived from CalculateMonsterDamageVsChar and GetMonsterAvgDmgFromDB: monster 0 and below

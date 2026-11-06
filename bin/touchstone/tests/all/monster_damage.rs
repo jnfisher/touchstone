@@ -435,3 +435,65 @@ async fn a_reload_forgets_the_damage() {
     assert!(after.vs_char.iter().all(|v| v.scaled() == -10_000));
     assert!(after.char_config.is_empty());
 }
+
+#[tokio::test]
+async fn cancel_stops_between_monsters_and_keeps_the_previous_arrays() {
+    let fx = fixture("monster_damage_calc");
+    let c = case(&fx, "char-warrior");
+    // a long enough simulation per monster that the cancel always lands in the middle of the run
+    let (router, state) = app(world(&fx), 2_000_000);
+    // nothing running: cancel is a plain status
+    let (st, got) = call(&router, "/api/monster-damage/cancel", Some(&json!({}))).await;
+    assert_eq!(st, StatusCode::OK, "{got}");
+    assert!(got["running"].is_null());
+    let before = snapshot(&state);
+
+    let body = json!({"character": character(&fx, c), "mode": "char"});
+    // the cancel has to land while the run is going; a run on a slow machine may be over first, so try again
+    let mut cancelled = false;
+    for _ in 0..5 {
+        let run = {
+            let router = router.clone();
+            let body = body.clone();
+            tokio::spawn(async move {
+                call(&router, "/api/monster-damage/calculate", Some(&body)).await
+            })
+        };
+        // wait for the first monster to finish, then cancel
+        for _ in 0..2000 {
+            let (_, s) = call(&router, "/api/monster-damage/status", None).await;
+            if s["running"]["done"].as_u64().unwrap_or(0) >= 1 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        let (st, got) = call(&router, "/api/monster-damage/cancel", Some(&json!({}))).await;
+        assert_eq!(st, StatusCode::OK, "{got}");
+        let (st, done) = run.await.unwrap();
+        assert_eq!(st, StatusCode::OK, "{done}");
+        if done["cancelled"] == true {
+            cancelled = true;
+            break;
+        }
+        state
+            .monster_damage()
+            .clear(1, &state.current().world, None);
+    }
+    assert!(cancelled, "no run was cancelled");
+
+    // the arrays and the flags are as they were
+    let after = snapshot(&state);
+    assert_eq!(mine(&after.vs_char), mine(&before.vs_char));
+    assert_eq!(after.char_config, before.char_config);
+    assert_eq!(after.char_asked, before.char_asked);
+    let (_, s) = call(&router, "/api/monster-damage/status", None).await;
+    assert_eq!(s["char"]["calculated"], false);
+    assert!(s["running"].is_null());
+
+    // and the next run is not cancelled
+    let (st, done) = call(&router, "/api/monster-damage/calculate", Some(&body)).await;
+    assert_eq!(st, StatusCode::OK, "{done}");
+    assert_eq!(done["cancelled"], false, "{done}");
+    let (_, s) = call(&router, "/api/monster-damage/status", None).await;
+    assert_eq!(s["char"]["calculated"], true);
+}

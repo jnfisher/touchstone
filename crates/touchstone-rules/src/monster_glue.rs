@@ -898,12 +898,13 @@ pub fn calculate_monster_damage_vs_char_all(
         party,
         sim,
         rnd,
-        &mut |_, _| {},
+        &mut |_, _| true,
     )
 }
 
 /// [`calculate_monster_damage_vs_char_all`] that tells `progress(done, total)` after each monster,
-/// where MME advances its progress bar.
+/// where MME advances its progress bar. `progress` answers whether to go on; `false` stops after that monster
+/// and the monsters done so far are returned (the caller that asked to stop discards them).
 #[allow(clippy::too_many_arguments)]
 pub fn calculate_monster_damage_vs_char_all_with(
     world: &World,
@@ -914,7 +915,7 @@ pub fn calculate_monster_damage_vs_char_all_with(
     party: &PartyFilter,
     sim: &mut MonsterSimInput,
     rnd: &mut Rnd,
-    progress: &mut dyn FnMut(usize, usize),
+    progress: &mut dyn FnMut(usize, usize) -> bool,
 ) -> Result<Vec<(i32, Option<Currency>)>, RulesError> {
     let total = world.monsters.len();
     let mut out = Vec::with_capacity(total);
@@ -938,7 +939,9 @@ pub fn calculate_monster_damage_vs_char_all_with(
             Some(Currency::from_scaled(0))
         };
         out.push((m.number, stored));
-        progress(out.len(), total);
+        if !progress(out.len(), total) {
+            break;
+        }
     }
     Ok(out)
 }

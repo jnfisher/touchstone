@@ -58,6 +58,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(monster_damage::clear_route),
         )
         .route(
+            "/api/monster-damage/cancel",
+            post(monster_damage::cancel_route),
+        )
+        .route(
             "/api/monster-damage/dismiss",
             post(monster_damage::dismiss_route),
         )
