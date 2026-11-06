@@ -6,6 +6,8 @@
 	import { untrack } from 'svelte';
 	import { api, type ClassRec, type ClassRaceBuild, type Race } from '$lib/api';
 	import { boxText, pairFor, spellbookNote } from '$lib/builder';
+	import { spellBook } from '$lib/spellbook.svelte';
+	import { bookSeed } from '$lib/spelltools';
 	import { getCharacterStore } from '$lib/character.svelte';
 	import { Button } from '$lib/components/ui/button';
 
@@ -76,7 +78,11 @@
 
 	async function spellbook() {
 		try {
-			note = spellbookNote(await api.builderSpellbook(pair.class), className);
+			const sb = await api.builderSpellbook(pair.class);
+			note = spellbookNote(sb, className);
+			// cmdClassRace_Click opens the Spell Book at level 999 with the class and its magery
+			const seed = bookSeed(sb);
+			if (seed) spellBook.show(seed);
 		} catch (e) {
 			note = e instanceof Error ? e.message : String(e);
 		}

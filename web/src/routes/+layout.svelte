@@ -14,6 +14,8 @@
 	import { pageTitle } from '$lib/view';
 	import { getCharacterStore } from '$lib/character.svelte';
 	import GlobalFilterBar from '$lib/components/GlobalFilterBar.svelte';
+	import SpellBookDialog from '$lib/components/SpellBookDialog.svelte';
+	import { spellBook } from '$lib/spellbook.svelte';
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 
@@ -95,6 +97,18 @@
 					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger data-testid="tools-menu">
+					{#snippet child({ props })}
+						<Button {...props} variant="outline" size="sm">Tools</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end">
+					<DropdownMenu.Item data-testid="tools-spell-book" onSelect={() => spellBook.show()}>
+						Spell Book
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
@@ -120,4 +134,5 @@
 		</main>
 	</div>
 	<SettingsDialog bind:open={settingsOpen} {theme} {view} />
+	<SpellBookDialog />
 </Tooltip.Provider>

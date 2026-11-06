@@ -5,8 +5,8 @@ import type { BuilderSpellbook } from './api';
 /** `Classes.MageryType` names, in the order of the codes. */
 const MAGERY = ['None', 'Mage', 'Priest', 'Druid', 'Bard', 'Kai'];
 
-/** What the Spellbook button reports. MME has a spell book form; touchstone has none yet, so the
- * seed it would open with is shown instead. An empty note means the click did nothing. */
+/** What the Spellbook button reports besides opening the Spell Book (which `bookSeed` fills):
+ * "No Magic" for a class without magery. An empty note means the click did nothing. */
 export function spellbookNote(sb: BuilderSpellbook, className: string): string {
 	if (sb.action === 'nothing') return '';
 	if (sb.action === 'no_magic') return 'No Magic';

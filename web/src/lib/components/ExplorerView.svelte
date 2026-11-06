@@ -20,7 +20,9 @@
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
 	import { getMonsterFilterStore } from '$lib/monsters.svelte';
-	import { selection, shopView } from '$lib/explorer-state.svelte';
+	import { selection, shopView, spellBar } from '$lib/explorer-state.svelte';
+	import { dialogs } from '$lib/dialogs.svelte';
+	import { chestRows, spellBarOptions, spellOptionsEnabled } from '$lib/spelltools';
 	import {
 		buildLookups,
 		listRows,
@@ -119,6 +121,7 @@
 			{
 				...(isMonsters ? { monsters: $state.snapshot(monsterBoxes.controls) } : {}),
 				...(list ? { numbers: $state.snapshot(list.numbers) } : {}),
+				...(slug === 'spells' && !list ? spellBarOptions($state.snapshot(spellBar)) : {}),
 				// "Set Weapon/Spell Combat Calc. to Mob" from the monsters' menu
 				...vsMobOptions(slug)
 			},
@@ -256,7 +259,7 @@
 				number: Number(selectedId),
 				cells: [ln.label, ...ln.cells.map((c) => c.text)],
 				lines: p.lines?.map((x) => ({ text: x.label, subs: x.cells.map((c) => c.text) })),
-				line: ln.target ? { kind: ln.target.table === 'rooms' ? 'room' : ln.target.table.replace(/s$/, ''), number: ln.target.number } : undefined
+				line: ln.target ? { kind: ln.target.table === 'rooms' ? 'room' : ln.target.table.replace(/s$/, ''), number: ln.target.number, tag: ln.cells[0]?.tag } : undefined
 			};
 		} else {
 			const stock = (selected as Shop | undefined)?.stock?.filter((x) => x.item !== 0) ?? [];
@@ -307,6 +310,28 @@
 		selection.set(to.slug, to.id);
 		void goto(`/${to.slug}`);
 	}
+	// The Items tab's chest button (cmdSundryChests): enabled for a container; the contents list opens as a dialog.
+	const isChest = $derived(slug === 'items' && !list && selected !== undefined && (selected as Item).item_type === 8);
+	async function chests() {
+		const n = Number(selectedId);
+		const out = await api.itemChest(n);
+		if (out.message) chestNote = out.message;
+		else if (out.rows.length === 0) chestNote = 'Nothing.';
+		else {
+			chestNote = '';
+			dialogs.showResults({
+				title: `Chest contents: ${(selected as Item).name} (${n})`,
+				columns: ['Chance', 'Item'],
+				rows: chestRows(out)
+			});
+		}
+	}
+	let chestNote = $state('');
+	$effect(() => {
+		void selectedId;
+		chestNote = '';
+	});
+	const enabledBoxes = $derived(spellOptionsEnabled(spellBar.calcCombat));
 	const shopNote = $derived(
 		!isShops || !livePane?.charm_label ? '' : livePane.charm_label
 	);
@@ -370,6 +395,37 @@
 			>
 				{on ? 'Remove from compare' : 'Add to compare'}
 			</button>
+		{/if}
+		{#if isChest}
+			<button
+				type="button"
+				class="bg-background border-input hover:bg-accent h-8 rounded-md border px-3 text-sm"
+				data-testid="chests"
+				onclick={chests}
+			>
+				Chests
+			</button>
+			{#if chestNote}<span class="text-muted-foreground text-sm" role="status" data-testid="chest-note">{chestNote}</span>{/if}
+		{/if}
+		{#if slug === 'spells' && !list}
+			<label class="flex items-center gap-1 text-sm" title="Calculate the combat numbers of each spell">
+				<input type="checkbox" bind:checked={spellBar.calcCombat} data-testid="spell-calc-combat" />
+				Calc. Combat
+			</label>
+			<label class="flex items-center gap-1 text-sm {enabledBoxes.vsMr ? '' : 'opacity-50'}">
+				vs MR
+				<input
+					class="bg-background border-input h-7 w-14 rounded-md border px-2 disabled:opacity-60"
+					bind:value={spellBar.vsMr}
+					disabled={!enabledBoxes.vsMr}
+					inputmode="numeric"
+					data-testid="spell-vs-mr"
+				/>
+			</label>
+			<label class="flex items-center gap-1 text-sm {enabledBoxes.antiMagic ? '' : 'opacity-50'}">
+				<input type="checkbox" bind:checked={spellBar.antiMagic} disabled={!enabledBoxes.antiMagic} data-testid="spell-anti-magic" />
+				vs Anti-Magic
+			</label>
 		{/if}
 		{#if explorer.pending.length}
 			<span class="text-muted-foreground text-xs" data-testid="pending">
