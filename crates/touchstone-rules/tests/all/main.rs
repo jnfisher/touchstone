@@ -13,6 +13,7 @@ mod combat;
 mod equip;
 mod exp;
 mod exp_per_hour;
+mod filters;
 mod game_text;
 mod gear;
 mod hit_calc;
