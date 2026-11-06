@@ -415,6 +415,9 @@ def c_str(v):
         raise VBError(94)
     if t is DateV:
         return fmt_date(v)
+    d = getattr(v, "vb_default", None)      # an object in a String context: its default property
+    if d is not None:
+        return c_str(d([]))
     raise mismatch()
 
 

@@ -1,10 +1,11 @@
 // Fixture tests for the spell_cast family (FAM-09): see docs/porting.md step 5.
 // Expected values come from fixtures/rules/spell_cast.json (MME's own code run by the oracle).
-use crate::fixture::{self, cur};
+use crate::fixture::{self, Names, Textblocks, cur};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::cell::Cell;
 use touchstone_model::{AbilitySlot, Class, Spell};
 use touchstone_rules::Profile;
+use touchstone_rules::ability_text::AbilityEnv;
 use touchstone_rules::spell_cast::*;
 use touchstone_rules::spells::SpellText;
 use touchstone_vb6::Currency;
@@ -108,25 +109,6 @@ fn class_table(case: &Value) -> Vec<Class> {
         .collect()
 }
 
-/// GetAbilityStats(n, 0) answers the oracle gave, replayed.
-struct Recorded(HashMap<i16, String>);
-
-impl SpellText for Recorded {
-    fn ability_stats(&self, ability: i16, value: i16, _calc: bool, _pct: bool) -> String {
-        assert_eq!(value, 0, "CalculateSpellCast only asks for the bare name");
-        self.0
-            .get(&ability)
-            .unwrap_or_else(|| panic!("no recorded GetAbilityStats for {ability}"))
-            .clone()
-    }
-    fn spell_name(&self, _: i32) -> String {
-        unreachable!("not used by CalculateSpellCast")
-    }
-    fn monster_name(&self, _: i32) -> String {
-        unreachable!("not used by CalculateSpellCast")
-    }
-}
-
 fn check_cast(got: &SpellCastValues, want: &Value) -> bool {
     let w = |k: &str| &want[k];
     w("nmincast") == got.n_min_cast
@@ -163,21 +145,37 @@ fn spell_cast_fixture() {
         .expect("table case");
     let spells = spell_table(table);
     let classes = class_table(table);
-    let mut rec = Recorded(HashMap::new());
-    for c in &fx.cases {
-        if c["id"].as_str().unwrap().starts_with("as-") {
-            rec.0.insert(
-                i(&c["inputs"]["args"][0]) as i16,
-                c["outputs"]["result"].as_str().unwrap().to_string(),
-            );
-        }
-    }
+    // CalculateSpellCast asks only for GetAbilityStats(n, 0), the bare ability name, which reads no
+    // other table; the real text port runs over empty name and textblock tables.
+    let names = Names::default();
+    let tbs = Textblocks::default();
+    let text = AbilityEnv {
+        profile: Profile::Stock,
+        names: &names,
+        textblocks: &tbs,
+        spells: &spells,
+        hide_record_numbers: false,
+        quick_spell: false,
+        global_level_text: None,
+        avg_level_max_all_stats: 0.0,
+        nest: Cell::new(0),
+    };
 
     let mut fails = Vec::new();
     let mut ran = 0;
     for c in &fx.cases {
         let id = c["id"].as_str().unwrap();
-        if id == "table" || id.starts_with("as-") {
+        if id == "table" {
+            continue;
+        }
+        // GetAbilityStats(n, 0) as MME answered it, against the port's own.
+        if id.starts_with("as-") {
+            let ability = i(&c["inputs"]["args"][0]) as i16;
+            let want = c["outputs"]["result"].as_str().unwrap();
+            let got = text.ability_stats(ability, 0, false, false);
+            if got != want {
+                fails.push(format!("{id}: want {want:?}, got {got:?}"));
+            }
             continue;
         }
         ran += 1;
@@ -220,7 +218,7 @@ fn spell_cast_fixture() {
                 let env = SpellCastEnv {
                     profile: Profile::Stock,
                     spells: &spells,
-                    text: &rec,
+                    text: &text,
                     avg_level_max_all_stats: 0.0,
                 };
                 let got = env.calculate_spell_cast(&who, &req);

@@ -64,8 +64,9 @@ def _key(v):
 class Database:
     """Read-only handle on the converted stock database; tables are loaded on first use."""
 
-    def __init__(self, path):
+    def __init__(self, path, extra=None):
         self.path = path
+        self.extra = extra or {}    # {"Items": [{column: value}]}: invented rows appended after the stock ones
         self._tables = {}
 
     def table(self, name):
@@ -81,6 +82,8 @@ class Database:
                                         "or query '%s'." % name)
                 rows = [tuple(_vb_value(x, d) for x, d in zip(r, decls))
                         for r in con.execute('SELECT * FROM "%s" ORDER BY rowid' % name)]
+                for extra in self.extra.get(name, []):
+                    rows.append(tuple(_vb_value(extra.get(c), d) for c, d in zip(cols, decls)))
             finally:
                 con.close()
             t = (cols, rows)
@@ -275,6 +278,7 @@ class Recordset(ExtObject):
 # --------------------------------------------------------------------------- forms and controls
 
 _PROP_DEFAULTS = {"text": "", "caption": "", "tag": "", "name": "", "listindex": V.I32(-1)}
+_STRING_PROPS = ("text", "caption", "tag", "tooltiptext")
 
 
 def _plain(x):
@@ -312,6 +316,9 @@ class ControlShim(ExtObject):
         if args:
             tbl = self.items.get(n)
             i = V.int_value(args[0])
+            if i < 0 and n == "itemdata" and self.props.get("strictitemdata"):
+                # opt-in (scenario sets StrictItemData): VB6 raises 381 for ItemData(-1), nothing selected
+                raise VBError(381, "Invalid property array index")
             if tbl is None or i not in tbl:
                 if n in ("itemdata", "list"):
                     return V.I32(0) if n == "itemdata" else ""
@@ -330,12 +337,137 @@ class ControlShim(ExtObject):
         if args:
             self.items.setdefault(n, {})[V.int_value(args[0])] = value
         else:
-            self.props[n] = value
+            # Caption, Text, Tag and ToolTipText are Strings: a number assigned to one is stored as CStr(x)
+            self.props[n] = V.c_str(value) if n in _STRING_PROPS and not isinstance(value, ExtObject) else value
 
     def vb_default(self, args):
         if args:
             return self.vb_get("value", [])
         return self.vb_get("value", [])
+
+
+class SubItemShim(ExtObject):
+    def __init__(self, text):
+        self.text = text
+
+    def vb_get(self, name, args):
+        if name.lower() == "text":
+            return self.text
+        raise VBError(438)
+
+    def vb_default(self, args):
+        return self.text
+
+
+class ListItemShim(ExtObject):
+    """A ListView row: `Text` is the first column, `ListSubItems(i)` (1-based) the rest."""
+
+    def __init__(self, text, subs):
+        self.text = text
+        self.subs = subs
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "text":
+            return self.text
+        if n == "listsubitems":
+            if not args:
+                return _CountList(self.subs, lambda t: SubItemShim(t))
+            i = V.int_value(args[0])
+            if i < 1 or i > len(self.subs):
+                raise VBError(35600, "Index out of bounds")
+            return SubItemShim(self.subs[i - 1])
+        raise VBError(438)
+
+    def vb_default(self, args):
+        return self.text
+
+
+class _CountList(ExtObject):
+    """`.count` and 1-based default indexing over a Python list."""
+
+    def __init__(self, items, wrap):
+        self.items = items
+        self.wrap = wrap
+
+    def vb_get(self, name, args):
+        if name.lower() == "count":
+            return V.I32(len(self.items))
+        raise VBError(438)
+
+    def vb_default(self, args):
+        i = V.int_value(args[0])
+        if i < 1 or i > len(self.items):
+            raise VBError(35600, "Index out of bounds")
+        return self.wrap(self.items[i - 1])
+
+
+class ListViewShim(ControlShim):
+    """A ListView whose rows the scenario gives: {"$listview": [{"Text": "12", "Sub": ["", "CARRIED x2"]}]}."""
+
+    def __init__(self, rows, decode=_plain):
+        super().__init__({}, decode)
+        self.rows = [(str(r.get("Text", "")), [str(x) for x in r.get("Sub", [])]) for r in rows]
+
+    def vb_get(self, name, args):
+        if name.lower() == "listitems":
+            lst = _CountList(self.rows, lambda r: ListItemShim(r[0], r[1]))
+            if args:
+                return lst.vb_default(args)
+            return lst
+        return super().vb_get(name, args)
+
+
+class ControlArrayShim(ExtObject):
+    """`ctl()` with no index: the whole control array (only `.count`)."""
+
+    def __init__(self, members):
+        self.members = members
+
+    def vb_get(self, name, args):
+        if name.lower() == "count":
+            return V.I32(max(self.members) + 1 if self.members else 0)
+        raise VBError(438)
+
+
+class NoopShim(ExtObject):
+    """An object whose every method does nothing (tool-tip manager, pictures)."""
+
+    def vb_get(self, name, args):
+        return None
+
+    def vb_set(self, name, args, value):
+        return None
+
+    def vb_default(self, args):
+        return None
+
+
+class ControlProxy(ExtObject):
+    """A bare control name inside code loaded from the form (`txtCharStats(0).Tag`): forwards to the
+    current frmMain shim, which the harness rebinds for every case."""
+
+    def __init__(self, env, name):
+        self.env = env
+        self.name = name
+
+    def _target(self):
+        return self.env.it.externals["frmmain"]
+
+    def vb_get(self, name, args):
+        ctl = self._target().vb_get(self.name, [])
+        if isinstance(ctl, dict):
+            raise VBError(438)
+        return ctl.vb_get(name, args)
+
+    def vb_set(self, name, args, value):
+        self._target().vb_get(self.name, []).vb_set(name, args, value)
+
+    def vb_default(self, args):
+        form = self._target()
+        if args:
+            return form.vb_get(self.name, args)
+        return form.vb_get(self.name, [])
 
 
 class FormShim(ExtObject):
@@ -349,11 +481,19 @@ class FormShim(ExtObject):
         for name, props in (spec or {}).items():
             nl = name.lower()
             if isinstance(props, dict) and "$array" in props:
-                self.controls[nl] = {int(i): ControlShim(p, decode) for i, p in props["$array"].items()}
+                self.controls[nl] = {int(i): self._make(p, decode) for i, p in props["$array"].items()}
+            elif isinstance(props, dict) and "$listview" in props:
+                self.controls[nl] = ListViewShim(props["$listview"], decode)
             elif isinstance(props, dict):
                 self.controls[nl] = ControlShim(props, decode)
             else:
                 self.vars[nl] = decode(props)
+
+    @staticmethod
+    def _make(p, decode):
+        if isinstance(p, dict) and "$listview" in p:
+            return ListViewShim(p["$listview"], decode)
+        return ControlShim(p, decode)
 
     def vb_get(self, name, args):
         n = name.lower()
@@ -363,6 +503,8 @@ class FormShim(ExtObject):
         if c is None:
             c = self.controls[n] = ControlShim(decode=self.decode)
         if isinstance(c, dict):
+            if not args:
+                return ControlArrayShim(c)
             i = V.int_value(args[0])
             sub = c.get(i)
             if sub is None:

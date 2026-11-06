@@ -440,6 +440,11 @@ class Interpreter:
                     raise VBError(13)
                 fv[p.low] = Var(arr, "array:" + code)
                 continue
+            if isinstance(v, _RefCell):      # a ByRef element parameter passed on to another procedure
+                if p.byref and v.t == code:
+                    fv[p.low] = v
+                    continue
+                v = v.v
             if isinstance(v, REFTYPES):
                 if p.byref and getattr(v, "t", None) == code:
                     fv[p.low] = v if isinstance(v, Var) else _RefCell(v, code)

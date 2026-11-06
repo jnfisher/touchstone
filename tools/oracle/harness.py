@@ -14,6 +14,7 @@ from vbi.objects import VBArray, UDTInstance, ClsInstance, Var
 from vbi.values import NULL, EMPTY, NOTHING
 import shims
 import scenario as scn_mod
+import frm as frm_mod
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -165,13 +166,15 @@ class _Dump:
 # ----------------------------------------------------------------------------- environment
 
 class Env:
-    def __init__(self, mme, database=None, modules=None):
+    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None):
         self.mme = mme
-        self.db = shims.Database(database) if database else None
+        self.db = shims.Database(database, db_extra) if database else None
         self.rec = shims.Recorder()
         it = self.it = Interpreter()
         for f in (modules or MODULES):
             it.load_file(os.path.join(mme, f))
+        if frm:
+            self._load_form_procs(mme, frm)
         it.ensure_ready()
         for name in SHIMMED_PROCS:
             it.procs.pop(name.lower(), None)
@@ -184,6 +187,24 @@ class Env:
                 continue
             for low, cell in m.cells.items():
                 self.cells.append((cell, m.varmap[low], m))
+
+    def _load_form_procs(self, mme, spec):
+        """Scenario key "frm": procedures and variables cut out of a form (see frm.py), loaded as one
+        module. The form's controls, named bare in that code, forward to the frmMain shim."""
+        # a list of specs cuts procedures from several forms (the calculator windows); each form's
+        # controls forward to the same frmMain shim, so a case must use one form's controls only
+        for k, one in enumerate(spec if isinstance(spec, list) else [spec]):
+            raw = open(os.path.join(mme, one.get("file", "frmMain.frm")), "rb").read()
+            self.it.load_source(frm_mod.build_source(raw, one), name="frmMainProcs%s" % (k or ""), kind="bas")
+            for name in frm_mod.control_names(raw):
+                if name.lower() not in self.it.externals:
+                    self.it.bind(name, shims.ControlProxy(self, name))
+        specs = spec if isinstance(spec, list) else [spec]
+        self.it.bind("objToolTip", shims.NoopShim())
+        self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
+        self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
+        for n in [n for one in specs for n in one.get("stub_procs", [])]:   # display-only helpers (tool-tip text)
+            self.it.bind_proc(n, lambda it_, *a: "")
 
     # -- shims
     def _msgbox(self, it, *a):
@@ -212,7 +233,7 @@ class Env:
         def false(it_, *a):
             return False
 
-        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText"):
+        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors"):
             it.bind_proc(n, noop)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
@@ -348,7 +369,13 @@ class Env:
                 args.append(cell)
                 refs.append(cell)
             elif isinstance(a, dict) and "udt" in a:
-                args.append(self.make_udt(a))
+                u = self.make_udt(a)
+                if a.get("out"):   # a Type argument the callee fills (ByRef): its final fields land in "<as>.refs"
+                    u = Var(u, a["udt"].lower())
+                    refs.append(u)
+                args.append(u)
+            elif isinstance(a, dict) and "obj" in a:
+                args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:
                 args.append(decode(a))
         if "." in target:
@@ -373,9 +400,23 @@ class Env:
 
     _READ = re.compile(r"^(?P<obj>[A-Za-z_]\w*)\.(?P<prop>\w+)(?:\[(?P<idx>[^\]]*)\])?$")
 
+    _CTL = re.compile(r"^%c\.(?P<ctl>\w+)(?:\((?P<ci>\d+)\))?\.(?P<prop>\w+)(?:\[(?P<lo>\d+)\.\.(?P<hi>\d+)\])?$")
+
     def read(self, objs, expr):
         if expr == "%rnd":
             return self.it.rnd.state
+        if expr.startswith("%c."):
+            # a frmMain control property: "%c.txtCharStats.Tag[0..5]" over a control array, "%c.lblX(3).Caption" for one element
+            m = self._CTL.match(expr)
+            if not m:
+                raise OracleFatal("bad read expression %r" % expr)
+            form = self.it.externals["frmmain"]
+
+            def one(args):
+                return encode(form.vb_get(m["ctl"], args).vb_get(m["prop"], []))
+            if m["lo"] is not None:
+                return [one([V.I16(i)]) for i in range(int(m["lo"]), int(m["hi"]) + 1)]
+            return one([V.I16(int(m["ci"]))] if m["ci"] is not None else [])
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
         m = self._READ.match(expr)
@@ -391,8 +432,12 @@ class Env:
 
     def run_case(self, case, setup):
         self.reset(case.get("rnd"))
-        self.set_forms(setup.get("forms"))
-        self.set_forms(case.get("forms"))
+        # a case's controls replace the family-wide setup's controls of the same name, form by form
+        forms = {}
+        for src in (setup.get("forms"), case.get("forms")):
+            for fname, props in (src or {}).items():
+                forms.setdefault(fname, {}).update(props)
+        self.set_forms(forms)
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
         objs = {}
@@ -404,6 +449,9 @@ class Env:
         try:
             for name, spec in (case.get("objects") or {}).items():
                 objs[name] = self.make_object(spec)
+                if spec.get("global"):
+                    # The instance also stands in for an (unset) object-typed module global.
+                    self.it.global_cell(spec["global"]).v = objs[name]
             for st in steps:
                 if "set" in st:
                     oname, prop = st["set"].split(".", 1)
@@ -415,7 +463,7 @@ class Env:
             err = {"number": e.number, "description": e.description}
         except OracleUnbound as e:
             raise OracleFatal("case %s: unbound %s %s" % (case["id"], e.name, e.detail or ""))
-        for name, expr in (case.get("read") or {}).items():
+        for name, expr in (case["read"] if "read" in case else setup.get("read") or {}).items():
             try:
                 out[name] = self.read(objs, expr)
             except VBError as e:
@@ -450,8 +498,11 @@ def build_fixture(family, mme=None, sdir=None):
     scn = json.loads(raw)
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
-    env = Env(mme, database, MODULES + list(scn.get("modules", [])))  # "modules": extra MME files a family needs
+    env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"))
+    # "modules": extra MME files a family needs; "frm": procedures cut from a form; "db_extra": invented rows
     setup = {"globals": scn.get("globals", {}), "forms": scn.get("forms", {})}
+    if "read" in scn:                       # family-wide default reads; a case's own "read" replaces them
+        setup["read"] = scn["read"]
     header = {
         "family": family,
         "description": scn.get("description", ""),
@@ -464,6 +515,8 @@ def build_fixture(family, mme=None, sdir=None):
         "notes": scn.get("notes", []),
         "case_count": len(cases),
     }
+    if "data" in scn:
+        header["data"] = scn["data"]      # tables the Rust test needs once, shared by every case
     lines = ['{"header":' + _Dump.dumps(header) + ',', '"cases":[']
     for i, c in enumerate(cases):
         res = env.run_case(c, setup)
