@@ -1,0 +1,734 @@
+//! The Character tab's endpoints: evaluating a character with `pipeline::refresh_all`, the bless
+//! spell list of `FilterBlessSpells`, and the saved characters in the data directory.
+//!
+//! The wire structs live here rather than in `touchstone-rules`: its `Character` and state hold
+//! 47- and 201-long arrays, which serde does not cover, and the page wants MME's formatted
+//! captions beside the numbers. Wire format is snake_case like the rest of the API.
+
+use std::path::{Path as FsPath, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use serde::{Deserialize, Serialize};
+use touchstone_model::World;
+use touchstone_rules::Profile;
+use touchstone_rules::char_panel::ExpRequired;
+use touchstone_rules::character::{AttackConfig, AttackType, Character, LearnedSpells};
+use touchstone_rules::gear::STAT_COUNT;
+use touchstone_rules::pipeline::{CharacterState, PipelineOptions, refresh_all};
+use touchstone_rules::spell_cast::UsableEnv;
+use touchstone_rules::spells::spell_is_bless_spell;
+use touchstone_rules::stats::compute_avg_level_max_stats;
+use touchstone_vb6::cstr;
+
+use crate::calc::{ApiResult, Body, bad, json, not_found, vb_error_text};
+use crate::detail::nmr_ver;
+use crate::state::AppState;
+
+/// Longest saved-character name; also bounds the file name.
+pub const MAX_NAME_LEN: usize = 64;
+/// MME's level and stat boxes hold three digits.
+const MAX_BOX: i32 = 999;
+const EQUIP_SLOTS: usize = 20;
+const BLESS_SLOTS: usize = 10;
+const QUESTS: usize = 12;
+const QUEST_OPTS: usize = 4;
+const LEARNED: usize = 100;
+
+fn unprocessable(msg: impl Into<String>) -> (StatusCode, String) {
+    (StatusCode::UNPROCESSABLE_ENTITY, msg.into())
+}
+
+// ---------- the character on the wire ----------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AttackDto {
+    /// `eAttackTypeMME` 0..7.
+    pub attack_type: i32,
+    pub backstab: bool,
+    pub backstab_weapon: i32,
+    /// 1 punch, 2 kick, 3 jumpkick.
+    pub martial_art: i16,
+    pub spell_num: i32,
+    pub spell_lvl: i16,
+    pub manual_p: i32,
+    pub manual_m: i32,
+    pub use_meditate: bool,
+    /// 0 infinite, 1 base, 2 spell, 3 spell at a level, 4 manual.
+    pub heal_type: i16,
+    pub heal_spell_num: i32,
+    pub heal_spell_lvl: i16,
+    pub heal_rounds: i16,
+    pub heal_manual: i32,
+}
+
+impl Default for AttackDto {
+    /// The attack and heal choice MME starts with.
+    fn default() -> Self {
+        Self {
+            attack_type: 0,
+            backstab: false,
+            backstab_weapon: 0,
+            martial_art: 0,
+            spell_num: 0,
+            spell_lvl: 0,
+            manual_p: 0,
+            manual_m: 0,
+            use_meditate: false,
+            heal_type: 0,
+            heal_spell_num: 0,
+            heal_spell_lvl: 5,
+            heal_rounds: 30,
+            heal_manual: 0,
+        }
+    }
+}
+
+/// A character as the page edits it and the data directory stores it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct CharacterDto {
+    pub name: String,
+    /// A race or class number (0 is "(none)"); `null` means nothing is picked yet.
+    pub race: Option<i32>,
+    pub class: Option<i32>,
+    pub level: i32,
+    /// 0 any, 1 good, 2 neutral, 3 evil.
+    pub alignment: i16,
+    pub global_filter: bool,
+    /// STR INT WIL AGL HEA CHM.
+    pub stats: Vec<i32>,
+    pub stat_adjustments: Vec<i32>,
+    /// 20 slots; 16 is the weapon.
+    pub equipped: Vec<i32>,
+    pub bless: Vec<i32>,
+    pub quests: Vec<bool>,
+    /// 2nd alignment, 6th alignment, Dread Wraith, Renfry.
+    pub quest_options: Vec<i16>,
+    pub mr_text: String,
+    pub anti_magic: bool,
+    pub add_weight: i32,
+    pub use_add_weight: bool,
+    pub attack: AttackDto,
+    pub learned_spells: Vec<i32>,
+    pub learned_class: i16,
+    /// View toggles that are not part of a saved character.
+    #[serde(skip_serializing)]
+    pub options: EvalOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct EvalOptions {
+    pub hide_class_race: bool,
+    pub min_item_level: i32,
+}
+
+/// `v` padded with defaults to `N`; a longer list is a client mistake, not something to cut.
+fn fixed<T: Copy + Default, const N: usize>(v: &[T], what: &str) -> Result<[T; N], String> {
+    if v.len() > N {
+        return Err(format!("{what} has {} entries, at most {N}", v.len()));
+    }
+    let mut out = [T::default(); N];
+    out[..v.len()].copy_from_slice(v);
+    Ok(out)
+}
+
+fn in_box(n: i32, what: &str) -> Result<i32, String> {
+    if (0..=MAX_BOX).contains(&n) {
+        Ok(n)
+    } else {
+        Err(format!("{what} must be 0 to {MAX_BOX}"))
+    }
+}
+
+impl CharacterDto {
+    /// The rules crate's character, or why the request is not one.
+    pub fn to_character(&self) -> Result<Character, String> {
+        let stats: [i32; 6] = fixed(&self.stats, "stats")?;
+        for s in stats {
+            in_box(s, "a stat")?;
+        }
+        if self.stat_adjustments.len() > STAT_COUNT {
+            return Err(format!(
+                "stat_adjustments has more than {STAT_COUNT} entries"
+            ));
+        }
+        let quest_options: [i16; QUEST_OPTS] = fixed(&self.quest_options, "quest_options")?;
+        if quest_options.iter().any(|o| !(-1..=9).contains(o)) {
+            return Err("quest_options entries must be -1 to 9".into());
+        }
+        if !(0..=3).contains(&self.alignment) {
+            return Err("alignment must be 0 (any) to 3 (evil)".into());
+        }
+        let a = &self.attack;
+        let attack_type = AttackType::from_code(a.attack_type)
+            .ok_or_else(|| format!("attack_type {} is not 0 to 7", a.attack_type))?;
+        if !(0..=4).contains(&a.heal_type) {
+            return Err("heal_type must be 0 to 4".into());
+        }
+        let learned: [i32; LEARNED] = fixed(&self.learned_spells, "learned_spells")?;
+        Ok(Character {
+            name: self.name.clone(),
+            race: self.race,
+            class: self.class,
+            level: in_box(self.level, "level")?,
+            alignment: self.alignment,
+            global_filter: self.global_filter,
+            stats,
+            stat_adjustments: self.stat_adjustments.clone(),
+            equipped: fixed(&self.equipped, "equipped")?,
+            bless: fixed(&self.bless, "bless")?,
+            quests: fixed(&self.quests, "quests")?,
+            quest_options,
+            mr_text: self.mr_text.clone(),
+            anti_magic: self.anti_magic,
+            add_weight: in_box(self.add_weight, "add_weight")?,
+            use_add_weight: self.use_add_weight,
+            attack: AttackConfig {
+                attack_type,
+                backstab: a.backstab,
+                backstab_weapon: a.backstab_weapon,
+                martial_art: a.martial_art,
+                spell_num: a.spell_num,
+                spell_lvl: a.spell_lvl,
+                manual_p: a.manual_p,
+                manual_m: a.manual_m,
+                use_meditate: a.use_meditate,
+                heal_type: a.heal_type,
+                heal_spell_num: a.heal_spell_num,
+                heal_spell_lvl: a.heal_spell_lvl,
+                heal_rounds: a.heal_rounds,
+                heal_manual: a.heal_manual,
+                ..AttackConfig::default()
+            },
+            learned: LearnedSpells {
+                spells: learned,
+                class: self.learned_class,
+            },
+        })
+    }
+
+    /// The same character with every list at full length, as it is stored.
+    fn normalized(mut self) -> Result<Self, String> {
+        self.to_character()?;
+        self.stats.resize(6, 0);
+        self.equipped.resize(EQUIP_SLOTS, 0);
+        self.bless.resize(BLESS_SLOTS, 0);
+        self.quests.resize(QUESTS, false);
+        self.quest_options.resize(QUEST_OPTS, 0);
+        self.learned_spells.resize(LEARNED, 0);
+        Ok(self)
+    }
+}
+
+// ---------- evaluate ----------
+
+#[derive(Serialize)]
+struct CpJson {
+    stat_costs: [i32; 6],
+    total_cost: i32,
+    used: Option<i32>,
+    avail: Option<i32>,
+    level_required: Option<i32>,
+    /// "none" (no line), "a_lot", or "value" with `exp`.
+    exp_kind: &'static str,
+    exp: Option<f64>,
+    error: Option<i32>,
+    error_text: Option<String>,
+}
+
+#[derive(Serialize)]
+struct HpJson {
+    caption: Option<String>,
+    min: Option<i32>,
+    max: Option<i32>,
+    average: Option<f64>,
+    rest_caption: Option<String>,
+    rest_normal: Option<i32>,
+    rest_resting: Option<i32>,
+    regen: f64,
+    error_text: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ManaJson {
+    max_caption: Option<String>,
+    max_mana: Option<i32>,
+    regen_caption: Option<String>,
+    mana_regen: Option<i32>,
+    medi_ticks: Option<f64>,
+    spellcasting_caption: Option<String>,
+    spellcasting: Option<i32>,
+    /// `txtCharManaRegen` after `CalcCharacterStats`.
+    regen: f64,
+    error_text: Option<String>,
+}
+
+#[derive(Serialize)]
+struct EncumJson {
+    current: String,
+    max: String,
+    word: Option<&'static str>,
+    caption: Option<String>,
+    tag: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SetupJson {
+    quest_options: [i32; 4],
+    magery_lvl: i32,
+    magery: i32,
+    has_picks: bool,
+    anti_magic: bool,
+    has_magic: bool,
+}
+
+#[derive(Serialize)]
+struct HealJson {
+    value: i32,
+    cost: f64,
+    rounds: i16,
+    spell_lvl: i16,
+}
+
+#[derive(Serialize)]
+pub struct StateJson {
+    setup: Option<SetupJson>,
+    quest_options: [i32; 4],
+    cps: CpJson,
+    /// The six stats with bless and gear applied.
+    stat_values: [f64; 6],
+    /// "Strength:" or "Str (+3):" per stat.
+    stat_labels: Vec<Option<String>>,
+    /// The bless bonus alone, per stat.
+    stat_bonus: [f64; 6],
+    hp: HpJson,
+    mana: ManaJson,
+    magic_res: Option<i32>,
+    anti_magic: bool,
+    picklocks_caption: Option<String>,
+    picklocks: Option<i32>,
+    dodge: f64,
+    dodge_caption: String,
+    dodge_has_summary: bool,
+    encum: EncumJson,
+    /// Bless mana per six rounds.
+    bless_mana: Option<String>,
+    /// `lblInvenCharStat(0..46)` as MME shows them.
+    stats: Vec<String>,
+    heal: HealJson,
+    /// The run-time error that cut `CalcCharacterStats` short, if any.
+    stats_error_text: Option<String>,
+}
+
+fn error_text(code: Option<i32>) -> Option<String> {
+    code.map(|c| vb_error_text(u32::try_from(c).unwrap_or(0)))
+}
+
+fn state_json(st: &CharacterState, ch: &Character) -> StateJson {
+    let s = &st.stats;
+    let cps = &st.cps;
+    let (exp_kind, exp) = match cps.summary.as_ref().map(|c| c.exp) {
+        Some(ExpRequired::ALot) => ("a_lot", None),
+        Some(ExpRequired::Value(v)) => ("value", Some(v)),
+        _ => ("none", None),
+    };
+    let hp = &st.hit_points;
+    let range = hp.range.as_ref();
+    let mg = st.magic.as_ref();
+    let (encum_word, encum_caption, encum_tag) = match &st.encum_level {
+        Ok(e) => (Some(e.word), Some(e.caption.clone()), Some(e.tag.clone())),
+        Err(_) => (None, None, None),
+    };
+    let anti_magic = st
+        .class_setup
+        .as_ref()
+        .map_or(ch.anti_magic, |c| c.anti_magic);
+    StateJson {
+        setup: st.class_setup.as_ref().map(|c| SetupJson {
+            quest_options: c.quest_options,
+            magery_lvl: c.magery_lvl,
+            magery: c.magery,
+            has_picks: c.has_picks,
+            anti_magic: c.anti_magic,
+            has_magic: c.has_magic,
+        }),
+        quest_options: st.quest_options,
+        cps: CpJson {
+            stat_costs: cps.stat_costs,
+            total_cost: cps.total_cost,
+            used: cps.summary.as_ref().map(|c| c.used),
+            avail: cps.summary.as_ref().map(|c| c.avail),
+            level_required: cps.summary.as_ref().map(|c| c.level_required),
+            exp_kind,
+            exp,
+            error: cps.error,
+            error_text: error_text(cps.error),
+        },
+        stat_values: s.stat_with_bonus,
+        stat_labels: st.stat_labels.labels.to_vec(),
+        stat_bonus: s.label_bonus,
+        hp: HpJson {
+            caption: hp.max_hp_caption.clone(),
+            min: range.map(|r| r.min),
+            max: range.map(|r| r.max),
+            average: range.map(|r| r.average),
+            rest_caption: hp.rest_caption.clone(),
+            rest_normal: hp.rest_normal,
+            rest_resting: hp.rest_resting,
+            regen: s.hp_regen,
+            error_text: error_text(hp.error),
+        },
+        mana: ManaJson {
+            max_caption: mg.and_then(|m| m.max_mana_caption.clone()),
+            max_mana: mg.and_then(|m| m.max_mana),
+            regen_caption: mg.and_then(|m| m.mana_regen_caption.clone()),
+            mana_regen: mg.and_then(|m| m.mana_regen),
+            medi_ticks: mg.and_then(|m| m.medi_ticks),
+            spellcasting_caption: mg.and_then(|m| m.spellcasting_caption.clone()),
+            spellcasting: mg.and_then(|m| m.spellcasting),
+            regen: s.mana_regen,
+            error_text: mg.and_then(|m| error_text(m.error)),
+        },
+        magic_res: st.magic_res.ok(),
+        anti_magic,
+        picklocks_caption: st.picklocks.caption.clone(),
+        picklocks: st.picklocks.total,
+        dodge: st.dodge.value,
+        dodge_caption: st.dodge.caption_head.clone(),
+        dodge_has_summary: st.dodge.has_summary,
+        encum: EncumJson {
+            current: s.caption(0),
+            max: s.caption(1),
+            word: encum_word,
+            caption: encum_caption,
+            tag: encum_tag,
+        },
+        bless_mana: st.bless_mana.map(cstr),
+        stats: (0..STAT_COUNT).map(|i| s.caption(i)).collect(),
+        heal: HealJson {
+            value: st.attack_config().heal_value,
+            cost: st.attack_config().heal_cost,
+            rounds: st.attack_config().heal_rounds,
+            spell_lvl: st.attack_config().heal_spell_lvl,
+        },
+        stats_error_text: error_text(s.error),
+    }
+}
+
+/// `RefreshAll` over the loaded world. Split out so tests can call it without HTTP.
+pub fn evaluate(world: &World, dto: &CharacterDto) -> Result<StateJson, (StatusCode, String)> {
+    let ch = dto.to_character().map_err(bad)?;
+    if ch.class.is_none() || ch.race.is_none() {
+        return Err(unprocessable("pick a class and race"));
+    }
+    let opts = PipelineOptions {
+        hide_class_race: dto.options.hide_class_race,
+        min_item_level: dto.options.min_item_level,
+        dat_ver_caption: world.info.dat_file_version.clone(),
+        nmr_ver: nmr_ver(&world.info.nmr_version),
+        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
+            .all_stats,
+        ..PipelineOptions::default()
+    };
+    let st = refresh_all(Profile::Stock, world, &ch, &opts)
+        .map_err(|e| unprocessable(format!("cannot evaluate this character: {e}")))?;
+    Ok(state_json(&st, &ch))
+}
+
+pub async fn evaluate_route(
+    State(state): State<Arc<AppState>>,
+    Body(dto): Body<CharacterDto>,
+) -> ApiResult {
+    let loaded = state.current();
+    json(&evaluate(&loaded.world, &dto)?)
+}
+
+// ---------- bless spells ----------
+
+#[derive(Deserialize)]
+pub struct BlessQuery {
+    class: Option<i32>,
+    level: Option<i32>,
+    alignment: Option<i32>,
+    /// `FilterBlessSpells(bUNfilter:=True)`: every bless spell, whoever can use it.
+    #[serde(default)]
+    all: bool,
+    /// Comma-separated spell numbers a slot already holds; `EquipBlessSpell` adds them when they
+    /// are bless spells the filter left out.
+    include: Option<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct BlessChoice {
+    pub number: i32,
+    /// MME's combo text, "Name (number)".
+    pub label: String,
+}
+
+/// Port of frmMain `FilterBlessSpells`, with `bOnlyInGame` on as MME defaults.
+pub fn bless_spells(
+    world: &World,
+    class: i32,
+    level: i32,
+    alignment: i32,
+    all: bool,
+    include: &[i32],
+) -> Vec<BlessChoice> {
+    let env = UsableEnv {
+        profile: Profile::Stock,
+        spells: &world.spells,
+        classes: &world.classes,
+        nmr_ver: nmr_ver(&world.info.nmr_version),
+        only_in_game: true,
+        disable_kai_autolearn: world.info.disable_kai,
+    };
+    let level = i16::try_from(level.clamp(0, i32::from(i16::MAX))).unwrap_or(0);
+    let align = i16::try_from(alignment.clamp(0, 3)).unwrap_or(0);
+    let label = |s: &touchstone_model::Spell| BlessChoice {
+        number: s.number,
+        label: format!("{} ({})", s.name.as_deref().unwrap_or(""), s.number),
+    };
+    let mut out = Vec::new();
+    for s in &world.spells {
+        if !env.spell_is_in_game(s.number) {
+            continue;
+        }
+        // the first block of the procedure is SpellIsBlessSpell's rule
+        let timed = s.dur != 0 || (s.dur_inc != 0 && s.dur_inc_lvls != 0);
+        let taught = s.learnable
+            || s.learned_from.as_deref().is_some_and(|f| !f.is_empty())
+            || (s.magery == 5 && s.req_level > 0);
+        if taught && !(matches!(s.targets, 1 | 2 | 5 | 13) && timed) {
+            continue;
+        }
+        if !all && !env.spell_is_usable(s.number, class, level, align, true) {
+            continue;
+        }
+        out.push(label(s));
+    }
+    for &n in include {
+        if !out.iter().any(|c| c.number == n)
+            && spell_is_bless_spell(&world.spells, n)
+            && let Some(s) = world.get_spell(n)
+        {
+            out.push(label(s));
+        }
+    }
+    out
+}
+
+pub async fn bless_spells_route(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<BlessQuery>,
+) -> ApiResult {
+    let mut include = Vec::new();
+    for part in q.include.as_deref().unwrap_or("").split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        include.push(
+            part.parse::<i32>()
+                .map_err(|_| bad(format!("include: {part:?} is not a spell number")))?,
+        );
+    }
+    let loaded = state.current();
+    json(&bless_spells(
+        &loaded.world,
+        q.class.unwrap_or(0),
+        q.level.unwrap_or(0),
+        q.alignment.unwrap_or(0),
+        q.all,
+        &include,
+    ))
+}
+
+// ---------- saved characters ----------
+
+/// Why a name cannot be a file name here.
+pub fn validate_name(name: &str) -> Result<(), String> {
+    let n = name.chars().count();
+    if n == 0 {
+        return Err("a character needs a name".into());
+    }
+    if n > MAX_NAME_LEN {
+        return Err(format!("a name is at most {MAX_NAME_LEN} characters"));
+    }
+    if let Some(c) = name
+        .chars()
+        .find(|c| c.is_control() || "/\\:*?\"<>|".contains(*c))
+    {
+        return Err(format!("a name cannot contain {c:?}"));
+    }
+    if name.starts_with('.') {
+        return Err("a name cannot start with a dot".into());
+    }
+    if name.ends_with(' ') || name.ends_with('.') || name.starts_with(' ') {
+        return Err("a name cannot start with a space or end with a space or dot".into());
+    }
+    Ok(())
+}
+
+fn dir(state: &AppState) -> PathBuf {
+    state.data_dir().join("characters")
+}
+
+fn file_for(dir: &FsPath, name: &str) -> PathBuf {
+    dir.join(format!("{name}.json"))
+}
+
+fn io_fail(e: &std::io::Error) -> (StatusCode, String) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("character store: {e}"),
+    )
+}
+
+#[derive(Serialize)]
+struct Summary {
+    name: String,
+    race: Option<i32>,
+    class: Option<i32>,
+    level: i32,
+}
+
+pub async fn list(State(state): State<Arc<AppState>>) -> ApiResult {
+    let dir = dir(&state);
+    let mut rd = match tokio::fs::read_dir(&dir).await {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return json(&Vec::<Summary>::new()),
+        Err(e) => return Err(io_fail(&e)),
+    };
+    let mut out = Vec::new();
+    while let Some(entry) = rd.next_entry().await.map_err(|e| io_fail(&e))? {
+        let path = entry.path();
+        let Some(name) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(".json"))
+            .filter(|n| validate_name(n).is_ok())
+        else {
+            continue;
+        };
+        let Ok(bytes) = tokio::fs::read(&path).await else {
+            continue;
+        };
+        if let Ok(dto) = serde_json::from_slice::<CharacterDto>(&bytes) {
+            out.push(Summary {
+                name: name.to_owned(),
+                race: dto.race,
+                class: dto.class,
+                level: dto.level,
+            });
+        }
+    }
+    out.sort_by_key(|s| (s.name.to_lowercase(), s.name.clone()));
+    json(&out)
+}
+
+pub async fn get(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> ApiResult {
+    validate_name(&name).map_err(bad)?;
+    match tokio::fs::read(file_for(&dir(&state), &name)).await {
+        Ok(bytes) => {
+            let mut dto: CharacterDto = serde_json::from_slice(&bytes).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("saved character {name:?} is damaged: {e}"),
+                )
+            })?;
+            dto.name = name;
+            json(&dto)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(not_found(format!("no character {name:?}")))
+        }
+        Err(e) => Err(io_fail(&e)),
+    }
+}
+
+static TMP: AtomicU64 = AtomicU64::new(0);
+
+pub async fn put(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Body(dto): Body<CharacterDto>,
+) -> ApiResult {
+    validate_name(&name).map_err(bad)?;
+    let mut dto = dto.normalized().map_err(bad)?;
+    dto.name.clone_from(&name);
+    let bytes = serde_json::to_vec_pretty(&dto)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let dir = dir(&state);
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| io_fail(&e))?;
+    // The temp file is in the same directory so the rename cannot cross filesystems, and starts
+    // with a dot so a listing never mistakes it for a character.
+    let tmp = dir.join(format!(
+        ".{}-{}.tmp",
+        std::process::id(),
+        TMP.fetch_add(1, Ordering::Relaxed)
+    ));
+    let result = async {
+        tokio::fs::write(&tmp, &bytes).await?;
+        tokio::fs::rename(&tmp, file_for(&dir, &name)).await
+    }
+    .await;
+    if let Err(e) = result {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(io_fail(&e));
+    }
+    json(&dto)
+}
+
+pub async fn delete(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> ApiResult {
+    validate_name(&name).map_err(bad)?;
+    match tokio::fs::remove_file(file_for(&dir(&state), &name)).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(not_found(format!("no character {name:?}")))
+        }
+        Err(e) => Err(io_fail(&e)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names() {
+        for ok in ["Bob", "Mr. Bob", "a-b_c", "Zoë", "x"] {
+            assert!(validate_name(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "", ".", "..", ".hidden", "a/b", "a\\b", "..\\x", "a:b", "a.", "a ", " a", "a\nb",
+            "a\0b", "con*",
+        ] {
+            assert!(validate_name(bad).is_err(), "{bad:?}");
+        }
+        assert!(validate_name(&"x".repeat(MAX_NAME_LEN)).is_ok());
+        assert!(validate_name(&"x".repeat(MAX_NAME_LEN + 1)).is_err());
+    }
+
+    #[test]
+    fn short_lists_pad_and_long_ones_fail() {
+        let dto = CharacterDto {
+            stats: vec![1, 2],
+            equipped: vec![0; 21],
+            ..CharacterDto::default()
+        };
+        assert!(dto.to_character().is_err());
+        let dto = CharacterDto {
+            stats: vec![1, 2],
+            ..CharacterDto::default()
+        };
+        assert_eq!(dto.to_character().unwrap().stats, [1, 2, 0, 0, 0, 0]);
+        assert_eq!(dto.normalized().unwrap().bless.len(), 10);
+    }
+}

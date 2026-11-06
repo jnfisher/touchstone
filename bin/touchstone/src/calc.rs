@@ -423,7 +423,7 @@ fn text(s: &str) -> Text {
 }
 
 /// The VB error text MME's handler would name, for the page to show next to the partial result.
-fn vb_error_text(code: u32) -> String {
+pub(crate) fn vb_error_text(code: u32) -> String {
     match code {
         6 => "Overflow (run-time error 6)".to_owned(),
         11 => "Division by zero (run-time error 11)".to_owned(),

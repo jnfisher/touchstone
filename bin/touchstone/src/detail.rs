@@ -298,7 +298,7 @@ struct MaxDamageJson {
 }
 
 /// `ExtractNumbersFromString(NMR Version)`: "v1.8.3" is 1.83.
-fn nmr_ver(s: &str) -> f64 {
+pub(crate) fn nmr_ver(s: &str) -> f64 {
     let mut out = String::new();
     let mut seen_dot = false;
     for c in s.chars() {

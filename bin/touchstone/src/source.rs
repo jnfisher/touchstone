@@ -46,7 +46,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
             };
             let loaded = Loaded::build(world, info, None, 1)?;
             Ok(Started {
-                state: AppState::new(loaded),
+                state: AppState::with_data_dir(loaded, cfg.data_dir.clone()),
                 live: None,
             })
         }
@@ -61,7 +61,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
             };
             let loaded = Loaded::build(world, info.clone(), Some(version), 1)?;
             Ok(Started {
-                state: AppState::new(loaded),
+                state: AppState::with_data_dir(loaded, cfg.data_dir.clone()),
                 live: Some(Arc::new(LiveSource {
                     handle: Mutex::new(handle),
                     seen_version: AtomicI64::new(version),

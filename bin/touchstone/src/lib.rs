@@ -2,6 +2,7 @@
 
 mod api;
 pub mod calc;
+pub mod character;
 pub mod config;
 mod detail;
 pub mod source;
