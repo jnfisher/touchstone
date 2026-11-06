@@ -84,10 +84,29 @@ export function createSettingsStore(
       }
       return this.current[key];
     },
+    /** Saves the edited map presets (everything else is sent as last stored). Resolves to whether it saved. */
+    async setMapPresets(list: Settings["map_presets"]): Promise<boolean> {
+      await load();
+      saving = true;
+      try {
+        settings = await client.put({ ...this.current, map_presets: list });
+        error = undefined;
+        return true;
+      } catch (e) {
+        error = message(e);
+        return false;
+      } finally {
+        saving = false;
+      }
+    },
     async save(draft: Draft, hasCharacter: boolean): Promise<SaveResult> {
       const perCharacter = draft.byCharacter && hasCharacter;
       const global = this.current.exp_per_hour.global;
-      const body = draftSettings(draft, perCharacter ? global : draftBlock(draft));
+      const body = draftSettings(
+        draft,
+        perCharacter ? global : draftBlock(draft),
+        this.current.map_presets,
+      );
       saving = true;
       try {
         settings = await client.put(body);

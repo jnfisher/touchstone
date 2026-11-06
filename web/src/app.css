@@ -29,6 +29,31 @@
 	--border: oklch(0.922 0 0);
 	--input: oklch(0.922 0 0);
 	--ring: oklch(0.708 0 0);
+	/* The graphical map (M-002). Cell fills are the colour of the room's up/down exits, lines the exit kinds
+	   (MME's MapActivateCell table), markers what MapDrawOnRoom adds; names match the legend entries. */
+	--map-cell-plain: oklch(0.83 0 0);
+	--map-cell-up: oklch(0.82 0.2 145);
+	--map-cell-down: oklch(0.92 0.17 100);
+	--map-cell-updown: oklch(0.86 0.1 210);
+	--map-cell-black: oklch(0.2 0 0);
+	--map-line-general: oklch(0.42 0 0);
+	--map-line-mapchange: oklch(0.6 0.25 330);
+	--map-line-trap: oklch(0.62 0.23 27);
+	--map-line-text: oklch(0.72 0.16 90);
+	--map-line-doorgate: oklch(0.55 0.2 260);
+	--map-line-keyitemtoll: oklch(0.6 0.2 145);
+	--map-line-restricted: oklch(0.45 0.2 27);
+	--map-line-timed: oklch(0.6 0 0);
+	--map-line-hidden: oklch(0.45 0.2 320);
+	--map-line-edge: oklch(0.72 0 0);
+	--map-mark-command: oklch(0.6 0.2 145);
+	--map-mark-npc: oklch(0.6 0.23 27);
+	--map-mark-lair: oklch(0.6 0.25 330);
+	--map-mark-marked: oklch(0.65 0.12 210);
+	--map-mark-missing: oklch(0.55 0.23 27);
+	--map-mark-overwritten: oklch(0.8 0.17 95);
+	--map-mark-start: oklch(0.5 0.22 260);
+	--map-block: oklch(0.88 0 0);
 }
 
 .dark {
@@ -54,6 +79,29 @@
 	--border: oklch(1 0 0 / 12%);
 	--input: oklch(1 0 0 / 15%);
 	--ring: oklch(0.556 0 0);
+	--map-cell-plain: oklch(0.42 0 0);
+	--map-cell-up: oklch(0.5 0.14 145);
+	--map-cell-down: oklch(0.6 0.12 95);
+	--map-cell-updown: oklch(0.52 0.09 215);
+	--map-cell-black: oklch(0.08 0 0);
+	--map-line-general: oklch(0.78 0 0);
+	--map-line-mapchange: oklch(0.75 0.2 330);
+	--map-line-trap: oklch(0.72 0.19 25);
+	--map-line-text: oklch(0.85 0.15 95);
+	--map-line-doorgate: oklch(0.72 0.15 255);
+	--map-line-keyitemtoll: oklch(0.78 0.17 150);
+	--map-line-restricted: oklch(0.6 0.2 25);
+	--map-line-timed: oklch(0.6 0 0);
+	--map-line-hidden: oklch(0.65 0.2 320);
+	--map-line-edge: oklch(0.45 0 0);
+	--map-mark-command: oklch(0.78 0.17 150);
+	--map-mark-npc: oklch(0.72 0.19 25);
+	--map-mark-lair: oklch(0.75 0.2 330);
+	--map-mark-marked: oklch(0.85 0.1 210);
+	--map-mark-missing: oklch(0.65 0.22 25);
+	--map-mark-overwritten: oklch(0.85 0.15 95);
+	--map-mark-start: oklch(0.75 0.15 255);
+	--map-block: oklch(0.28 0 0);
 }
 
 @theme inline {
@@ -83,6 +131,29 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
+	--color-map-cell-plain: var(--map-cell-plain);
+	--color-map-cell-up: var(--map-cell-up);
+	--color-map-cell-down: var(--map-cell-down);
+	--color-map-cell-updown: var(--map-cell-updown);
+	--color-map-cell-black: var(--map-cell-black);
+	--color-map-line-general: var(--map-line-general);
+	--color-map-line-mapchange: var(--map-line-mapchange);
+	--color-map-line-trap: var(--map-line-trap);
+	--color-map-line-text: var(--map-line-text);
+	--color-map-line-doorgate: var(--map-line-doorgate);
+	--color-map-line-keyitemtoll: var(--map-line-keyitemtoll);
+	--color-map-line-restricted: var(--map-line-restricted);
+	--color-map-line-timed: var(--map-line-timed);
+	--color-map-line-hidden: var(--map-line-hidden);
+	--color-map-line-edge: var(--map-line-edge);
+	--color-map-mark-command: var(--map-mark-command);
+	--color-map-mark-npc: var(--map-mark-npc);
+	--color-map-mark-lair: var(--map-mark-lair);
+	--color-map-mark-marked: var(--map-mark-marked);
+	--color-map-mark-missing: var(--map-mark-missing);
+	--color-map-mark-overwritten: var(--map-mark-overwritten);
+	--color-map-mark-start: var(--map-mark-start);
+	--color-map-block: var(--map-block);
 }
 
 @layer base {

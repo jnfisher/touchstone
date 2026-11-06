@@ -26,6 +26,8 @@
 	} from '$lib/rooms';
 	import { roomsMemory } from './rooms-memory.svelte';
 	import { openRoute } from '$lib/routeactions.svelte';
+	import MapView from './map/MapView.svelte';
+	import { popoutUrl } from '$lib/map';
 
 	const settings = getSettingsStore();
 	const mem = roomsMemory;
@@ -298,7 +300,16 @@
 		{/if}
 	</div>
 
-	<div class="bg-card min-h-0 overflow-auto rounded-md border text-[13px] leading-5" data-testid="room">
+	<div class="flex min-h-0 flex-col gap-3 overflow-auto">
+	<div class="bg-card shrink-0 rounded-md border p-3" data-testid="map-panel">
+		<MapView
+			variant="tab"
+			start={info ? { map: info.map, room: info.room } : undefined}
+			onNavigate={(at) => void open(at.map, at.room)}
+			onPopout={(size, o) => info && window.open(popoutUrl({ map: info.map, room: info.room }, size, o), 'touchstone-map', 'popup,width=1100,height=950')}
+		/>
+	</div>
+	<div class="bg-card max-h-[65vh] min-h-48 shrink-0 overflow-auto rounded-md border text-[13px] leading-5" data-testid="room">
 		{#if info}
 			<h3 class="bg-card sticky top-0 z-10 truncate border-b px-3 py-2 text-sm font-semibold" data-testid="room-title">{info.title.trim()}</h3>
 			<div class="flex flex-col gap-4 p-3">
@@ -358,4 +369,5 @@
 			<div class="text-muted-foreground p-3" data-testid="room-empty">Enter a map and room number, or find a room by its name, to see its details.</div>
 		{/if}
 	</div>
+</div>
 </div>

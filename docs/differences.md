@@ -509,6 +509,30 @@ where the port stops short of the window or reads the data on purpose.
   not matter to it; the endpoint passes 0. A textblock spell whose range is a single number is not tested at all
   (MME assigns the number and never uses it).
 
+## Web map view (M-002)
+
+The map draws the server's `MapGrid` as SVG (`web/src/lib/components/map/`) on the Rooms tab and in `/map`, the pop-out
+for frmMap. Every control of frmMain's map frame and frmMap is wired except the ones below.
+
+- **Left click.** MME's left click only lists the room's references (`MapGetRoomLoc`). Here a click selects the room in
+  the Rooms explorer and re-centres the map on it, as the card asks; right click keeps MME's meaning (redraw from the
+  room, follow an up or down exit, ask when a cell has both, shift re-centres on any cell).
+- **Window-only chrome.** "Not Always on Top", "Allow Main To Overlap", "Show Map Controls" and the window position
+  keys are desktop-window settings with no meaning in a browser window. "Find Room" / "Find Next" of frmMap is the Rooms
+  tab's name finder; the pop-out has no copy of it. "Route to Room" is the Rooms tab's button.
+- **MegaMUD choices.** "MegaMud Rooms" (also mark) and the "Find MegaMud Room/Group" button need a MegaMUD file the
+  server does not read (see M-001).
+- **Pop-out and the Rooms tab** do not talk to each other: a click in the pop-out selects the room in that window only.
+- **Presets** live in settings.json (`map_presets`, edited entries only), not the registry; "Reset" clears them, which
+  `LoadPresets(True)` also ends up as (every saved map is zeroed so the defaults come back). The edit dialog is
+  reached through an "Edit" toggle instead of a per-button edit control.
+- **Remembered options** (size and boxes, one set for the tab and one for the window) are kept per browser in
+  localStorage, not in settings.ini. The tab's size list adds the main window's fixed grid to frmMap's six.
+- **Walking keys** are the number pad digits as in frmMap, plus the arrow keys and Page Up / Page Down for U and D, and
+  work while the map has focus.
+- **Caption wording.** The tab uses frmMain's short box captions ("Not Hidden"), the pop-out frmMap's ("Don't Follow
+  Hidden").
+
 ## Quicksilver: end-to-end cells (Q-016)
 
 Under `Profile::Quicksilver` only. `fixtures/quicksilver/cells.json` holds 45 whole characters from Quicksilver's balance

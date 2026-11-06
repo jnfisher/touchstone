@@ -29,6 +29,8 @@ export interface Settings {
   jump_to_compare: boolean;
   /** `ShopsFirstInRefs`: Options > Show shops first in item references. */
   shops_first: boolean;
+  /** Edited map presets (`EditPreset`); a button with no entry keeps MME's default. */
+  map_presets: { index: number; name: string; map: number; room: number }[];
 }
 
 export const KNOB_MIN = 0.01;
@@ -68,6 +70,7 @@ export function defaultSettings(): Settings {
     hide_record_numbers: false,
     jump_to_compare: false,
     shops_first: false,
+    map_presets: [],
   };
 }
 
@@ -233,7 +236,11 @@ export function draftBlock(d: Draft): ExpHrBlock {
 }
 
 /** `current` supplies the global block when the draft's block goes to the character instead. */
-export function draftSettings(d: Draft, globalBlock: ExpHrBlock): Settings {
+export function draftSettings(
+  d: Draft,
+  globalBlock: ExpHrBlock,
+  mapPresets: Settings["map_presets"] = [],
+): Settings {
   return {
     exp_per_hour: { global: globalBlock, by_character: d.byCharacter },
     monster_sim_rounds: clampSimRounds(vbVal(d.simRounds)),
@@ -242,6 +249,8 @@ export function draftSettings(d: Draft, globalBlock: ExpHrBlock): Settings {
     hide_record_numbers: d.hideNumbers,
     jump_to_compare: d.jumpToCompare,
     shops_first: d.shopsFirst,
+    // not on the Settings window: the map's preset editor owns them, so a save keeps what is stored
+    map_presets: mapPresets,
   };
 }
 
