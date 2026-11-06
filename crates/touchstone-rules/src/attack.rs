@@ -418,6 +418,66 @@ pub fn calc_true_average(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Class melee share (R5) and the Thief opportunist (R4), Quicksilver only
+
+/// The Thief's class number, the only class with an opportunist.
+pub const THIEF: i32 = 8;
+
+/// The range of the bonus a Thief's opportunist hit adds, before damage reduction (R4): the stab's
+/// flat terms (`2L + stealth / backstab_stealth_div` plus Backstab Min and Max), raised by
+/// `100 + L * opportunist_level_pct / 100` percent, `L` held to `scalecap`. A Backstab Max below
+/// the Min counts as the Min. Port of Quicksilver's `bonus_range`, which MME has no counterpart for.
+#[must_use]
+pub fn opportunist_range(
+    b: &crate::quicksilver::Balance,
+    level: i32,
+    stealth: i32,
+    bs_min: i32,
+    bs_max: i32,
+) -> (i32, i32) {
+    let level = i64::from(level.min(i32::try_from(b.scalecap).unwrap_or(i32::MAX)));
+    let div = i64::from(b.backstab_stealth_div.max(1));
+    let flat = level * 2 + i64::from(stealth) / div;
+    let pct = 100 + level * i64::from(b.opportunist_level_pct) / 100;
+    let at = |bonus: i32| {
+        i32::try_from((flat + i64::from(bonus)) * pct / 100).unwrap_or(
+            if flat + i64::from(bonus) < 0 {
+                i32::MIN
+            } else {
+                i32::MAX
+            },
+        )
+    };
+    (at(bs_min), at(bs_max.max(bs_min)))
+}
+
+/// The mean damage of one opportunist hit that fires, against damage reduction `vs_dr`: the roll is
+/// uniform over `range`, a tenth of the target's reduction comes off and a hit with nothing left
+/// adds nothing (so it counts as 0).
+#[must_use]
+pub fn opportunist_mean(range: (i32, i32), vs_dr: i32) -> f64 {
+    let (lo, hi) = (i64::from(range.0), i64::from(range.1.max(range.0)));
+    let dr = i64::from(vs_dr);
+    let first = (lo - dr).max(1);
+    let last = hi - dr;
+    if last < first {
+        return 0.0;
+    }
+    let sum = (first + last) * (last - first + 1) / 2;
+    sum as f64 / (hi - lo + 1) as f64
+}
+
+/// The share of `lo..=hi` that is above `dr`: the landed blows that deal damage.
+fn share_above(lo: i32, hi: i32, dr: i32) -> f64 {
+    let (lo, hi, dr) = (i64::from(lo), i64::from(hi.max(lo)), i64::from(dr));
+    let first = lo.max(dr + 1);
+    if hi < first {
+        return 0.0;
+    }
+    (hi - first + 1) as f64 / (hi - lo + 1) as f64
+}
+
+// ---------------------------------------------------------------------------------------------
 // Inputs and outputs of CalculateAttack
 
 /// The part of MME's `tCharacterProfile` that `CalculateAttack` reads. MME's Integer fields are
@@ -577,6 +637,11 @@ pub struct AttackDamage {
     pub round_total: i32,
     pub first_round_damage: i32,
     pub min_round_damage: i32,
+    /// Quicksilver's Thief opportunist (R4): the percentage chance of a bonus hit on a landed blow
+    /// that leaves the target alive. 0 for stock, other classes and a neutral balance.
+    pub opportunist_pct: i16,
+    /// The mean damage of one bonus hit that fires, after damage reduction.
+    pub opportunist_avg: i32,
     pub attack_desc: String,
     pub attack_detail: String,
     pub attack_speed: i16,
@@ -948,6 +1013,8 @@ fn attack_steps(
     let n_percent: f64 = 0.0;
     // Set for a Quicksilver stab: its crit range tops out at this percentage of its maximum (R3).
     let mut stab_crit_max_pct: Option<u32> = None;
+    // Set for a Thief's non-stab blow under Quicksilver: the bonus range and the proc chance (R4).
+    let mut opportunist: Option<Opportunist> = None;
     // Index 1..=3 as in MME; slot 0 is never used.
     let mut ma_skill = [0i16; 4];
     let mut ma_accy = [0i32; 4];
@@ -1431,6 +1498,32 @@ fn attack_steps(
             attack_accuracy = attack_accuracy.checked_sub(cur(25))?;
             desc = format!("smash with {desc}");
         }
+        if let Profile::Quicksilver(b) = profile
+            && attack_type != 4
+            && ch.level != 0
+        {
+            // R5: the class's share of the damage range, read at the real level, before the move's
+            // own multiplier, the crit range and damage reduction. A made-up profile with no class
+            // (class 0) keeps its range, as does the max-level mock above.
+            let class = u16::try_from(ch.class).unwrap_or(0);
+            let share_level = u16::try_from(level).unwrap_or(0);
+            dmg_min = b.class_melee_pct.scale(class, share_level, dmg_min);
+            dmg_max = b.class_melee_pct.scale(class, share_level, dmg_max);
+            if ch.class == THIEF && b.opportunist_pct > 0 {
+                let (min, max) = opportunist_range(
+                    b,
+                    i32::from(level),
+                    i32::from(stealth),
+                    i32::from(plus_bs_min),
+                    i32::from(plus_bs_max),
+                );
+                opportunist = Some(Opportunist {
+                    min,
+                    max,
+                    pct: b.opportunist_pct.min(100),
+                });
+            }
+        }
         return finish(
             env,
             ch,
@@ -1450,6 +1543,7 @@ fn attack_steps(
                 multiplier,
                 n_percent,
                 stab_crit_max_pct,
+                opportunist,
                 whole_blows: io.blows,
             },
         );
@@ -1474,6 +1568,7 @@ fn attack_steps(
             multiplier: 1.0,
             n_percent,
             stab_crit_max_pct,
+            opportunist: None,
             whole_blows: io.blows,
         },
     )
@@ -1499,6 +1594,16 @@ fn subtract_martial_arts(
     Ok(())
 }
 
+/// A Thief's opportunist bonus as `attack_steps` hands it to `finish` (R4).
+#[derive(Debug, Clone, Copy)]
+struct Opportunist {
+    /// The bonus range before damage reduction.
+    min: i32,
+    max: i32,
+    /// The chance of a bonus on a landed blow, percent.
+    pct: u32,
+}
+
 /// State handed from the set-up half of `CalculateAttack` to the damage half (`calc_damage:`).
 struct Tail {
     attack_type: i32,
@@ -1514,6 +1619,7 @@ struct Tail {
     multiplier: f64,
     n_percent: f64,
     stab_crit_max_pct: Option<u32>,
+    opportunist: Option<Opportunist>,
     /// The whole blows to count in the first-round figures, when the opener asks (R2).
     whole_blows: Option<i32>,
 }
@@ -1540,6 +1646,7 @@ fn finish(
         multiplier,
         mut n_percent,
         stab_crit_max_pct,
+        opportunist,
         whole_blows,
     } = t;
     let vs_dr = req.vs_dr;
@@ -1591,7 +1698,11 @@ fn finish(
         dmg_max = vb::clng(vb::fix(f64::from(dmg_max) * pre_roll))?;
     }
 
+    // The damage range of a landed blow before damage reduction, for the opportunist's share of
+    // blows that deal damage (R4).
+    let (raw_min, raw_max) = (dmg_min, dmg_max);
     let (mut avg_crit, mut min_crit, mut max_crit) = (0i32, 0i32, 0i32);
+    let mut crit_share = 0.0_f64;
     if crit_chance > 0 {
         if let Some(pct) = stab_crit_max_pct {
             // R3: from the stab's maximum up to a set percentage of it (64-bit, truncating).
@@ -1605,6 +1716,7 @@ fn finish(
         if min_crit > max_crit {
             max_crit = min_crit;
         }
+        crit_share = share_above(min_crit, max_crit, vs_dr);
         let mid = vb::round(f64::from(vb::add_i32(min_crit, max_crit)?) / 2.0, 0)?;
         avg_crit = vb::clng(mid - f64::from(vs_dr))?;
         min_crit = vb::sub_i32(min_crit, vs_dr)?;
@@ -1684,14 +1796,28 @@ fn finish(
     n_percent = f64::from(crit_chance) / 100.0;
     let hit = hit_chance.to_f64();
     let per_swing = ((1.0 - n_percent) * avg_hit.to_f64()) + (n_percent * f64::from(avg_crit));
+    // R4: per landed blow, the proc chance times the mean bonus, only for blows that deal damage
+    // (the target is assumed to survive them, as the rest of the steady state does).
+    let mut opportunist_per_hit = 0.0_f64;
+    if let Some(o) = opportunist {
+        let landed =
+            (1.0 - n_percent) * share_above(raw_min, raw_max, vs_dr) + n_percent * crit_share;
+        let mean = opportunist_mean((o.min, o.max), vs_dr);
+        opportunist_per_hit = landed * f64::from(o.pct) / 100.0 * mean;
+        r.opportunist_pct = i16::try_from(o.pct).unwrap_or(100);
+        r.opportunist_avg = vb::clng(vb::round(mean, 0)?)?;
+    }
     r.round_physical = vb::clng(vb::round(per_swing * swings * hit, 0)?)?;
     r.round_total = vb::clng(
-        f64::from(r.round_physical) + vb::round(extra_avg_swing.to_f64() * swings * hit, 0)?,
+        f64::from(r.round_physical)
+            + vb::round(extra_avg_swing.to_f64() * swings * hit, 0)?
+            + vb::round(opportunist_per_hit * swings * hit, 0)?,
     )?;
     let whole = whole_blows.map_or_else(|| vb::fix(swings), f64::from);
     r.first_round_damage = vb::clng(
         vb::round(per_swing * whole * hit, 0)?
-            + vb::round(extra_avg_swing.to_f64() * whole * hit, 0)?,
+            + vb::round(extra_avg_swing.to_f64() * whole * hit, 0)?
+            + vb::round(opportunist_per_hit * whole * hit, 0)?,
     )?;
     let min_swing = ((1.0 - n_percent) * f64::from(dmg_min)) + (n_percent * f64::from(min_crit));
     r.min_round_damage = vb::clng(vb::round(min_swing * whole * hit, 0)?)?;
@@ -1744,6 +1870,16 @@ fn finish(
             }
             if r.hit_chance > 0 {
                 detail = auto_append(&detail, &format!("Hit: {}%", r.hit_chance), ", ");
+            }
+            if r.opportunist_pct > 0 && r.opportunist_avg > 0 {
+                detail = auto_append(
+                    &detail,
+                    &format!(
+                        "Opportunist: {}% for {}",
+                        r.opportunist_pct, r.opportunist_avg
+                    ),
+                    ", ",
+                );
             }
         }
     }

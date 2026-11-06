@@ -6,6 +6,7 @@
 
 mod backstab;
 mod knees;
+mod melee;
 mod opener;
 mod regen;
 mod spells;
@@ -59,6 +60,7 @@ fn main() {
     for fam in [
         backstab::family(),
         knees::family(),
+        melee::family(),
         opener::family(),
         regen::family(),
         spells::family(),
