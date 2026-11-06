@@ -333,6 +333,9 @@ pub(crate) fn check_fixture(prof: Profile) {
                     round_total: int(&out["nroundtotal"]),
                     first_round_damage: int(&out["nfirstrounddamage"]),
                     min_round_damage: int(&out["nminrounddamage"]),
+                    // MME has no opportunist
+                    opportunist_pct: 0,
+                    opportunist_avg: 0,
                     attack_desc: out["sattackdesc"].as_str().unwrap().to_string(),
                     attack_detail: out["sattackdetail"].as_str().unwrap().to_string(),
                     attack_speed: int(&out["nattackspeed"]) as i16,
