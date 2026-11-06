@@ -892,6 +892,7 @@ pub fn populate_item_manager_from_parsed(
 /// optionally showing a given shop. Items that cannot be got are skipped. `source` is the Source
 /// column; `qty` is clamped to 9999 (a negative one becomes 1). An error is reported through
 /// `HandleError` as a [`Event::HandledError`].
+#[allow(clippy::too_many_arguments)] // mirrors the VB procedure's parameter list
 pub fn lv_add_row_by_item_number(
     env: &MatchEnv,
     rows: &mut Vec<ListRow>,
