@@ -3,9 +3,10 @@
 
 Reads the stock SQLite for the rows cases carry as inputs: the first case, "table", holds the
 weapons (and a few other items), classes and races CalculateAttack looks up, in compact form.
-CalculateAttack builds a weapon's cast-spell text with PullSpellEQ and GetSpellName, which other
-cards port; the scenario calls those directly for every (spell, bonus) the attack cases need, and
-the Rust test hands the recorded answers back ("pe-*" and "sn-*" cases). Bulk cases are seeded
+CalculateAttack builds a weapon's cast-spell text with PullSpellEQ and GetSpellName (ability_text.rs
+in the Rust port, which reads the Spells table, names and textblocks the "table" case also carries).
+The scenario calls those directly for every (spell, bonus) the attack cases need ("pe-*" and "sn-*"
+cases), and the Rust test checks the port against them. Bulk cases are seeded
 samples (splitmix64 in the oracle), so the scenario stays small. Deterministic."""
 import json, sqlite3, glob, os, sys
 
@@ -42,11 +43,30 @@ races = []
 for r in c.execute("select * from Races order by Number"):
     races.append([r['Number'], [r['Abil-%d' % i] for i in range(10)]])
 
+SPELL_FIELDS = ["Number", "ReqLevel", "EnergyCost", "MinBase", "MaxBase", "Targets", "Dur", "AttType", "Magery", "Cap",
+                "MaxIncLVLs", "MaxInc", "MinIncLVLs", "MinInc", "DurIncLVLs", "DurInc"]
+# The tables PullSpellEQ and GetSpellName read, so the Rust test runs the real text port: the whole Spells table in
+# the compact form of the spells family, the Name columns, and the TBInfo rows that spells' cast-textblock abilities (148) use.
+spell_rows = []
+for r in c.execute("select * from Spells order by Number"):
+    sab = []
+    for i in range(10):
+        if r['Abil-%d' % i]:
+            sab += [r['Abil-%d' % i], r['AbilVal-%d' % i]]
+    spell_rows.append([r[k] for k in SPELL_FIELDS] + [r['Learnable'], 1 if r['Learned From'] else 0, sab])
+names = {}
+for key, tbl in (("spells", "Spells"), ("monsters", "Monsters"), ("items", "Items"), ("classes", "Classes")):
+    names[key] = [[r[0], r[1]] for r in c.execute("select Number, Name from %s order by Number" % tbl)]
+tb_want = {flat_ab[k + 1] for row in spell_rows for flat_ab in [row[18]] for k in range(0, len(flat_ab), 2) if flat_ab[k] == 148}
+textblocks = [[r[0], r[1] or ""] for r in c.execute("select Number, Action from TBInfo order by Number") if r[0] in tb_want]
+
 cases = [{"id": "table",
           "items": [[i["n"], i["name"], i["encum"], i["accy"], i["str"], i["speed"], i["min"], i["max"], i["wt"], flat(i["ab"])]
                     for i in (items[n] for n in table_nums)],
           "item_fields": ["Number", "Name", "Encum", "Accy", "StrReq", "Speed", "Min", "Max", "WeaponType", "AbilitiesFlat"],
-          "classes": classes, "races": races}]
+          "classes": classes, "races": races,
+          "spell_fields": SPELL_FIELDS + ["Learnable", "LearnedFrom", "AbilitiesFlat"],
+          "spells": spell_rows, "names": names, "textblocks": textblocks}]
 grids, samples = [], []
 
 def case(cid, **kw):
@@ -290,7 +310,7 @@ for i, (n, filt, cls, strn, agi, ec, em, lv) in enumerate(
 scn = {"family": "attack", "database": True,
        "description": "Swings, energy and weapon damage (FAM-07): CalculateAttack for every attack type, weapon, proxy weapon, martial art and gear swap; energy, Quick and Deadly, backstab damage and true average. Stock path only (bGreaterMUD false).",
        "notes": ["The 'table' case carries the Items, Classes and Races rows CalculateAttack looks up (the Rust port never reads SQLite).",
-                 "'sn-*' and 'pe-*' cases record GetSpellName and PullSpellEQ (another card's) for the weapons' cast abilities; the Rust test supplies them as the port's CastText.",
+                 "'sn-*' and 'pe-*' cases call GetSpellName and PullSpellEQ directly for the weapons' cast abilities; the Rust test compares the port's answers with them. The table also carries the Spells table, Name columns and cast textblocks, so CalculateAttack runs over the real text port.",
                  "ByRef sCasts comes back in outputs.result.refs[0]."],
        "tolerance": {"default": 0}, "globals": {"bGreaterMUD": False},
        "cases": cases, "samples": samples}

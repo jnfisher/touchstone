@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 touchstone-model.workspace = true
 touchstone-vb6.workspace = true
+regex.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
