@@ -576,6 +576,7 @@ fn cps_prices_stats_above_the_race_maximum_by_soft_caps() {
             legit: false,
             disable_kai: false,
             update_url: String::new(),
+            content_version: None,
         },
         items: vec![],
         monsters: vec![],
