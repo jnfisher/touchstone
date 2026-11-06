@@ -578,6 +578,12 @@ pub struct CoinReq {
     /// A coin button was clicked: the coin the source box was last in, as copper value
     /// (1, 10, 100, 10000 or 1000000), so the amount is converted to the new coin.
     force_source: Option<i32>,
+    /// The loaded character's Charm (`txtCharStats(5).Tag`) while the global filter is on; absent
+    /// is no character, which leaves the charm button without an effect.
+    charm: Option<f64>,
+    /// The charm button was clicked (`cmdCharm_Click`): the bottom box is rescaled.
+    #[serde(default)]
+    apply_charm: bool,
 }
 
 fn gold_coin() -> usize {
@@ -592,6 +598,63 @@ struct CoinJson {
     current_coin: i32,
     /// "Weight: n" under each box, empty while the amount is not above 0.
     weights: [String; 2],
+    charm: CharmJson,
+}
+
+/// What `RefreshCharmButton` leaves on the button.
+#[derive(Serialize)]
+struct CharmJson {
+    enabled: bool,
+    /// "No Charm Effect" or "Apply" and the markup or discount on a second line (CRLF).
+    caption: String,
+    /// `cmdCharm.Tag`: the percent of the amount the button leaves.
+    percent: Option<i32>,
+}
+
+/// Port of frmCoinConvert `RefreshCharmButton`. Charm 0 and 50 have no effect; the modifier is
+/// `1 - (Fix(charm / 5) - 10) / 100`, kept in whole percents.
+fn charm_button(charm: Option<f64>) -> CharmJson {
+    let n = charm.map_or(0.0, f64::trunc);
+    let none = || CharmJson {
+        enabled: false,
+        caption: "No Charm Effect".to_owned(),
+        percent: None,
+    };
+    if n == 0.0 || n == 50.0 || n.abs() > 1.0e6 {
+        return none();
+    }
+    let pct = 110 - (n / 5.0).trunc() as i32;
+    let caption = match pct.cmp(&100) {
+        std::cmp::Ordering::Greater => format!("{}% Markup", pct - 100),
+        std::cmp::Ordering::Less => format!("{}% Discount", 100 - pct),
+        std::cmp::Ordering::Equal => return none(),
+    };
+    CharmJson {
+        enabled: true,
+        caption: format!("Apply\r\n{caption}"),
+        percent: Some(pct),
+    }
+}
+
+/// Port of `cmdCharm_Click`: the bottom amount through the charm percent, kept within 1..999999999.
+fn apply_charm(text: &str, coin: usize, percent: i32) -> Option<String> {
+    use touchstone_rules::calculators::convert_coin;
+    const VALUES: [i32; 5] = [1, 10, 100, 10_000, 1_000_000];
+    let amount = touchstone_vb6::val(text);
+    if amount < 1.0 {
+        return None;
+    }
+    let cur = VALUES[coin];
+    let copper = convert_coin(amount, cur, 1);
+    let copper = round(copper * (f64::from(percent) / 100.0), 8).unwrap_or(copper);
+    let shown = touchstone_vb6::val(&cstr(convert_coin(copper, 1, cur)));
+    Some(if shown < 1.0 {
+        "1".to_owned()
+    } else if shown > 999_999_999.0 {
+        "999999999".to_owned()
+    } else {
+        cstr(shown)
+    })
 }
 
 fn coin_row(n: usize) -> Result<[bool; 5], (StatusCode, String)> {
@@ -618,6 +681,22 @@ pub async fn calc_coin(Body(req): Body<CoinReq>) -> ApiResult {
     if req.source > 1 {
         return Err(bad("source must be 0 (top box) or 1 (bottom box)"));
     }
+    let charm = charm_button(req.charm);
+    if req.apply_charm {
+        let Some(percent) = charm.percent else {
+            return Err(bad("the character's Charm has no effect on prices"));
+        };
+        let coin = req.bottom;
+        coin_row(coin)?;
+        let text = apply_charm(&req.text.0, coin, percent).unwrap_or_else(|| req.text.0.clone());
+        return json(&CoinJson {
+            destination: 1,
+            weights: [String::new(), weight_label(&text)],
+            destination_text: text,
+            current_coin: [1, 10, 100, 10_000, 1_000_000][coin],
+            charm,
+        });
+    }
     let force = req.force_source.unwrap_or(0);
     if !matches!(force, 0 | 1 | 10 | 100 | 10_000 | 1_000_000) {
         return Err(bad("force_source must be a coin's copper value"));
@@ -643,6 +722,7 @@ pub async fn calc_coin(Body(req): Body<CoinReq>) -> ApiResult {
         destination_text: out.destination_text,
         current_coin: out.current_coin,
         weights,
+        charm,
     })
 }
 
@@ -683,6 +763,19 @@ pub struct SwingReq {
     /// 0 fast (85), 1 normal, 2 slow (125, which also ticks Slowness), 3 custom.
     #[serde(default = "normal_speed")]
     speed_option: usize,
+    /// `txtTrueAVG(0..5)`: the MegaMUD Hit, Extra and Crit percentages and averages.
+    #[serde(default)]
+    hit_pct: Text,
+    #[serde(default)]
+    hit_avg: Text,
+    #[serde(default)]
+    extra_pct: Text,
+    #[serde(default)]
+    extra_avg: Text,
+    #[serde(default)]
+    crit_pct: Text,
+    #[serde(default)]
+    crit_avg: Text,
 }
 
 fn average_combat() -> i32 {
@@ -712,6 +805,10 @@ struct SwingJson {
     encum_pct: Option<i16>,
     raw_swing: String,
     true_avg: String,
+    /// `txtTrueAVG(7)`: `CalcTrueAverage` over the swings and the six MegaMUD boxes.
+    true_average: Option<String>,
+    /// The error `txtTrueAVG_Change` caught (a box that does not fit a Long).
+    true_average_error: Option<String>,
     eu: Vec<String>,
     swings: Vec<String>,
     damage: String,
@@ -782,7 +879,33 @@ pub async fn calc_swing(
         },
         &env,
     );
+    // txtTrueAVG_Change: the Long arguments are the boxes rounded; one that does not fit is an
+    // Overflow, which the handler reports and leaves the box as it was.
+    let swings = touchstone_vb6::val(&out.true_avg_6);
+    let amount = |t: &Text| touchstone_vb6::clng(touchstone_vb6::val(&t.0));
+    let pct = |t: &Text| touchstone_vb6::val(&t.0);
+    let (true_average, true_average_error) = match (
+        amount(&req.hit_avg),
+        amount(&req.crit_avg),
+        amount(&req.extra_avg),
+    ) {
+        (Ok(h), Ok(c), Ok(e)) => (
+            Some(cstr(touchstone_rules::attack::calc_true_average(
+                swings,
+                pct(&req.hit_pct),
+                h,
+                pct(&req.crit_pct),
+                c,
+                pct(&req.extra_pct),
+                e,
+            ))),
+            None,
+        ),
+        _ => (None, Some(vb_error_text(6))),
+    };
     json(&SwingJson {
+        true_average,
+        true_average_error,
         qnd: out.qnd_text,
         energy: out.energy_text,
         encum: out.encum_text,
@@ -797,6 +920,46 @@ pub async fn calc_swing(
         max_encum,
         error: out.error,
         error_text: out.error.map(vb_error_text),
+    })
+}
+
+// --- MegaMUD stat-line paste ---
+
+/// frmSwingCalc's message box when the clipboard lacks the `Hit:` or `Crit:` line.
+const MEGA_INCOMPLETE: &str = "Incomplete/Missing MegaMUD Statistics in Clipboard";
+
+#[derive(Deserialize)]
+pub struct MegaReq {
+    /// What MME reads from the clipboard.
+    #[serde(default)]
+    text: Text,
+}
+
+#[derive(Serialize)]
+struct MegaJson {
+    ok: bool,
+    /// `txtTrueAVG(0..5)`: Hit %, Hit avg, Extra %, Extra avg, Crit %, Crit avg. Empty when the
+    /// paste was rejected, because MME changes nothing then.
+    fields: Option<[String; 6]>,
+    /// The message box MME would show.
+    message: Option<String>,
+    error: Option<u32>,
+}
+
+/// Port of frmSwingCalc `cmdPasteMega_Click` over the text the page sends in place of the clipboard.
+pub async fn calc_mega_stat(Body(req): Body<MegaReq>) -> ApiResult {
+    use touchstone_rules::mega_stat::paste_mega_stat_line;
+    let (fields, message, error) = match paste_mega_stat_line(&req.text.0) {
+        Ok(Some(f)) => (Some(f), None, None),
+        Ok(None) => (None, Some(MEGA_INCOMPLETE.to_owned()), None),
+        // HandleError("cmdPasteMega_Click") reports it and the boxes stay as they were.
+        Err(e) => (None, Some(vb_error_text(e.code())), Some(e.code())),
+    };
+    json(&MegaJson {
+        ok: fields.is_some(),
+        fields,
+        message,
+        error,
     })
 }
 
@@ -963,6 +1126,9 @@ mod hit {
         pub stealth: Text,
         pub bs_accuracy: Text,
         pub agility: Text,
+        /// `txtCharStats(0).Tag` and `txtGlobalLevel(0).Text`, which the backstab accuracy reads.
+        pub strength: Text,
+        pub level: Text,
         pub shadow_ac: i32,
         pub class: Option<i32>,
         /// The backstab weapon (`nGlobalAttackBackstabWeapon`); absent is none chosen.
@@ -1243,6 +1409,8 @@ pub async fn calc_hit(State(app): State<Arc<AppState>>, Body(req): Body<hit::Hit
         stealth: touchstone_vb6::val(&ch.stealth.0),
         bs_accuracy: touchstone_vb6::val(&ch.bs_accuracy.0),
         agility: touchstone_vb6::val(&ch.agility.0),
+        strength: touchstone_vb6::val(&ch.strength.0),
+        level: touchstone_vb6::val(&ch.level.0),
         class: ch.class,
         shadow_ac: ch.shadow_ac,
         attack_type,
