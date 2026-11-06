@@ -15,7 +15,8 @@ use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::character::Character;
 use touchstone_rules::game_text::{Event, ListRow, MatchEnv, SubTag, lv_add_row_by_item_number};
-use touchstone_rules::gear::EQUIP_SLOTS;
+use touchstone_rules::gear::{EQUIP_SLOTS, ItemManagerRow};
+use touchstone_rules::item_manager;
 use touchstone_rules::paste_char::{
     self, PasteEnv, PasteEvent, PasteState, Prompter, VB_CANCEL, VB_NO, VB_YES,
 };
@@ -57,18 +58,18 @@ pub struct Prompt {
     pub answer: Option<Answer>,
 }
 
-struct Asker {
+pub(crate) struct Asker {
     answers: Vec<Answer>,
     next: usize,
-    log: Vec<Prompt>,
+    pub(crate) log: Vec<Prompt>,
     /// Index into `log` of the first question that had no answer.
-    pending: Option<usize>,
+    pub(crate) pending: Option<usize>,
     /// For each question, its position in `log` (answers are indexed by question).
     questions: Vec<usize>,
 }
 
 impl Asker {
-    fn new(answers: &[Answer]) -> Self {
+    pub(crate) fn new(answers: &[Answer]) -> Self {
         Self {
             answers: answers.to_vec(),
             next: 0,
@@ -172,7 +173,7 @@ pub struct RowJson {
     pub subs: Vec<SubJson>,
 }
 
-fn row_to_json(r: &ListRow) -> RowJson {
+pub(crate) fn row_to_json(r: &ListRow) -> RowJson {
     RowJson {
         text: r.text.clone(),
         subs: r
@@ -189,7 +190,7 @@ fn row_to_json(r: &ListRow) -> RowJson {
     }
 }
 
-fn row_from_json(r: &RowJson) -> ListRow {
+pub(crate) fn row_from_json(r: &RowJson) -> ListRow {
     ListRow {
         text: r.text.clone(),
         subs: r
@@ -305,13 +306,19 @@ pub struct PasteCharacterResponse {
 
 /// What a charm is worth to the shops: the charm tag and its bonus from the gear and bless
 /// bonuses, as the Char tab holds them when a paste starts.
-fn charm_of(world: &World, ch: &Character, min_item_level: i32) -> (String, f64) {
+fn charm_of(
+    world: &World,
+    ch: &Character,
+    min_item_level: i32,
+    item_manager: Vec<ItemManagerRow>,
+) -> (String, f64) {
     let base = f64::from(ch.stats[5]);
     if ch.class.is_none() || ch.race.is_none() {
         return (vb::cstr(base), 0.0);
     }
     let opts = PipelineOptions {
         min_item_level,
+        item_manager,
         dat_ver_caption: world.info.dat_file_version.clone(),
         nmr_ver: nmr_ver(&world.info.nmr_version),
         avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
@@ -370,7 +377,12 @@ fn start_state(
     char_loaded: bool,
 ) -> PasteState {
     let (combos, sel) = combos_for(&ch.equipped);
-    let (charm_tag, charm_bonus) = charm_of(world, &ch, req.character.options.min_item_level);
+    let (charm_tag, charm_bonus) = charm_of(
+        world,
+        &ch,
+        req.character.options.min_item_level,
+        item_manager::gear_rows(&rows),
+    );
     PasteState {
         stat_text: stat_texts(&ch.stats),
         charm_tag,
@@ -389,8 +401,8 @@ fn start_state(
 }
 
 /// `LoadCharacter`'s Item Manager: the carried rows, then the stashed ones.
-fn rows_from_stacks(world: &World, dto: &CharacterDto, ch: &Character) -> Vec<ListRow> {
-    let (charm_tag, _) = charm_of(world, ch, dto.options.min_item_level);
+pub(crate) fn rows_from_stacks(world: &World, dto: &CharacterDto, ch: &Character) -> Vec<ListRow> {
+    let (charm_tag, _) = charm_of(world, ch, dto.options.min_item_level, dto.gear_rows(world));
     let who = who_for(ch);
     let menv = MatchEnv {
         world,
@@ -408,6 +420,36 @@ fn rows_from_stacks(world: &World, dto: &CharacterDto, ch: &Character) -> Vec<Li
         }
     }
     rows
+}
+/// `LV_AddRowByItemNumber` for the character's current charm and usability; the handled errors
+/// MME would report come back as events.
+pub(crate) fn add_rows_by_item(
+    world: &World,
+    dto: &CharacterDto,
+    ch: &Character,
+    rows: &mut Vec<ListRow>,
+    adds: &[(i32, &str, &str, i32)],
+) -> Vec<Event> {
+    let (charm_tag, _) = charm_of(
+        world,
+        ch,
+        dto.options.min_item_level,
+        item_manager::gear_rows(rows),
+    );
+    let who = who_for(ch);
+    let menv = MatchEnv {
+        world,
+        only_in_game: true,
+        hide_record_numbers: false,
+        charm_tag: &charm_tag,
+        who: &who,
+        equipped: &ch.equipped,
+    };
+    let mut log: Vec<Event> = Vec::new();
+    for &(item, source, flag, qty) in adds {
+        lv_add_row_by_item_number(&menv, rows, item, source, flag, qty, 0, &mut log);
+    }
+    log
 }
 
 fn who_for(ch: &Character) -> touchstone_rules::gear::Character {
@@ -619,7 +661,10 @@ pub fn paste_character(
     if run.out.sort_after {
         sort_by_value_desc(&mut rows);
     }
-    let character = lossless_dto(&base, &run.st).padded();
+    let mut character = lossless_dto(&base, &run.st).padded();
+    // the saved lists follow the Item Manager as SaveCharacter writes them; a row it cannot write
+    // (a quantity past 32767 is its error 6) leaves the lists as they were, the paste still stands
+    let _ = character.set_saved_from_rows(&rows);
     Ok(PasteCharacterResponse {
         character,
         events,
