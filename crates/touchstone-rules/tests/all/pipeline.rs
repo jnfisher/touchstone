@@ -29,7 +29,7 @@ fn pairs<const N: usize>(v: &Value) -> [AbilitySlot; N] {
 }
 
 /// The rows the cases use, from the fixture header's `data` (field lists, see the generator).
-fn world(data: &Value) -> World {
+pub(crate) fn world(data: &Value) -> World {
     let rows = |k: &str| data[k].as_array().unwrap().clone();
     let items = rows("items")
         .iter()
@@ -167,14 +167,14 @@ fn world(data: &Value) -> World {
 }
 
 /// frmMain's controls and the globals: the case's, falling back to the setup's.
-struct Inputs {
+pub(crate) struct Inputs {
     forms_setup: Value,
     forms: Value,
     globals: Value,
 }
 
 impl Inputs {
-    fn new(header: &Value, case: &Value) -> Self {
+    pub(crate) fn new(header: &Value, case: &Value) -> Self {
         Self {
             forms_setup: header["setup"]["forms"]["frmMain"].clone(),
             forms: case["inputs"]["forms"]["frmMain"].clone(),
@@ -212,7 +212,7 @@ impl Inputs {
     fn gb(&self, name: &str) -> bool {
         self.g(name).as_bool().unwrap_or(false)
     }
-    fn character(&self) -> Character {
+    pub(crate) fn character(&self) -> Character {
         let mut stats = [0; 6];
         for (k, s) in stats.iter_mut().enumerate() {
             *s = self.text("txtCharStats", k) as i32;
@@ -285,7 +285,7 @@ impl Inputs {
             ..Character::default()
         }
     }
-    fn options(&self) -> PipelineOptions {
+    pub(crate) fn options(&self) -> PipelineOptions {
         let rows = self.ctl("lvItemManager")["$listview"].as_array().unwrap();
         PipelineOptions {
             hide_class_race: self.ctl("chkInvenHideCharStats")["Value"].as_i64() == Some(1),

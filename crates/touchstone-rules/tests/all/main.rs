@@ -19,6 +19,7 @@ mod item_match;
 mod item_value;
 mod mega_stat;
 mod monster_glue;
+mod monster_glue_char;
 mod monster_sim;
 mod paste_party;
 mod pipeline;
