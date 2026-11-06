@@ -32,7 +32,9 @@ const stock: Info = { ...base, profile: { name: 'stock', setting: 'auto', conten
 describe('rules profile', () => {
 	it('badges Quicksilver with its content version and names the overrides in the tooltip', () => {
 		expect(isQuicksilver(qs)).toBe(true);
-		expect(profileBadge(qs)).toBe('Quicksilver 1.20.0');
+		// short in the header, in full in the tooltip
+		expect(profileBadge(qs)).toBe('QS 1.20.0');
+		expect(profileBadgeTitle(qs)).toContain('Quicksilver 1.20.0 rules');
 		expect(profileBadgeTitle(qs)).toContain('crit_knee, scalecap');
 		expect(profileBadgeTitle({ ...qs, profile: { ...qs.profile!, balance_overrides: [] } })).toContain('as shipped');
 	});

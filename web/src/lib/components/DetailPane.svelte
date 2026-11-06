@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { DetailGroup } from '$lib/explorers';
-	import { groupRows, refCells, refColumns, routeLine, type Pane, type RefRow, type RefTarget } from '$lib/detail';
+	import { groupRows, isReachCompute, refCells, refColumns, routeLine, type Pane, type RefRow, type RefTarget } from '$lib/detail';
 	import { lineColorClass } from '$lib/monsters';
 
 	let {
@@ -14,6 +14,7 @@
 		linkable,
 		onMenu,
 		onRoute,
+		onReachCompute,
 		before,
 		children
 	}: {
@@ -31,6 +32,8 @@
 		onMenu?: (e: { part: 'line' | 'shopLine' | 'ref'; index: number }) => void;
 		/** A double-click row of the monster pane's "Reachable" lines: open the route (the alternate one for `alt`). */
 		onRoute?: (alt: boolean) => void;
+		/** A double-click on the monster pane's uncomputed "Reachable" row. */
+		onReachCompute?: () => void;
 		/** Controls that sit above the rows (the shop's charm box). */
 		before?: Snippet;
 		children?: Snippet;
@@ -85,7 +88,16 @@
 						</dt>
 						<dd oncontextmenu={() => onMenu?.({ part: 'line', index: k })} class="min-w-0 break-words whitespace-pre-wrap">
 							{#each l.cells as c, j (j)}
-								{#if onRoute && j === 0 && routeLine(l.kind)}
+								{#if onReachCompute && j === 0 && isReachCompute(l.kind)}
+									<button
+										type="button"
+										class="text-left hover:underline {c.bold ? 'font-semibold' : ''} {lineColorClass(c.color)}"
+										data-testid="pane-reach-compute"
+										onclick={() => onReachCompute()}
+									>
+										{c.text}
+									</button>
+								{:else if onRoute && j === 0 && routeLine(l.kind)}
 									<button
 										type="button"
 										class="text-left hover:underline {c.bold ? 'font-semibold' : ''} {lineColorClass(c.color)}"

@@ -237,3 +237,8 @@ export function routeLine(kind: string): { alt: boolean } | undefined {
 	if (kind === 'reach_route_alt') return { alt: true };
 	return undefined;
 }
+
+/** The "Reachable" row that has not been computed (`reach_compute`): MME computes it on a double-click. */
+export function isReachCompute(kind: string): boolean {
+	return kind === 'reach_compute';
+}

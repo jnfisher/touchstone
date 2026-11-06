@@ -123,6 +123,18 @@ export function createOptionsStore(deps: OptionsDeps = {}) {
 				reachBusy = false;
 			}
 		},
+		/**
+		 * A double-click on the monster pane's "(double-click to compute)" row (`reach_compute`): compute unless
+		 * something else did since the pane was drawn, then draw the pane again.
+		 */
+		async reachRow(): Promise<void> {
+			await refreshReach();
+			if (reach?.computed) {
+				boxes.bumpReach();
+				return;
+			}
+			await this.calculateReachability();
+		},
 		/** Calc. Monster Dmg vs Char / vs Party. */
 		async calcDamage(mode: 'char' | 'party'): Promise<boolean> {
 			return damage.calculate(chars.doc, mode, boxes.controls.party);

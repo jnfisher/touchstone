@@ -38,6 +38,7 @@
 		type Lookups
 	} from '$lib/explorers';
 	import { openRoute } from '$lib/routeactions.svelte';
+	import { getOptionsStore } from '$lib/options.svelte';
 	import { isRoomList } from '$lib/rooms';
 	import { toColDefs } from '$lib/grid/columns';
 	import DataGrid from '$lib/grid/DataGrid.svelte';
@@ -108,6 +109,7 @@
 	// character store is shared with the Character tab; edits re-fetch after a short pause.
 	const bar = getGlobalFilterStore();
 	const monsterBoxes = getMonsterFilterStore();
+	const options = getOptionsStore();
 	const damage = getDamageStore();
 	// MME clears the calculated monster damage when a character is loaded or pasted
 	$effect(() => {
@@ -566,6 +568,7 @@
 							onLink={follow}
 							onMenu={paneMenu}
 							onRoute={slug === 'monsters' ? (alt) => void openRoute({ monster: Number(selectedId), alt }) : undefined}
+							onReachCompute={slug === 'monsters' ? () => void options.reachRow() : undefined}
 						>
 							{#snippet before()}
 								{#if isShops}<ShopControls note={shopNote} />{/if}

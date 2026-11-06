@@ -2,21 +2,19 @@
 	// The data-version info (`/api/info`): MME shows it in the "Database Version (Created ...)" frame.
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { api, type Info } from '$lib/api';
+	import { getInfoStore } from '$lib/info.svelte';
+	import { onMount } from 'svelte';
 	import { infoLines, profileLines } from '$lib/info';
 	import { keyLines } from '$lib/sections';
 	import InfoIcon from '@lucide/svelte/icons/info';
 
-	let info = $state<Info>();
-	let error = $state<string>();
-	async function load(open: boolean) {
-		if (!open) return;
-		try {
-			info = await api.info();
-			error = undefined;
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
+	const store = getInfoStore();
+	const info = $derived(store.current);
+	// a failed read only shows while there is nothing to show; the poll keeps the last good one otherwise
+	const error = $derived(store.current ? undefined : store.error);
+	onMount(() => store.use());
+	function load(open: boolean) {
+		if (open) void store.refresh();
 	}
 	const lines = $derived(info ? infoLines(info) : []);
 	const rules = $derived(info ? profileLines(info) : []);
