@@ -198,7 +198,7 @@ fn some<T: ToString>(v: Option<T>) -> Option<String> {
     v.map(|x| x.to_string())
 }
 
-fn run_cps(world: &World, f: &Forms, case: &Value) -> Result<(), String> {
+fn run_cps(profile: Profile, world: &World, f: &Forms, case: &Value) -> Result<(), String> {
     let mut stat_texts = [0.0; 6];
     let mut max_tags = [0.0; 6];
     for k in 0..6 {
@@ -206,7 +206,7 @@ fn run_cps(world: &World, f: &Forms, case: &Value) -> Result<(), String> {
         max_tags[k] = f.val("txtCharMaxStats", k, "Tag");
     }
     let got = refresh_cps(&CpInput {
-        profile: Profile::Stock,
+        profile,
         world,
         stat_texts,
         max_tags,
@@ -495,10 +495,10 @@ fn run_bless(world: &World, f: &Forms, case: &Value) -> Result<(), String> {
     check_opt("mana", got.map(vb::cstr), want(case, "mana"))
 }
 
-fn run(world: &World, header: &Value, case: &Value) -> Result<(), String> {
+fn run(profile: Profile, world: &World, header: &Value, case: &Value) -> Result<(), String> {
     let f = Forms::new(header, case);
     match case["inputs"]["steps"][0]["call"].as_str().unwrap() {
-        "RefreshCPs" => run_cps(world, &f, case),
+        "RefreshCPs" => run_cps(profile, world, &f, case),
         "RefreshHitPoints" => run_hp(world, &f, case),
         "RefreshMagic" => run_magic(world, &f, case),
         "RefreshPicklocks" => run_picklocks(&f, case),
@@ -515,11 +515,16 @@ fn run(world: &World, header: &Value, case: &Value) -> Result<(), String> {
 
 #[test]
 fn char_panel_cases_match_the_oracle() {
+    check_fixture(Profile::Stock);
+}
+
+/// Runs every char_panel fixture case under `profile`; the layer-1 identity harness reuses it.
+pub(crate) fn check_fixture(profile: Profile) {
     let fx = fixture::load("char_panel");
     let world = world(&fx.header["data"]);
     let mut failures = Vec::new();
     for case in &fx.cases {
-        if let Err(msg) = run(&world, &fx.header, case) {
+        if let Err(msg) = run(profile, &world, &fx.header, case) {
             failures.push(format!("{}: {msg}", case["id"].as_str().unwrap()));
         }
     }
@@ -530,4 +535,100 @@ fn char_panel_cases_match_the_oracle() {
         fx.cases.len(),
         &failures[..failures.len().min(25)]
     );
+}
+
+/// R14: under Quicksilver, RefreshCPs prices a stat above the race maximum by the soft-cap rule
+/// (expected values are `train_cost`, which the training vectors pin to the engine); at or below
+/// the maximum, and under Stock, the stock ladder stands.
+#[test]
+fn cps_prices_stats_above_the_race_maximum_by_soft_caps() {
+    use touchstone_rules::quicksilver::Balance;
+    use touchstone_rules::stats::train_cost;
+
+    // the fixture world's races have no stat range, so build one: Strength 40..70
+    let race = Race {
+        number: 1,
+        name: String::new(),
+        m_int: 30,
+        m_wil: 30,
+        m_str: 40,
+        m_hea: 30,
+        m_agl: 30,
+        m_chm: 30,
+        x_int: 80,
+        x_wil: 80,
+        x_str: 70,
+        x_hea: 80,
+        x_agl: 80,
+        x_chm: 80,
+        hp_per_lvl: 0,
+        exp_table: 0,
+        base_cp: 0,
+        abilities: [AbilitySlot::default(); 10],
+    };
+    let world = World::new(WorldParts {
+        info: Info {
+            nmr_version: String::new(),
+            dat_file_version: String::new(),
+            date: String::new(),
+            time: String::new(),
+            custom: String::new(),
+            legit: false,
+            disable_kai: false,
+            update_url: String::new(),
+            content_version: None,
+        },
+        items: vec![],
+        monsters: vec![],
+        spells: vec![],
+        rooms: vec![],
+        shops: vec![],
+        classes: vec![],
+        races: vec![race.clone()],
+        lairs: vec![],
+        tbinfo: vec![],
+    })
+    .unwrap();
+    let (mn, mx) = (race.m_str, race.x_str);
+    let cps = |profile, stat: i32| {
+        let mut stat_texts = [0.0; 6];
+        stat_texts[0] = f64::from(stat);
+        let mut max_tags = [0.0; 6];
+        max_tags[0] = f64::from(mn);
+        refresh_cps(&CpInput {
+            profile,
+            world: &world,
+            stat_texts,
+            max_tags,
+            race: Some(race.number),
+            class: 0,
+            level: 0.0,
+        })
+        .stat_costs[0]
+    };
+    let qs = Profile::Quicksilver(&Balance::V120);
+    for stat in [
+        mn,
+        mx - 1,
+        mx,
+        mx + 1,
+        90,
+        95,
+        mx + 12,
+        mx + 45,
+        mx + 80,
+        130,
+    ] {
+        let want = train_cost(qs, mn, mx, mn, stat).unwrap();
+        assert_eq!(cps(qs, stat), want, "stat {stat} (race {mn}..{mx})");
+        let stock = train_cost(Profile::Stock, mn, mx, mn, stat).unwrap();
+        assert_eq!(cps(Profile::Stock, stat), stock, "stock, stat {stat}");
+        if stat <= mx {
+            assert_eq!(want, stock, "below the maximum Quicksilver is stock");
+        }
+    }
+    // the 1.20 prices: 10 a point from the maximum up to 90, then 15 a point
+    assert_eq!(train_cost(qs, mn, 70, 70, 71).unwrap(), 10);
+    assert_eq!(train_cost(qs, mn, 70, 89, 91).unwrap(), 10 + 15);
+    assert_eq!(train_cost(qs, mn, 90, 90, 91).unwrap(), 15);
 }

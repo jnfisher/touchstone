@@ -238,3 +238,17 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   history entry, so the browser's back button keeps its own list.
 - The data version (`LoadInfo`'s version label, creation date, NMR version) is shown in an info popover, with the row
   counts. MME's "this database lacks features" warnings for old NMR versions are not shown.
+
+## Quicksilver: stat soft caps (Q-007)
+
+- Under a Quicksilver profile the creation-point panel prices a stat above the race maximum with the
+  soft-cap rule (10 CP a point up to the soft cap, then the three bands), as `TRAIN STATS` does. MME's
+  `RefreshCPs` prices every point above the race minimum on the one stock ladder, so the profile changes
+  only the part above the maximum. With no race selected the stock ladder stands.
+- A balance whose soft-cap keys all equal `Balance::NEUTRAL`'s (floor 0, floor price 10, bands 10/10/10) is
+  read as "soft caps off" and prices on the stock ladder with no training maximum. In Quicksilver's own engine
+  that balance would price points above the race maximum at a flat 10, which agrees with the ladder only from
+  90 points above the minimum; the profile prefers MME's answer so the identity harness stays exact.
+- `cp_cost_for_raise` is unchanged: its only caller (`compute_avg_level_max_stats`) never raises past the race
+  maximum. `stats::train_cost`, `soft_cap` and `train_max` are the Quicksilver functions; the character editor
+  does not use `train_max` yet.

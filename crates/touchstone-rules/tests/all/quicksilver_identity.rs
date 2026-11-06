@@ -30,3 +30,9 @@ fn accuracy_fixtures_identical_under_neutral() {
 fn attack_fixtures_identical_under_neutral() {
     crate::attack::check_fixture(neutral());
 }
+
+/// R14: the creation-point panel (RefreshCPs) prices stats above the race maximum.
+#[test]
+fn char_panel_fixtures_identical_under_neutral() {
+    crate::char_panel::check_fixture(neutral());
+}
