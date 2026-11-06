@@ -710,8 +710,13 @@ class RecItems(ExtObject):
         if n == "count":
             return V.I32(len(self.lv.rows))
         if n == "add":
-            item = RecItem()
-            self.lv.rows.append(item)
+            # Add([Index], [Key], [Text]): the text of `Add(, , "x")`; Index inserts at that 1-based place
+            text = V.c_str(args[2]) if len(args) > 2 and args[2] is not V.MISSING else ""
+            item = RecItem(text)
+            at = V.int_value(args[0]) if args and args[0] is not V.MISSING else len(self.lv.rows) + 1
+            if at < 1 or at > len(self.lv.rows) + 1:
+                raise VBError(35600, "Index out of bounds")
+            self.lv.rows.insert(at - 1, item)
             return item
         if n == "clear":
             self.lv.rows.clear()
@@ -728,6 +733,28 @@ class RecItems(ExtObject):
         return iter(list(self.lv.rows))
 
 
+class RecHeaders(ExtObject):
+    """A recording ListView's ColumnHeaders: only the count (code re-adds the columns when it differs), Clear and Add."""
+
+    def __init__(self, lv):
+        self.lv = lv
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "count":
+            return V.I32(len(self.lv.headers))
+        if n == "clear":
+            self.lv.headers.clear()
+            return None
+        if n == "add":
+            self.lv.headers.append([V.c_str(a) if isinstance(a, str) else a for a in args])
+            return ControlShim()
+        raise VBError(438)
+
+    def vb_default(self, args):
+        raise VBError(438)
+
+
 class RecordingListViewShim(ControlShim):
     """A ListView that records the rows MME's Add*2LV procedures build. The scenario may preload rows:
     {"$recordlv": [{"Text": "1", "Tag": "x", "Sub": ["a", ["b", "tag"]]}]}; `dump()` is what a `%lv.` read returns:
@@ -736,6 +763,7 @@ class RecordingListViewShim(ControlShim):
     def __init__(self, rows=None, decode=_plain):
         super().__init__({}, decode)
         self.rows = []
+        self.headers = []
         for r in rows or []:
             item = RecItem(str(r.get("Text", "")))
             if "Tag" in r:
@@ -751,6 +779,8 @@ class RecordingListViewShim(ControlShim):
         if name.lower() == "listitems":
             items = RecItems(self)
             return items.vb_default(args) if args else items
+        if name.lower() == "columnheaders" and not args:
+            return RecHeaders(self)
         return super().vb_get(name, args)
 
     def dump(self, enc):

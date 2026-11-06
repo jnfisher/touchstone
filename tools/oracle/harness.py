@@ -321,6 +321,8 @@ class Env:
             rec.add("sort_listview", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
                     data_type=V.int_value(kind), ascending=bool(ascending))
         it.bind_proc("SortListView", sort_listview)
+        for n, v in (("lvwcolumnleft", 0), ("lvwcolumnright", 1), ("lvwcolumncenter", 2)):     # ColumnHeaders.Add alignment
+            it.bind(n, V.I32(v))
         for n, v in (("ldtstring", 0), ("ldtnumber", 1), ("ldtDateTime", 2)):     # modListViewExt's ListDataType
             it.bind(n, V.I32(v))
         # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
@@ -558,6 +560,10 @@ class Env:
         if refs:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
             self.saved[step.get("as", target)] = refs
+        if step.get("capture"):
+            # `capture` {name: read expression}: the reads taken right after this call (the controls a
+            # Sub fills), so one case can run many calls on one set-up; lands in "<as>.cap"
+            results[step.get("as", target) + ".cap"] = {k: self.read(objs, x) for k, x in step["capture"].items()}
 
     def select_step(self, st, results):
         """Step `{"select": "cmbEquip", "index": 3, "item": 1234, "as": "name"}`: the user picks the list entry whose
