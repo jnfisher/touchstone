@@ -162,7 +162,8 @@ struct RoomJson {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RoomQuery {
-    pub hide_numbers: bool,
+    /// Left out, the `hide_record_numbers` setting decides.
+    pub hide_numbers: Option<bool>,
     pub hide_npc: bool,
     pub hide_lairs: bool,
     pub hide_cmds: bool,
@@ -170,10 +171,10 @@ pub struct RoomQuery {
     pub illu: i32,
 }
 
-fn options(world: &World, q: &RoomQuery) -> RoomOptions {
+fn options(world: &World, q: &RoomQuery, hide_default: bool) -> RoomOptions {
     RoomOptions {
         nmr_ver: nmr_ver(&world.info.nmr_version),
-        hide_record_numbers: q.hide_numbers,
+        hide_record_numbers: q.hide_numbers.unwrap_or(hide_default),
         hide_npcs: q.hide_npc,
         hide_lairs: q.hide_lairs,
         hide_commands: q.hide_cmds,
@@ -188,9 +189,10 @@ pub async fn room_route(
     Query(q): Query<RoomQuery>,
 ) -> ApiResult {
     let loaded = state.current();
+    let hide = state.hide_record_numbers();
     let out = tokio::task::spawn_blocking(move || {
         let world = &loaded.world;
-        let opt = options(world, &q);
+        let opt = options(world, &q, hide);
         let mut env = ServerEnv {
             world,
             lairs: loaded.lair_cache(),
@@ -397,7 +399,7 @@ pub struct CmdRoomsBody {
     #[serde(default)]
     percent: String,
     #[serde(default)]
-    hide_numbers: bool,
+    hide_numbers: Option<bool>,
 }
 
 pub async fn cmd_rooms_route(
@@ -405,14 +407,11 @@ pub async fn cmd_rooms_route(
     Body(b): Body<CmdRoomsBody>,
 ) -> ApiResult {
     let loaded = state.current();
+    let hide = b
+        .hide_numbers
+        .unwrap_or_else(|| state.hide_record_numbers());
     let out = tokio::task::spawn_blocking(move || {
-        room_cmd_room_list(
-            &loaded.world,
-            b.hide_numbers,
-            &b.list,
-            &b.row_text,
-            &b.percent,
-        )
+        room_cmd_room_list(&loaded.world, hide, &b.list, &b.row_text, &b.percent)
     })
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

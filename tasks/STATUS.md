@@ -75,6 +75,18 @@ the orchestrator writes each card when its dependencies are close to merged.
 | P4-22/23 | Combat setup dialog | #74 |
 | P4-28b | Monster Attack Simulator window | #73 |
 | P4-DP | Detail panes in the explorers | #81 |
+| P4-08/09 | Monsters explorer | #86 |
+| P4-12 | Class/race stat builder | #87 |
+| P4-13 | Rooms tab (text) and room finders | #91 |
+| P4-14 | Compare tab | #88 |
+| P4-15/16 | Context menus and clipboard actions | #89 |
+| P4-18 | Find Best | #85 |
+| P4-30 | Calculate / clear monster damage | #90 |
+| P3-45 | Reachability | #92 |
+| P4-31 | Options menu and shell actions | #94 |
+| P4-32 | Spell tools, Spell Book, chest contents | #93 |
+| P4-33 | Spells tab filters, hide record numbers | #96 |
+| Q-001 | Quicksilver profile inventory and design | #95 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -87,17 +99,18 @@ the orchestrator writes each card when its dependencies are close to merged.
 
 | Card | Title | State |
 |---|---|---|
-| P4-08/09 | Monsters explorer: rows, monster filters, detail pane | agent |
-| P4-18 | Find Best | agent |
+| Q-002 | Quicksilver database fetch and data census | agent |
+| Q-003 | Profile variant, Balance type and V120 | agent |
 
 ## Next
 
+The Quicksilver track, Q-004 to Q-016, is planned in `docs/quicksilver-profile.md` part 5. Other open work:
+
 | Card | Title | Depends |
 |---|---|---|
-| P4-10..13 | Class/race builder, rooms explorer | P3-31, P3-37 |
-| P4-14..16 | Compare panes, context menus | explorers |
 | T-016 | Textblock script parser for T-014's remaining derived fields | T-014 |
 | P3-04b | `pull_spell_eq` Long handling | P3-04 |
+| (opt) | Results tree window, graphical map, NMR import/export, notepad | phase 6 |
 
 ## Follow-ups noted
 
@@ -105,3 +118,7 @@ the orchestrator writes each card when its dependencies are close to merged.
 - One shared `RoundUp` helper.
 - Monster reachability data behind the `Reachability` / `ReachRows` traits (P3-30, P3-32).
 - GreaterMUD/Paramud branches of the `Pull*` detail procedures (P3-32).
+- Inventory row "P4-30 persisted settings" was covered by P4-29; the card number P4-30 was reused for monster damage.
+- Hide record numbers is not yet wired into Item Manager/paste rows, combat-setup heal text and `pipeline.rs` contexts (P4-33).
+- Rooms tab: "Route to room" now that reachability exists; nav key label F9 vs MME's F12 (P4-13).
+- Monster damage: Cancel for long calculations; party calculation without a character (P4-30).

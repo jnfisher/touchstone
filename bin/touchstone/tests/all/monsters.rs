@@ -408,6 +408,8 @@ fn list_world() -> World {
                 .unwrap()
                 .clone();
             sp.number = n;
+            // a spell with no name adds no row to the Spells list
+            sp.name = Some(format!("Spell {n}"));
             sp.req_level = i(&r[1]);
             sp.magery = i(&r[2]);
             sp.magery_lvl = i(&r[3]);
@@ -1279,4 +1281,121 @@ fn without_reach_row(lines: &[Value]) -> Vec<&Value> {
         }
     }
     out
+}
+
+/// The spell controls (and global filter) of a filters_sm `sp-*` case, in the wire shape.
+fn spell_request(fx: &Value, c: &Value) -> Value {
+    let setup = &fx["header"]["setup"]["forms"]["frmMain"];
+    let forms = &c["inputs"]["forms"]["frmMain"];
+    let ctl = |name: &str| {
+        if forms[name].is_null() {
+            setup[name].clone()
+        } else {
+            forms[name].clone()
+        }
+    };
+    let list_index = |name: &str| ctl(name)["ListIndex"].as_i64().unwrap_or(0);
+    let item_data = |name: &str, idx: &Value| {
+        let c = ctl(name);
+        let k = c["ListIndex"].as_i64().unwrap_or(0);
+        idx.as_array()
+            .unwrap_or_else(|| c["ItemData"].as_array().unwrap())
+            .get(usize::try_from(k).unwrap())
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+    };
+    let class_box = &ctl("cmbGlobalClass")["$array"]["0"];
+    let class = class_box["ItemData"]
+        .as_array()
+        .and_then(|d| d.get(class_box["ListIndex"].as_u64().unwrap_or(0) as usize))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let level = |k: &str| {
+        ctl("txtGlobalLevel")["$array"][k]["Text"]
+            .as_str()
+            .unwrap_or("999")
+            .to_owned()
+    };
+    let on = ctl("chkGlobalFilter")["Value"].as_i64() == Some(1);
+    // chkGlobalFilter off: no bar, whatever values the boxes hold
+    let bar = on.then(|| {
+        json!({
+            "use_character": false,
+            "class": class,
+            "level": level("0").parse::<i64>().unwrap(),
+            "alignment": list_index("cmbGlobalAlignment"),
+        })
+    });
+    json!({
+        "global_filter": bar,
+        "options": {
+            "level": level("1").parse::<i64>().unwrap(),
+            "spells": {
+                "magery": list_index("cmbSpellMagery"),
+                "magery_level": list_index("cmbSpellMageryLevel"),
+                "learnable_only": ctl("chkSpellOptions")["$array"]["1"]["Value"].as_i64() == Some(1),
+                "attack_type": list_index("cmbSpellAttackType"),
+                "target": list_index("cmbSpellTarget"),
+                "contains_ability": item_data("cmbSpellContainsAbil", &Value::Null),
+            },
+        },
+    })
+}
+
+// Expected: fixtures/rules/filters_sm.json spell cases (frmMain FilterSpells, run by the oracle): the magery, magery
+// level, learnable-only, attack-type, target and contains-ability boxes alone and together, and the global filter's
+// class, level and alignment. Left out: the cases that call FilterSpells with its remove-filter argument (the Spell
+// Book's call, pinned by spell_tools), the cases that list spells outside the game or turn Kai auto-learn off (the
+// endpoint always lists in-game spells of the loaded database), and the ones that read a whole loaded character.
+#[tokio::test]
+async fn spell_boxes_list_the_spells_the_oracle_lists() {
+    let fx = fixture("filters_sm");
+    let app = router(list_world());
+    let (mut checked, mut bad) = (0, Vec::new());
+    for c in fx["cases"].as_array().unwrap() {
+        let id = c["id"].as_str().unwrap();
+        let remove = !c["inputs"]["steps"][0]["args"]
+            .as_array()
+            .is_none_or(Vec::is_empty);
+        let from_character = !c["inputs"]["forms"]["frmMain"]["cmbEquip"].is_null();
+        if !id.starts_with("sp-")
+            || remove
+            || from_character
+            || matches!(id, "sp-default-all" | "sp-learn-kai-off")
+        {
+            continue;
+        }
+        let (st, got) = call(&app, "/api/evaluate/spells", Some(&spell_request(&fx, c))).await;
+        assert_eq!(st, StatusCode::OK, "{id}: {got}");
+        let mut want: Vec<i32> = c["outputs"]["spells"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().parse().unwrap())
+            .collect();
+        let mut have = got_numbers(&got);
+        want.sort_unstable();
+        have.sort_unstable();
+        let caption = got["filtered"].as_bool().unwrap_or(false);
+        if have != want || caption != (c["outputs"]["nav"] == "*Spells*") {
+            bad.push(id.to_owned());
+        }
+        checked += 1;
+    }
+    eprintln!("{checked} spell cases through the endpoint");
+    assert!(checked >= 100, "only {checked} cases ran");
+    assert!(bad.is_empty(), "differ: {bad:?}");
+}
+
+#[tokio::test]
+async fn bad_spell_controls_are_400() {
+    let app = router(list_world());
+    for body in [
+        json!({"options": {"spells": {"magery": -1}}}),
+        json!({"options": {"spells": {"target": 70000}}}),
+        json!({"options": {"spells": {"nope": 1}}}),
+    ] {
+        let (st, got) = call(&app, "/api/evaluate/spells", Some(&body)).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST, "{body}: {got}");
+    }
 }

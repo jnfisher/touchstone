@@ -376,6 +376,12 @@ export interface CountersRequest {
 }
 
 /** `GET /api/spells/{n}/casts`: what casts a spell. Rows link to the records. */
+/** One item of the ability combos (`GetAbilityList`). */
+export interface AbilityName {
+	number: number;
+	name: string;
+}
+
 export interface SpellCasts {
 	status: 'found' | 'nothing' | 'missing';
 	caption: string;
@@ -566,11 +572,16 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		async spellCounters(req: CountersRequest): Promise<Counters> {
 			return postJson('/api/spells/counters', req);
 		},
-		async spellCasts(n: number, hideRecordNumbers = false): Promise<SpellCasts> {
-			return getJson(`/api/spells/${n}/casts?hide_record_numbers=${hideRecordNumbers}`);
+		// the hide_record_numbers setting decides whether names carry their numbers
+		async spellCasts(n: number): Promise<SpellCasts> {
+			return getJson(`/api/spells/${n}/casts`);
 		},
-		async itemChest(n: number, hideRecordNumbers = false): Promise<Chest> {
-			return getJson(`/api/items/${n}/chest?hide_record_numbers=${hideRecordNumbers}`);
+		async itemChest(n: number): Promise<Chest> {
+			return getJson(`/api/items/${n}/chest`);
+		},
+		/** `GetAbilityList`: the items of the ability combos, in number order. */
+		async abilityList(): Promise<AbilityName[]> {
+			return (await getJson<{ abilities: AbilityName[] }>('/api/abilities')).abilities;
 		},
 		async spellBookList(req: SpellBookRequest): Promise<SpellBookList> {
 			return postJson('/api/spell-book/list', req);

@@ -123,6 +123,8 @@ pub struct Settings {
     pub route_waypoint_interval: i32,
     /// `AutoLoadLastChar`: open the last character when the page starts.
     pub auto_load_last_char: bool,
+    /// `HideRecordNumbers` (`bHideRecordNumbers`): names print without their "(n)" record numbers.
+    pub hide_record_numbers: bool,
     /// `JumpToCompare` (Options > Jump to Equip/Lists on Add): adding to a compare list opens the Compare tab.
     pub jump_to_compare: bool,
     /// `ShopsFirstInRefs` (Options > Show shops first in item references).
@@ -136,6 +138,7 @@ impl Default for Settings {
             monster_sim_rounds: SIM_ROUNDS_DEFAULT,
             route_waypoint_interval: WAYPOINT_DEFAULT,
             auto_load_last_char: true,
+            hide_record_numbers: false,
             // LoadSettings reads a missing key as 0.
             jump_to_compare: false,
             shops_first: false,
@@ -283,6 +286,7 @@ mod tests {
         assert_eq!(s.monster_sim_rounds, 500);
         assert_eq!(s.route_waypoint_interval, 25);
         assert!(s.auto_load_last_char);
+        assert!(!s.hide_record_numbers);
     }
 
     #[test]

@@ -6,7 +6,8 @@ import { getCharacterStore, type CharacterStore } from './character.svelte';
 import { readLists, writeLists } from './compare';
 import { getCompareStore, type CompareStore } from './compare.svelte';
 import { dialogs } from './dialogs.svelte';
-import { filterReset } from './explorer-state.svelte';
+import { filterReset, spellFilters } from './explorer-state.svelte';
+import { DEFAULT_SPELL_FILTERS } from './spelltools';
 import { getGlobalFilterStore, type GlobalFilterStore } from './globalfilter.svelte';
 import { getMonsterFilterStore, type MonsterFilterStore } from './monsters.svelte';
 import { canCalculate } from './monsterdamage';
@@ -169,10 +170,12 @@ export function createOptionsStore(deps: OptionsDeps = {}) {
 			bar.reset();
 			return true;
 		},
-		/** Remove All Filters: the bar, the Monsters boxes, and every explorer's search and column filters. */
+		/** Remove All Filters: the bar, the Monsters and Spells boxes, and every explorer's search and column filters. */
 		removeAllFilters() {
 			bar.reset();
 			boxes.reset();
+			// the Spells boxes are filters too (ResetFilterOptions)
+			Object.assign(spellFilters, DEFAULT_SPELL_FILTERS);
 			filterReset.epoch++;
 		},
 		openSettings() {

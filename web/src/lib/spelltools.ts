@@ -42,6 +42,58 @@ export function spellBarOptions(bar: SpellBar): EvalOptions {
 	};
 }
 
+/** The Spells tab's filter boxes (`cmbSpellMagery` and the rest), as `options.spells` carries them. */
+export interface SpellFilterBoxes {
+	/** 0 any, else the magery: Mage, Priest, Druid, Bard, Kai. */
+	magery: number;
+	/** 0 any, else the least magery level. */
+	magery_level: number;
+	/** `chkSpellOptions(1)`. */
+	learnable_only: boolean;
+	/** 0 any, else the spell's attack type plus one. */
+	attack_type: number;
+	/** 0 any, 1 self, 2 user, 3 monster, 4 party, 5 room. */
+	target: number;
+	/** An ability number; 0 any. */
+	contains_ability: number;
+}
+
+/** What `ResetFilterOptions` leaves in the boxes. */
+export const DEFAULT_SPELL_FILTERS: Readonly<SpellFilterBoxes> = {
+	magery: 0,
+	magery_level: 0,
+	learnable_only: false,
+	attack_type: 0,
+	target: 0,
+	contains_ability: 0
+};
+
+/** `cmbSpellTarget` (the first entry is "Any"). */
+export const SPELL_TARGETS = ['Any', 'Self', 'User', 'Monster', 'Party', 'Room'] as const;
+/** `cmbSpellAttackType` (the first entry is "Any"; the others are the spell's attack type plus one). */
+export const SPELL_ATTACK_TYPES = [
+	'Any',
+	'Cold/Ice',
+	'Hot/Fire',
+	'Stone',
+	'Lightning',
+	'Normal',
+	'Water',
+	'Poison'
+] as const;
+
+/** Does any box filter? (The list's caption then reads `*Spells*`, as the server says.) */
+export function spellFiltersActive(f: SpellFilterBoxes): boolean {
+	return (Object.keys(DEFAULT_SPELL_FILTERS) as (keyof SpellFilterBoxes)[]).some(
+		(k) => f[k] !== DEFAULT_SPELL_FILTERS[k]
+	);
+}
+
+/** The evaluate options the filter boxes make: nothing while they are all at their defaults. */
+export function spellFilterOptions(f: SpellFilterBoxes): EvalOptions {
+	return spellFiltersActive(f) ? { spells: { ...f } } : {};
+}
+
 /** `Find counters`: `Item: name (n)` and `Spell: name (n)` rows that open their records. */
 export function counterRows(c: Counters): ResultRow[] {
 	return c.rows.map((r) => ({

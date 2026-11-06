@@ -46,14 +46,14 @@ impl NameLookup for WorldNames<'_> {
     }
 }
 
-fn env<'a>(world: &'a World, names: &'a WorldNames<'a>) -> AbilityEnv<'a> {
+fn env<'a>(world: &'a World, names: &'a WorldNames<'a>, hide: bool) -> AbilityEnv<'a> {
     AbilityEnv {
         profile: Profile::Stock,
         names,
         textblocks: world,
         spells: &world.spells,
-        // MME's defaults: record numbers shown, no quick-spell mode, no global level filter.
-        hide_record_numbers: false,
+        // `bHideRecordNumbers` from the settings; MME starts with no quick-spell mode and no global level filter.
+        hide_record_numbers: hide,
         quick_spell: false,
         global_level_text: None,
         avg_level_max_all_stats: 0.0,
@@ -148,6 +148,34 @@ fn item_lines(env: &AbilityEnv, slots: &[AbilitySlot]) -> (Vec<AbilityLine>, Vec
     (lines, class_ok)
 }
 
+#[derive(Serialize)]
+pub struct AbilityName {
+    pub number: i16,
+    /// `GetAbilityList`: `Name (n)`, or just the name with record numbers hidden; `[Ability n]` for a number with no name.
+    pub name: String,
+}
+
+/// The ability combos' items (`sAbilityList`): every number MME lists, in number order.
+pub async fn ability_list(State(state): State<Arc<AppState>>) -> ApiResult {
+    let list = touchstone_rules::ability_text::get_ability_list(
+        Profile::Stock,
+        state.hide_record_numbers(),
+    );
+    let rows: Vec<AbilityName> = list
+        .into_iter()
+        .enumerate()
+        .skip(1)
+        .filter(|(_, name)| !name.is_empty())
+        .filter_map(|(n, name)| {
+            Some(AbilityName {
+                number: i16::try_from(n).ok()?,
+                name,
+            })
+        })
+        .collect();
+    json(&serde_json::json!({ "abilities": rows }))
+}
+
 pub async fn abilities(
     State(state): State<Arc<AppState>>,
     Path((table, number)): Path<(String, i32)>,
@@ -155,7 +183,7 @@ pub async fn abilities(
     let loaded = state.current();
     let world = &loaded.world;
     let names = WorldNames(world);
-    let env = env(world, &names);
+    let env = env(world, &names, state.hide_record_numbers());
     let missing = || not_found(format!("no {table} record {number}"));
     let mut class_ok = Vec::new();
     // Each pane's MME loop decides which slots print and with which flags.
@@ -269,7 +297,7 @@ pub async fn spell_effect(
         (min != 0 || max != 0).then_some(Range { min, max })
     };
     let names = WorldNames(world);
-    let effect = env(world, &names).pull_spell_eq(&PullArgs {
+    let effect = env(world, &names, state.hide_record_numbers()).pull_spell_eq(&PullArgs {
         calc_level: true,
         level: lvl,
         spell: number,

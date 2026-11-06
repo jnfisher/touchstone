@@ -85,6 +85,8 @@ async fn defaults_are_what_mme_runs_with() {
     assert_eq!(v["monster_sim_rounds"], 500);
     assert_eq!(v["route_waypoint_interval"], 25);
     assert_eq!(v["auto_load_last_char"], true);
+    // frmMain Form_Load: bHideRecordNumbers is true only for a HideRecordNumbers key of "1"
+    assert_eq!(v["hide_record_numbers"], false);
     // frmMain LoadSettings reads a missing JumpToCompare / ShopsFirstInRefs as 0.
     assert_eq!(v["jump_to_compare"], false);
     assert_eq!(v["shops_first"], false);
@@ -252,4 +254,78 @@ async fn effective_block_follows_by_character() {
     // Without the query there is no effective block.
     let (_, v) = call(&app, "GET", "/api/settings", None).await;
     assert!(v.get("effective").is_none());
+}
+
+// Expected: fixtures/rules/ability_text.json cases list-0 and list-1 (GetAbilityList with bHideRecordNumbers off and
+// on); the setting stands in for the global.
+#[tokio::test]
+async fn ability_list_follows_hide_record_numbers() {
+    let doc: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/rules/ability_text.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let want = |id: &str| -> Vec<(i64, String)> {
+        let case = doc["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap();
+        case["outputs"]["result"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .skip(1)
+            .map(|(n, v)| (i64::try_from(n).unwrap(), v.as_str().unwrap().to_owned()))
+            .collect()
+    };
+    let dir = TempDir::new().unwrap();
+    let app = router(dir.path());
+    for (hide, id) in [(false, "list-0"), (true, "list-1")] {
+        let (st, _) = call(
+            &app,
+            "PUT",
+            "/api/settings",
+            Some(&json!({"hide_record_numbers": hide})),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let (st, v) = call(&app, "GET", "/api/abilities", None).await;
+        assert_eq!(st, StatusCode::OK);
+        let got: Vec<(i64, String)> = v["abilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| {
+                (
+                    a["number"].as_i64().unwrap(),
+                    a["name"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(got, want(id), "{id}");
+    }
+}
+
+#[tokio::test]
+async fn hide_record_numbers_is_stored() {
+    let dir = TempDir::new().unwrap();
+    let app = router(dir.path());
+    let (st, v) = call(
+        &app,
+        "PUT",
+        "/api/settings",
+        Some(&json!({"hide_record_numbers": true})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["hide_record_numbers"], true);
+    // a restart reads it back from settings.json
+    let again = router(dir.path());
+    let (_, v) = call(&again, "GET", "/api/settings", None).await;
+    assert_eq!(v["hide_record_numbers"], true);
 }
