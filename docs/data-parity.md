@@ -27,7 +27,7 @@ Paired records: 1950. Only in the `.mdb`: 0. Only in silvermere: 0.
 | `negate_spell[]` | 19500 | 0 |  |
 | `not_droppable` | 1950 | 0 |  |
 | `number` | 1950 | 0 |  |
-| `obtained_from` | 1291 | 659 | 100 obtained_from; 1000 obtained_from; 1001 obtained_from; 1002 obtained_from; 1005 obtained_from |
+| `obtained_from` | 1706 | 244 | 1005 obtained_from; 1020 obtained_from; 1024 obtained_from; 1028 obtained_from; 1032 obtained_from |
 | `price` | 1950 | 0 |  |
 | `race_rest[]` | 19500 | 0 |  |
 | `retain_after_uses` | 1950 | 0 |  |
@@ -85,7 +85,7 @@ Paired records: 1101. Only in the `.mdb`: 0. Only in silvermere: 0.
 | `r` | 1101 | 0 |  |
 | `regen_time` | 1101 | 0 |  |
 | `s` | 1101 | 0 |  |
-| `summoned_by` | 985 | 116 | 1009 summoned_by; 1011 summoned_by; 1012 summoned_by; 1016 summoned_by; 1030 summoned_by |
+| `summoned_by` | 1074 | 27 | 1093 summoned_by; 1094 summoned_by; 1095 summoned_by; 1096 summoned_by; 1097 summoned_by |
 | `type` | 1101 | 0 |  |
 | `undead` | 1101 | 0 |  |
 | `weapon` | 1101 | 0 |  |
@@ -107,15 +107,15 @@ Paired records: 1379. Only in the `.mdb`: 0. Only in silvermere: 0.
 | `abilities[].value` | 13790 | 0 |  |
 | `att_type` | 1379 | 0 |  |
 | `cap` | 1379 | 0 |  |
-| `casted_by` | 861 | 518 | 1003 casted_by; 1006 casted_by; 1009 casted_by; 1024 casted_by; 1025 casted_by |
-| `classes` | 1333 | 46 | 1003 classes; 1004 classes; 1005 classes; 1008 classes; 1018 classes |
+| `casted_by` | 1345 | 34 | 1255 casted_by; 1385 casted_by; 1386 casted_by; 1390 casted_by; 201 casted_by |
+| `classes` | 1370 | 9 | 1051 classes; 306 classes; 307 classes; 308 classes; 310 classes |
 | `diff` | 1379 | 0 |  |
 | `dur` | 1379 | 0 |  |
 | `dur_inc` | 1379 | 0 |  |
 | `dur_inc_lvls` | 1379 | 0 |  |
 | `energy_cost` | 1379 | 0 |  |
-| `learnable` | 1333 | 46 | 1003 learnable; 1004 learnable; 1005 learnable; 1008 learnable; 1018 learnable |
-| `learned_from` | 1332 | 47 | 1003 learned_from; 1004 learned_from; 1005 learned_from; 1008 learned_from; 1018 learned_from |
+| `learnable` | 1370 | 9 | 1051 learnable; 306 learnable; 307 learnable; 308 learnable; 310 learnable |
+| `learned_from` | 1370 | 9 | 1051 learned_from; 306 learned_from; 307 learned_from; 308 learned_from; 310 learned_from |
 | `magery` | 1379 | 0 |  |
 | `magery_lvl` | 1379 | 0 |  |
 | `mana_cost` | 1379 | 0 |  |
@@ -252,18 +252,18 @@ Paired records: 421. Only in the `.mdb`: 0. Only in silvermere: 0.
 
 ## tbinfo
 
-Paired records: 2323. Only in the `.mdb`: 3. Only in silvermere: 944.
+Paired records: 2323. Only in the `.mdb`: 3. Only in silvermere: 34.
 
 Example mdb-only record numbers: 11, 134, 60.
 
-Example silvermere-only record numbers: 0, 10000, 10001, 10002, 10003.
+Example silvermere-only record numbers: 4356, 4358, 4368, 4369, 4370.
 
 | Field | Match | Mismatch | Examples (record, path) |
 |---|---|---|---|
-| `called_from` | 1130 | 1193 | 1 called_from; 10 called_from; 1000 called_from; 1001 called_from; 1002 called_from |
+| `action` | 2323 | 0 |  |
+| `called_from` | 2310 | 13 | 1093 called_from; 1810 called_from; 221 called_from; 223 called_from; 225 called_from |
 | `link_to` | 2323 | 0 |  |
 | `number` | 2323 | 0 |  |
-| `action` | not derived | | 2323 values |
 
 ## info
 

@@ -1,16 +1,22 @@
 //! `Items.obtained_from`: the rooms, shops and monsters that yield an item, in NMR's order
-//! (rooms, shops by number, monsters by number). Entries that come out of text-block scripts
-//! (`Textblock #n(p%)`, `NPC #n`, `Item #n(p%)`) are not reproduced (docs/data-gaps.md).
+//! (rooms, shops by number, monsters by number), then the scripts that give it (`Textblock
+//! #n(p%)`, in the order they were read) and the monsters whose ask tree does (`NPC #n`).
+//! then `Item #n(p%)` for a chest item whose spell hands it out, with the chance of getting it
+//! from one use (docs/data-gaps.md says where that estimate differs from NMR's).
 use std::collections::HashMap;
 
 use touchstone_model::WorldParts;
 
+use super::chest;
+use super::history::{Field, History};
+use super::scripts::Scripts;
 use super::source::{Source, clip};
+use super::walk::Origin;
 
 /// Column width of `Items.Obtained From`.
 const WIDTH: usize = 1996;
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
+pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
     let mut rooms: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
     for &(item, map, room) in &src.room_items {
         rooms.entry(item).or_default().push((map, room));
@@ -50,13 +56,39 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
         .collect();
     by_number.sort_by_key(|m| m.number);
     for m in by_number {
+        // Two slots with one item and one percentage list the monster once.
         for d in m.drops.iter().filter(|d| d.item > 0) {
-            monsters
-                .entry(d.item)
-                .or_default()
-                .push(format!("Monster #{}({}%)", m.number, d.pct));
+            let entry = format!("Monster #{}({}%)", m.number, d.pct);
+            let list = monsters.entry(d.item).or_default();
+            if !list.contains(&entry) {
+                list.push(entry);
+            }
         }
     }
+
+    // Items given by scripts: a block's own line, or the monster whose ask tree reached it.
+    let mut texts: HashMap<i32, Vec<String>> = HashMap::new();
+    let mut npcs: HashMap<i32, Vec<String>> = HashMap::new();
+    for &(item, block, pct, origin) in &sc.fx.gives {
+        match origin {
+            Origin::Monster(m) => {
+                let list = npcs.entry(item).or_default();
+                let e = format!("NPC #{m}");
+                if !list.contains(&e) {
+                    list.push(e);
+                }
+            }
+            _ => {
+                let p = pct.map_or_else(String::new, |p| format!("({p}%)"));
+                texts
+                    .entry(item)
+                    .or_default()
+                    .push(format!("Textblock #{block}{p}"));
+            }
+        }
+    }
+
+    let mut chests = chest::entries(src, parts);
 
     for it in &mut parts.items {
         let mut entries: Vec<String> = Vec::new();
@@ -65,6 +97,10 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
         }
         entries.extend(shops.remove(&it.number).unwrap_or_default());
         entries.extend(monsters.remove(&it.number).unwrap_or_default());
+        entries.extend(texts.remove(&it.number).unwrap_or_default());
+        entries.extend(chests.remove(&it.number).unwrap_or_default());
+        entries.extend(npcs.remove(&it.number).unwrap_or_default());
+        let entries = hist.order(Field::ObtainedFrom, it.number, entries);
         it.obtained_from = if entries.is_empty() {
             None
         } else {

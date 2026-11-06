@@ -3,13 +3,15 @@
 //! Three kinds of entry are reproduced, in NMR's order: `Room m/r` (the room's specific
 //! monster), the rooms whose generation range covers the monster (`Group: m/r`, or
 //! `[group-min-max][max]Group(lair): m/r` for a lair room) and `Spell #n` (a summon spell).
-//! Entries for text blocks that summon the monster (`Textblock #n(p%)`) are not reproduced
-//! (docs/data-gaps.md).
+//! Then `Textblock #n(p%)` for scripts that summon the monster, in the order they were read
+//! (`p` is the line's own share when the line is a random line).
 use std::collections::HashMap;
 
 use touchstone_model::WorldParts;
 
+use super::history::{Field, History};
 use super::lairs::pool;
+use super::scripts::Scripts;
 use super::source::{Source, clip};
 
 /// Column width of `Monsters.Summoned By`.
@@ -18,7 +20,13 @@ const WIDTH: usize = 20000;
 const ABILITY_SUMMON: i32 = 12;
 const ROOM_LAIR: i64 = 3;
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
+/// What rooms and lairs say about each monster; it does not change between passes.
+pub(super) struct Rooms {
+    specific: HashMap<i32, Vec<(i32, i32)>>,
+    groups: HashMap<i32, Vec<String>>,
+}
+
+pub(super) fn prepare(src: &Source, parts: &WorldParts) -> Rooms {
     let mut specific: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
     for r in &parts.rooms {
         if r.npc > 0 {
@@ -53,25 +61,38 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
             groups.entry(m).or_default().push(entry.clone());
         }
     }
+    Rooms { specific, groups }
+}
 
+pub(super) fn apply(rooms: &Rooms, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
+    let (specific, groups) = (&rooms.specific, &rooms.groups);
     let mut spells: HashMap<i32, Vec<i32>> = HashMap::new();
-    let mut by_number: Vec<_> = parts.spells.iter().collect();
+    // Only spells that are part of the game summon anything.
+    let mut by_number: Vec<_> = parts
+        .spells
+        .iter()
+        .filter(|s| super::scripts::spell_in_game(s))
+        .collect();
     by_number.sort_by_key(|s| s.number);
     for s in by_number {
         for a in s.abilities.iter().filter(|a| a.ability == ABILITY_SUMMON) {
-            // The monster is the ability's value, or the spell's base value when that is 0.
-            let monster = if a.value > 0 {
-                a.value
-            } else if s.min_base == s.max_base {
-                s.min_base
-            } else {
-                0
-            };
-            let list = spells.entry(monster).or_default();
-            if monster > 0 && !list.contains(&s.number) {
-                list.push(s.number);
+            let range = super::scripts::ability_range(a.value, s);
+            for monster in range {
+                let list = spells.entry(monster).or_default();
+                if !list.contains(&s.number) {
+                    list.push(s.number);
+                }
             }
         }
+    }
+
+    let mut texts: HashMap<i32, Vec<String>> = HashMap::new();
+    for &(monster, block, pct) in &sc.fx.summons {
+        let p = pct.map_or_else(String::new, |p| format!("({p}%)"));
+        texts
+            .entry(monster)
+            .or_default()
+            .push(format!("Textblock #{block}{p}"));
     }
 
     for m in &mut parts.monsters {
@@ -88,13 +109,12 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
             kinds.push(v.join(","));
         }
         if let Some(v) = spells.get(&m.number) {
-            kinds.push(
-                v.iter()
-                    .map(|n| format!("Spell #{n}"))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
+            kinds.extend(v.iter().map(|n| format!("Spell #{n}")));
         }
+        if let Some(v) = texts.get(&m.number) {
+            kinds.extend(v.iter().cloned());
+        }
+        let kinds = hist.order(Field::SummonedBy, m.number, kinds);
         m.summoned_by = if kinds.is_empty() {
             None
         } else {
