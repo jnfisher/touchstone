@@ -1,4 +1,5 @@
-// The five calculator windows (frmExpCalc, frmCoinConvert, frmSwingCalc, frmBSCalc, frmHitCalc): their
+// The six calculator windows (frmExpCalc, frmCoinConvert, frmSwingCalc, frmBSCalc, frmHitCalc,
+// frmMonsterAttackSim): their
 // defaults, the mapping from form state to the `POST /api/calc/*` bodies, and the response shapes.
 import type { ClassRec, Item, Monster } from './api';
 import { WEAPON_SLOT, type CharacterDoc, type EvalState } from './character';
@@ -8,7 +9,8 @@ export const CALCULATORS = [
 	{ slug: 'coin', label: 'Coin Converter' },
 	{ slug: 'swing', label: 'Swing Calculator' },
 	{ slug: 'backstab', label: 'Backstab Calculator' },
-	{ slug: 'hit', label: 'Hit Calculator' }
+	{ slug: 'hit', label: 'Hit Calculator' },
+	{ slug: 'monster-sim', label: 'Monster Attack Simulator' }
 ] as const;
 export type CalcSlug = (typeof CALCULATORS)[number]['slug'];
 
@@ -827,6 +829,148 @@ export function coinCharm(c: CalcCharacter | undefined): number | undefined {
 	return c && c.globalFilter ? c.charm : undefined;
 }
 
+// ---------- Monster Attack Simulator (frmMonsterAttackSim) ----------
+
+/** The defense text boxes; MME reads them with `Val`, so they stay text. */
+export interface SimBoxes {
+	ac: string;
+	dr: string;
+	dodge: string;
+	mr: string;
+	anti_magic: boolean;
+	prot_evil: string;
+	vile_ward: string;
+	resist_cold: string;
+	resist_fire: string;
+	resist_stone: string;
+	resist_lightning: string;
+	resist_water: string;
+}
+
+export interface SimAttackStats {
+	true_cast_pct: number;
+	avg_per_hit: number;
+	success_pct: number;
+	dmg_resisted_pct: number;
+	resist_dodge_pct: number;
+}
+export interface SimAttackRow {
+	index: number;
+	name: string;
+	kind: number;
+	stats: SimAttackStats | null;
+}
+export interface SimSummary {
+	total_damage: number;
+	average_damage: number;
+	avg_damage: number;
+	max_damage: number;
+	max_seen: number;
+	avg_phys: number;
+	avg_spell: number;
+	avg_caption: string;
+	max_caption: string;
+	breakdown_caption: string;
+}
+export interface SimResult {
+	monster: { number: number; name: string };
+	rounds: number;
+	ran: boolean;
+	seed: number;
+	rng_after: number;
+	energy_per_round: number;
+	defender: SimBoxes;
+	class: number;
+	attacks: SimAttackRow[];
+	summary: SimSummary | null;
+	combat_log: string;
+	error: { number: number; text: string } | null;
+}
+export interface SimDefenderResult {
+	class: number;
+	defender: SimBoxes;
+}
+
+/** `cmdResetUserDefs_Click(0)`: the boxes the window opens with (MR 50, the rest 0). */
+export const SIM_BOXES: SimBoxes = {
+	ac: '0',
+	dr: '0',
+	dodge: '0',
+	mr: '50',
+	anti_magic: false,
+	prot_evil: '0',
+	vile_ward: '0',
+	resist_cold: '0',
+	resist_fire: '0',
+	resist_stone: '0',
+	resist_lightning: '0',
+	resist_water: '0'
+};
+
+/** The form's rounds limit and the server's default seed (VB6's unseeded generator). */
+export const SIM_MAX_ROUNDS = 500000;
+export const SIM_DEFAULT_SEED = 327680;
+
+export interface SimForm {
+	monster: number | null;
+	rounds: string;
+	/** Empty means the default seed. */
+	seed: string;
+	dynamic: boolean;
+	logRounds: string;
+	logMaxRoundOnly: boolean;
+	hideEnergy: boolean;
+	alwaysDodge: boolean;
+	classNumber: number | null;
+	boxes: SimBoxes;
+}
+
+export const SIM_DEFAULTS: SimForm = {
+	monster: null,
+	rounds: '500',
+	seed: '',
+	dynamic: false,
+	logRounds: '100',
+	logMaxRoundOnly: false,
+	hideEnergy: false,
+	alwaysDodge: false,
+	classNumber: null,
+	boxes: SIM_BOXES
+};
+
+/** A whole, non-negative number typed in a box, else undefined (the server's default applies). */
+function wholeOrUndefined(s: string): number | undefined {
+	const n = wholeNumber(s);
+	return n === undefined || n < 0 || n > 4294967295 ? undefined : n;
+}
+
+/**
+ * The run request. With `character` (the evaluate body of the Character tab) the server takes the
+ * defense boxes and the class from that character; otherwise the typed boxes are sent.
+ */
+export function simRequest(f: SimForm, character?: object) {
+	const seed = wholeOrUndefined(f.seed);
+	const logRounds = wholeOrUndefined(f.logRounds);
+	return {
+		monster: f.monster ?? 0,
+		rounds: f.rounds,
+		...(seed === undefined ? {} : { seed }),
+		dynamic: f.dynamic,
+		...(logRounds === undefined ? {} : { log_rounds: Math.min(logRounds, 1000) }),
+		log_max_round_only: f.logMaxRoundOnly,
+		hide_energy: f.hideEnergy,
+		always_dodge: f.alwaysDodge,
+		defender: character
+			? { character }
+			: { ...f.boxes, ...(f.classNumber === null ? {} : { class: f.classNumber }) }
+	};
+}
+
+/** The percentage cells of the attack table: MME's boxes show whole numbers or one decimal. */
+export function pctText(n: number): string {
+	return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
 // ---------- transport ----------
 
 type FetchFn = typeof fetch;
@@ -842,7 +986,7 @@ export class CalcError extends Error {
 
 /** `POST /api/calc/<name>`; a 400 carries the server's reason as the error message. */
 export function createCalcClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
-	async function post<T>(name: CalcSlug | 'mega-stat', body: unknown): Promise<T> {
+	async function post<T>(name: CalcSlug | 'mega-stat' | 'monster-sim/defender', body: unknown): Promise<T> {
 		const res = await fetchFn(`/api/calc/${name}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -860,7 +1004,10 @@ export function createCalcClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		swing: (body: ReturnType<typeof swingRequest>) => post<SwingResult>('swing', body),
 		megaStat: (text: string) => post<MegaResult>('mega-stat', { text }),
 		backstab: (body: ReturnType<typeof backstabRequest>) => post<BackstabResult>('backstab', body),
-		hit: (body: ReturnType<typeof hitRequest>) => post<HitResult>('hit', body)
+		hit: (body: ReturnType<typeof hitRequest>) => post<HitResult>('hit', body),
+		monsterSim: (body: ReturnType<typeof simRequest>) => post<SimResult>('monster-sim', body),
+		monsterSimDefender: (character: object) =>
+			post<SimDefenderResult>('monster-sim/defender', { character })
 	};
 }
 

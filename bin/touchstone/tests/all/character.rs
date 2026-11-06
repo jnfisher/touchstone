@@ -74,7 +74,7 @@ fn world(data: &Value) -> World {
         .map(|r| Spell {
             number: i(&r[0]),
             name: None,
-            short: None,
+            short: Some(format!("sp{}", i(&r[0]))),
             req_level: i(&r[1]),
             energy_cost: i(&r[2]),
             mana_cost: i(&r[3]),
@@ -170,13 +170,13 @@ fn fixture() -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
-struct Env {
-    dir: TempDir,
-    app: axum::Router,
-    fx: Value,
+pub(crate) struct Env {
+    pub dir: TempDir,
+    pub app: axum::Router,
+    pub fx: Value,
 }
 
-fn env() -> Env {
+pub(crate) fn env() -> Env {
     let fx = fixture();
     let dir = TempDir::new().unwrap();
     let info = SourceInfo {
@@ -192,7 +192,7 @@ fn env() -> Env {
     }
 }
 
-async fn call(
+pub(crate) async fn call(
     app: &axum::Router,
     method: &str,
     uri: &str,
@@ -215,7 +215,7 @@ async fn call(
 }
 
 /// The request for a fixture case: its frmMain controls and globals as the wire character.
-fn request(fx: &Value, id: &str) -> (Value, Value) {
+pub(crate) fn request(fx: &Value, id: &str) -> (Value, Value) {
     let case = fx["cases"]
         .as_array()
         .unwrap()

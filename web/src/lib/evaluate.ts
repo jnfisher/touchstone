@@ -3,6 +3,7 @@
 // maps the payload to grid columns and turns MME's cell colours into theme classes.
 import type { ColDef } from 'ag-grid-community';
 import type { CharacterDoc } from './character';
+import { wireFilter, type GlobalFilter, type WireFilter } from './globalfilter';
 
 export type EvalTab = 'weapons' | 'armour' | 'spells' | 'items' | 'races' | 'classes' | 'shops';
 
@@ -52,18 +53,21 @@ export function isEvalTab(s: string): s is EvalTab {
 }
 
 export interface EvalRequest {
+	/** Sent only while the filter mirrors it. */
 	character?: CharacterDoc;
+	global_filter: WireFilter;
 	options: EvalOptions;
 }
 
 /**
- * The request body. The character goes along only when "Use character" is on and class and race
- * are picked; it is sent with the global filter on, which is what that checkbox stands for.
+ * The request body. The global filter bar goes along as it stands; the character goes along only
+ * when the bar mirrors it, which needs class and race picked (otherwise the bar's own values
+ * apply). The server's `global_filter` then also stands for MME's `chkGlobalFilter`.
  */
-export function evaluateBody(doc: CharacterDoc | undefined, useCharacter: boolean, options: EvalOptions = {}): EvalRequest {
-	if (useCharacter && doc && doc.class !== null && doc.race !== null)
-		return { character: { ...doc, global_filter: true }, options };
-	return { options };
+export function evaluateBody(doc: CharacterDoc | undefined, filter: GlobalFilter, options: EvalOptions = {}): EvalRequest {
+	const global_filter = wireFilter(filter, doc);
+	if (global_filter.use_character && doc) return { character: doc, global_filter, options };
+	return { global_filter, options };
 }
 
 // MME's ForeColor values for a race stat range well below / above the average (BGR integers).

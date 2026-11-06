@@ -138,6 +138,8 @@ export interface EvalState {
   /** `lblInvenCharStat(0..46)` as MME shows them. */
   stats: string[];
   heal: { value: number; cost: number; rounds: number; spell_lvl: number };
+  /** `GetCurrentAttackName`: the caption of the Combat button. */
+  attack_name?: string;
   stats_error_text: string | null;
   /** What the calculator windows read: stat tags and the attack globals. */
   calc?: CalcInputs;

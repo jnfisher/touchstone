@@ -11,7 +11,10 @@ use axum::routing::{get, post};
 use serde_json::json;
 
 use crate::state::AppState;
-use crate::{calc, character, detail, equip, evaluate, item_manager, paste, settings};
+use crate::{
+    calc, character, combat_setup, detail, equip, evaluate, item_manager, monster_sim, paste,
+    settings,
+};
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -24,6 +27,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/calc/mega-stat", post(calc::calc_mega_stat))
         .route("/api/calc/backstab", post(calc::calc_backstab))
         .route("/api/calc/hit", post(calc::calc_hit))
+        .route("/api/calc/monster-sim", post(monster_sim::sim_route))
+        .route(
+            "/api/calc/monster-sim/defender",
+            post(monster_sim::defender_route),
+        )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
         .route("/api/spells/{number}/effect", get(detail::spell_effect))
@@ -35,6 +43,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/character/bless-spells",
             get(character::bless_spells_route),
+        )
+        .route(
+            "/api/character/combat-options",
+            post(combat_setup::options_route),
+        )
+        .route(
+            "/api/character/combat-preview",
+            post(combat_setup::preview_route),
         )
         .route("/api/character/equip", post(equip::equip_route))
         .route("/api/character/equip-state", post(equip::equip_state_route))

@@ -61,3 +61,13 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   were for such a list and say why in `messages`; the rows themselves still change.
 - The selection is the page's state and `lvItemManager_ItemClick` (the detail pane) is not ported: delete reports
   the row MME selects next.
+
+## Monster Attack Simulator window (P4-28b)
+
+- MME calls `Randomize` at the top of `RunSim`, so every run in MME rolls differently. touchstone seeds the
+  generator: the default seed is 327 680 (the state VB6 starts in before any `Randomize`), a request may give
+  its own (low 24 bits used), and the same request always answers the same. Averages therefore vary with the
+  seed by the same amount they vary between MME runs.
+- The form fixes the combat log at 100 rounds; the endpoint takes `log_rounds` (0 to 1000, default 100).
+- Vile ward is GreaterMUD-only. The endpoint accepts and ignores it, as the form hides the box off GreaterMUD.
+- The party defenses (lair filter party of two or more) are not offered; the window runs for one character.

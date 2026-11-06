@@ -519,7 +519,7 @@ pub fn apply_world(world: &World, m: &mut Mmec) {
     }
 }
 
-fn usable_env(world: &World) -> UsableEnv<'_> {
+pub(crate) fn usable_env(world: &World) -> UsableEnv<'_> {
     UsableEnv {
         profile: Profile::Stock,
         spells: &world.spells,
@@ -729,6 +729,8 @@ pub struct StateJson {
     /// `lblInvenCharStat(0..46)` as MME shows them.
     stats: Vec<String>,
     heal: HealJson,
+    /// `GetCurrentAttackName`: the Char tab's attack button caption.
+    attack_name: String,
     /// The run-time error that cut `CalcCharacterStats` short, if any.
     stats_error_text: Option<String>,
     /// What the calculator windows read from the main form and the character globals.
@@ -757,7 +759,7 @@ fn error_text(code: Option<i32>) -> Option<String> {
     code.map(|c| vb_error_text(u32::try_from(c).unwrap_or(0)))
 }
 
-fn state_json(st: &CharacterState, ch: &Character) -> StateJson {
+fn state_json(world: &World, st: &CharacterState, ch: &Character) -> StateJson {
     let s = &st.stats;
     let cps = &st.cps;
     let (exp_kind, exp) = match cps.summary.as_ref().map(|c| c.exp) {
@@ -844,6 +846,7 @@ fn state_json(st: &CharacterState, ch: &Character) -> StateJson {
             rounds: st.attack_config().heal_rounds,
             spell_lvl: st.attack_config().heal_spell_lvl,
         },
+        attack_name: crate::combat_setup::attack_names(world, &st.character, st, false).0,
         stats_error_text: error_text(s.error),
         calc: CalcJson {
             stat_tags: s.stat_tag.iter().map(|t| t.unwrap_or(0.0)).collect(),
@@ -860,8 +863,11 @@ fn state_json(st: &CharacterState, ch: &Character) -> StateJson {
     }
 }
 
-/// `RefreshAll` over the loaded world. Split out so tests can call it without HTTP.
-pub fn evaluate(world: &World, dto: &CharacterDto) -> Result<StateJson, (StatusCode, String)> {
+/// `RefreshAll` over the loaded world, returning the character and the state it left.
+pub(crate) fn refresh(
+    world: &World,
+    dto: &CharacterDto,
+) -> Result<(Character, CharacterState), (StatusCode, String)> {
     let ch = dto.to_character().map_err(bad)?;
     if ch.class.is_none() || ch.race.is_none() {
         return Err(unprocessable("pick a class and race"));
@@ -878,7 +884,13 @@ pub fn evaluate(world: &World, dto: &CharacterDto) -> Result<StateJson, (StatusC
     };
     let st = refresh_all(Profile::Stock, world, &ch, &opts)
         .map_err(|e| unprocessable(format!("cannot evaluate this character: {e}")))?;
-    Ok(state_json(&st, &ch))
+    Ok((ch, st))
+}
+
+/// `RefreshAll` over the loaded world. Split out so tests can call it without HTTP.
+pub fn evaluate(world: &World, dto: &CharacterDto) -> Result<StateJson, (StatusCode, String)> {
+    let (ch, st) = refresh(world, dto)?;
+    Ok(state_json(world, &st, &ch))
 }
 
 pub async fn evaluate_route(
