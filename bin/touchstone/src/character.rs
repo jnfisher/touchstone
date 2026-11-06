@@ -273,6 +273,39 @@ impl CharacterDto {
 }
 
 impl CharacterDto {
+    /// The Item Manager rows `CalcCharacterStats` sees: one CARRIED row per saved stack.
+    pub fn gear_rows(&self, world: &World) -> Vec<touchstone_rules::gear::ItemManagerRow> {
+        let stacks: Vec<ItemStack> = self
+            .carried
+            .iter()
+            .map(|s| ItemStack {
+                item: s.item,
+                qty: s.qty,
+            })
+            .collect();
+        touchstone_rules::item_manager::gear_rows_for_carried(world, &stacks)
+    }
+
+    /// Makes `carried` and `stash` what `SaveCharacter` would write for the Item Manager rows.
+    pub fn set_saved_from_rows(
+        &mut self,
+        rows: &[touchstone_rules::game_text::ListRow],
+    ) -> Result<(), String> {
+        let (carried, stash) = touchstone_rules::item_manager::saved_stacks(rows)
+            .map_err(|e| format!("cannot save the Item Manager: {e}"))?;
+        let conv = |v: Vec<ItemStack>| -> Vec<StackDto> {
+            v.into_iter()
+                .map(|s| StackDto {
+                    item: s.item,
+                    qty: s.qty,
+                })
+                .collect()
+        };
+        self.carried = conv(carried);
+        self.stash = conv(stash);
+        Ok(())
+    }
+
     /// The file `SaveCharacter` would write for this character.
     pub fn to_mmec(&self) -> Result<Mmec, String> {
         let stacks = |v: &[StackDto]| {
@@ -836,6 +869,7 @@ pub fn evaluate(world: &World, dto: &CharacterDto) -> Result<StateJson, (StatusC
     let opts = PipelineOptions {
         hide_class_race: dto.options.hide_class_race,
         min_item_level: dto.options.min_item_level,
+        item_manager: dto.gear_rows(world),
         dat_ver_caption: world.info.dat_file_version.clone(),
         nmr_ver: nmr_ver(&world.info.nmr_version),
         avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)

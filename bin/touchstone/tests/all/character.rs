@@ -250,7 +250,35 @@ fn request(fx: &Value, id: &str) -> (Value, Value) {
     };
     let gi = |n: &str| g[n].as_i64().unwrap_or(0);
     let gb = |n: &str| g[n].as_bool().unwrap_or(false);
+    // the Item Manager rows flagged CARRIED, as the saved list holds them (item and quantity)
+    let carried: Vec<Value> = ctl("lvItemManager")["$listview"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| {
+                    let flag = r["Sub"][1].as_str()?;
+                    if !flag.to_ascii_uppercase().contains("CARRIED") {
+                        return None;
+                    }
+                    let qty = flag
+                        .split(" x")
+                        .nth(1)
+                        .map(|t| {
+                            t.chars()
+                                .take_while(char::is_ascii_digit)
+                                .collect::<String>()
+                        })
+                        .and_then(|t| t.parse::<i64>().ok())
+                        .unwrap_or(1)
+                        .max(1);
+                    let item = r["Text"].as_str()?.parse::<i64>().ok()?;
+                    Some(json!({ "item": item, "qty": qty }))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let req = json!({
+        "carried": carried,
         "race": combo("cmbGlobalRace"),
         "class": combo("cmbGlobalClass"),
         "level": text("txtGlobalLevel", 0),
@@ -385,6 +413,15 @@ async fn evaluate_all_quests_case() {
 async fn evaluate_antimagic_and_hidden_class_race_cases() {
     pinned("antimagic-2").await;
     pinned("hide-3").await;
+}
+
+// fixtures/rules/pipeline.json carried-N: Item Manager rows flagged CARRIED add their abilities and
+// weight; the saved `carried` list is what feeds them.
+#[tokio::test]
+async fn carried_stacks_feed_the_gear_pass() {
+    for id in ["carried-0", "carried-1", "carried-2", "carried-4"] {
+        pinned(id).await;
+    }
 }
 
 #[tokio::test]

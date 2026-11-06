@@ -7,6 +7,7 @@ pub mod config;
 mod detail;
 pub mod equip;
 pub mod evaluate;
+pub mod item_manager;
 pub mod paste;
 pub mod settings;
 pub mod source;

@@ -647,6 +647,7 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
             let opts = PipelineOptions {
                 hide_class_race: dto.options.hide_class_race,
                 min_item_level: dto.options.min_item_level,
+                item_manager: dto.gear_rows(world),
                 dat_ver_caption: world.info.dat_file_version.clone(),
                 nmr_ver: nmr,
                 avg_level_max_all_stats: avg,

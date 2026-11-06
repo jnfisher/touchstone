@@ -5,6 +5,7 @@ mod common;
 mod detail;
 mod equip;
 mod evaluate;
+mod item_manager;
 mod paste;
 mod settings;
 
