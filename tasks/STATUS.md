@@ -87,6 +87,20 @@ the orchestrator writes each card when its dependencies are close to merged.
 | P4-32 | Spell tools, Spell Book, chest contents | #93 |
 | P4-33 | Spells tab filters, hide record numbers | #96 |
 | Q-001 | Quicksilver profile inventory and design | #95 |
+| Q-002 | Quicksilver database fetch and data census | #98 |
+| Q-003 | Profile::Quicksilver, Balance type and V120 | #99 |
+| Q-004 | Profile detection, selection and API | #101 |
+| Q-005 | Quicksilver engine vector generator and identity harness | #100 |
+| Q-006 | Quicksilver crit, magic resistance and dodge knees | #103 |
+| Q-007 | Quicksilver stat soft caps and training prices | #102 |
+| Q-008 | Quicksilver rest and meditate regeneration | #104 |
+| Q-009 | Quicksilver backstab damage and crit | #105 |
+| Q-010 | Quicksilver backstab round (stab energy and the opener) | #107 |
+| Q-011 | Quicksilver class melee share and Thief opportunist | #108 |
+| Q-012 | Quicksilver spell damage (casting stat, class share, area resist) | #106 |
+| Q-013a | Quicksilver weave: pick and volley expectation | #110 |
+| T-016 | Textblock script parser for the remaining derived fields | #109 |
+| F-001 | Follow-ups bundle (route to room, hide record numbers, damage cancel, QS stat range, key map) | #111 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -99,16 +113,15 @@ the orchestrator writes each card when its dependencies are close to merged.
 
 | Card | Title | State |
 |---|---|---|
-| Q-002 | Quicksilver database fetch and data census | agent |
-| Q-003 | Profile variant, Balance type and V120 | agent |
+| Q-013b | Quicksilver weave in the round | agent |
 
 ## Next
 
-The Quicksilver track, Q-004 to Q-016, is planned in `docs/quicksilver-profile.md` part 5. Other open work:
-
 | Card | Title | Depends |
 |---|---|---|
-| T-016 | Textblock script parser for T-014's remaining derived fields | T-014 |
+| Q-014 | Exp/hr under Quicksilver (Model D) | Q-008, Q-010, Q-013b |
+| Q-015 | Web: show the profile | Q-004, Q-014 |
+| Q-016 | End-to-end cells against the balance tool | Q-013b, Q-014 |
 | P3-04b | `pull_spell_eq` Long handling | P3-04 |
 | (opt) | Results tree window, graphical map, NMR import/export, notepad | phase 6 |
 
@@ -122,3 +135,7 @@ The Quicksilver track, Q-004 to Q-016, is planned in `docs/quicksilver-profile.m
 - Hide record numbers is not yet wired into Item Manager/paste rows, combat-setup heal text and `pipeline.rs` contexts (P4-33).
 - Rooms tab: "Route to room" now that reachability exists; nav key label F9 vs MME's F12 (P4-13).
 - Monster damage: Cancel for long calculations; party calculation without a character (P4-30).
+- "NEUTRAL means off": a Quicksilver balance whose keys for a rule equal `Balance::NEUTRAL` takes MME's stock path (Q-007, Q-008, Q-009). Every Q card must keep the identity harness exact.
+- T-016: nested `Item #n(p%)` chest chances and silvermere's 26 extra rooms keep `obtained_from` at 87.5% parity.
+- Monster pane "double-click to compute" reach row has no click handler; party monster damage without a character (F-001).
+- Fixture tests for item_detail, hit_calc, lair_info, monster_glue and class_race_builder hard-code Stock, so the identity harness doesn't cover them (Q-011).
