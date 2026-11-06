@@ -1,7 +1,8 @@
 // Fixture tests for the exp_per_hour family: see docs/porting.md step 5.
 use serde_json::Value;
 use touchstone_rules::exp_per_hour::{
-    ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, model_a, model_b, model_c, model_d,
+    ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, ExpPerHourSettings, calc_exp_per_hour,
+    clamp_knob, model_a, model_b, model_c, model_d,
 };
 use touchstone_rules::{Profile, RulesError};
 use touchstone_vb6::Currency;
@@ -371,4 +372,109 @@ fn model_b_matches_oracle() {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+fn settings_of(globals: &Value) -> ExpPerHourSettings {
+    let b = |k: &str| {
+        globals[k]
+            .as_bool()
+            .unwrap_or_else(|| panic!("no flag {k}"))
+    };
+    ExpPerHourSettings {
+        model_a: b("bGlobal_cephModelA"),
+        model_b: b("bGlobal_cephModelB"),
+        model_c: b("bGlobal_cephModelC"),
+        model_d: b("bGlobal_cephModelD"),
+        recovery_only: b("bGlobal_cephRecoveryOnly"),
+        show_all: b("bGlobal_cephShowAll"),
+        knobs: knobs_of(globals),
+    }
+}
+
+// Expected values come from fixtures/rules/exp_dispatch.json (oracle run of CalcExpPerHour).
+#[test]
+fn calc_exp_per_hour_matches_oracle() {
+    let cases = load_exact("exp_dispatch");
+    assert!(
+        cases.len() >= 400,
+        "scenario should have at least 400 cases"
+    );
+    let mut failures = Vec::new();
+    for case in &cases {
+        let id = case["id"].as_str().unwrap();
+        let inputs = &case["inputs"];
+        let args = inputs["args"].as_array().unwrap();
+        let settings = settings_of(&inputs["globals"]);
+        // Integer arguments (nSpellCost, nSurpriseChance) are converted at the call: error 6.
+        let got = match input_of_checked(args) {
+            Some(input) => calc_exp_per_hour(&input, &settings, Profile::Stock),
+            None => Err(RulesError::Vb6(6)),
+        };
+        if let Some(err) = case.get("error") {
+            let want = RulesError::Vb6(i(&err["number"]));
+            if got != Err(want.clone()) {
+                failures.push(format!(
+                    "{id}: want {want:?}, got {got:?}\n  inputs {inputs}"
+                ));
+            }
+            continue;
+        }
+        let want = expected_of(&case["outputs"]["result"]);
+        match got {
+            Ok(g) if g == want => {}
+            other => failures.push(format!(
+                "{id}: want {want:?}\n  got {other:?}\n  inputs {inputs}"
+            )),
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} cases differ; first:\n{}",
+        failures.len(),
+        cases.len(),
+        failures
+            .iter()
+            .take(5)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+// MME: Form_Load (A, B, C on, D off), then LoadExpPerHourKnobs with absent keys (all four on),
+// and the settings dialog's none-ticked fallback (A, B, C).
+#[test]
+fn exp_per_hour_settings_defaults() {
+    let d = ExpPerHourSettings::default();
+    assert!(d.model_a && d.model_b && d.model_c && d.model_d);
+    assert!(!d.recovery_only && !d.show_all);
+    assert_eq!(d.knobs, ExpPerHourKnobs::default());
+    let f = ExpPerHourSettings::at_form_load();
+    assert!(f.model_a && f.model_b && f.model_c && !f.model_d);
+    let none = ExpPerHourSettings {
+        model_a: false,
+        model_b: false,
+        model_c: false,
+        model_d: false,
+        ..d
+    };
+    assert_eq!(none.normalized(), f);
+    let only_d = ExpPerHourSettings {
+        model_a: false,
+        model_b: false,
+        model_c: false,
+        ..d
+    };
+    assert_eq!(only_d.normalized(), only_d);
+}
+
+// MME: LoadExpPerHourKnobs rounds each knob to 2 decimals and clamps it to 0.01..10.
+#[test]
+fn exp_per_hour_knob_clamp() {
+    assert_eq!(clamp_knob(0.0), 0.01);
+    assert_eq!(clamp_knob(0.004), 0.01);
+    assert_eq!(clamp_knob(1.234), 1.23);
+    assert_eq!(clamp_knob(10.4), 10.0);
+    assert_eq!(clamp_knob(25.0), 10.0);
+    assert_eq!(clamp_knob(-3.0), 0.01);
 }
