@@ -9,6 +9,7 @@
 	import DerivedPanel from './DerivedPanel.svelte';
 	import EquipPanel from './EquipPanel.svelte';
 	import IdentityPanel from './IdentityPanel.svelte';
+	import ItemManagerPanel from './ItemManagerPanel.svelte';
 	import QuestPanel from './QuestPanel.svelte';
 	import StatsPanel from './StatsPanel.svelte';
 	import VitalsPanel from './VitalsPanel.svelte';
@@ -165,6 +166,7 @@
 		</section>
 	</div>
 	<section class="{cardCls} mt-4" aria-label="Equipment"><EquipPanel {store} {items} /></section>
+	<section class="{cardCls} mt-4" aria-label="Item Manager"><ItemManagerPanel {store} {items} onpaste={() => (pasting = true)} /></section>
 	<section class="{cardCls} mt-4" aria-label="Derived stats"><DerivedPanel {store} /></section>
 </div>
 
