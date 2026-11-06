@@ -680,6 +680,9 @@ class Env:
                 if n > 1 or sel != 0:       # a combo holding only its None entry is left out
                     out[str(i)] = {"n": n, "sel": sel, "data": [int(c.vb_get("itemdata", [V.I16(k)])) for k in range(n)]}
             return out
+        if expr == "%clip":
+            # what the code under test left on the clipboard ("" when it never copied)
+            return self.it.externals["clipboard"].text
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
