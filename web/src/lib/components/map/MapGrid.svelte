@@ -8,6 +8,7 @@
 		grid,
 		size,
 		showBlocks = false,
+		maxHeight = '70vh',
 		onHover,
 		onPick,
 		onContext
@@ -16,6 +17,8 @@
 		size: MapSize;
 		/** `cmdMapShowUnused`: outline every block of the grid, used or not. */
 		showBlocks?: boolean;
+		/** CSS length the drawing may not grow past; it keeps its shape and is centred in the box. */
+		maxHeight?: string;
 		onHover?: (cell: MapCell | undefined, at: { x: number; y: number }) => void;
 		onPick?: (cell: MapCell) => void;
 		/** Right click: the cell under the pointer (undefined on an empty block) and its number. */
@@ -69,8 +72,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
 <svg
 	viewBox="0 0 {grid.cols * P} {grid.rows * P}"
-	class="bg-card block h-auto max-h-full w-full rounded-md border"
-	style="aspect-ratio: {grid.cols} / {grid.rows}"
+	class="bg-card block h-auto w-full rounded-md border"
+	style="aspect-ratio: {grid.cols} / {grid.rows}; max-height: {maxHeight}"
 	role="img"
 	aria-label={grid.title}
 	data-testid="map-svg"

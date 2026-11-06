@@ -187,7 +187,11 @@ impl Settings {
         self.exp_per_hour.global = self.exp_per_hour.global.normalized();
         // one entry per preset button, the last one sent winning, as `presets_with` reads them
         let mut kept: Vec<MapPresetDto> = Vec::new();
-        for p in self.map_presets.drain(..).filter(|p| p.index < PRESET_COUNT) {
+        for p in self
+            .map_presets
+            .drain(..)
+            .filter(|p| p.index < PRESET_COUNT)
+        {
             kept.retain(|k| k.index != p.index);
             kept.push(p);
         }

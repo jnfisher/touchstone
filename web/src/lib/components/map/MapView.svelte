@@ -308,7 +308,7 @@
 	<div class="flex min-h-0 flex-wrap gap-3">
 		<div class="relative min-h-0 min-w-[280px] flex-1" data-testid="map-grid-box">
 			{#if grid}
-				<MapGrid {grid} {size} {showBlocks} onHover={hover} onPick={pick} onContext={context} />
+				<MapGrid {grid} {size} {showBlocks} maxHeight={variant === 'window' ? 'calc(100vh - 190px)' : '60vh'} onHover={hover} onPick={pick} onContext={context} />
 				{#if upDownAsk}
 					<div class="bg-popover absolute top-2 left-2 z-20 flex items-center gap-1 rounded-md border p-2 text-xs shadow" role="menu" data-testid="map-updown">
 						<span>Room {upDownAsk.key}:</span>
@@ -399,8 +399,8 @@
 			style="left: {Math.min(tip.x + 14, (typeof window === 'undefined' ? 9999 : window.innerWidth) - 300)}px; top: {tip.y + 14}px"
 			data-testid="map-tip"
 		>
-			<div class="font-medium">{tip.name ?? ''} ({tip.cell.key})</div>
-			{#if tip.text}<pre class="font-sans whitespace-pre-wrap">{tip.text}</pre>{/if}
+			<!-- the server's tooltip text opens with the room's name and number; until it arrives the key stands in -->
+			{#if tip.text}<pre class="font-sans whitespace-pre-wrap">{tip.text}</pre>{:else}<div class="font-medium">{tip.name ?? ''} ({tip.cell.key})</div>{/if}
 		</div>
 	{/if}
 </div>
