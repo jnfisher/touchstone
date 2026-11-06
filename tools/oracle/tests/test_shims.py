@@ -47,6 +47,36 @@ End Function
 '''
 
 
+ROWS_VB = '''Option Explicit
+Public Sub AddRow(lv As ListView, ByVal n As Long)
+    Dim oLI As ListItem
+    Set oLI = lv.ListItems.Add()
+    oLI.Text = n
+    oLI.Tag = n * 2
+    oLI.ListSubItems.Add (1), "Name", "row" & n
+    oLI.ListSubItems.Add (2), "Half", n / 2
+    oLI.ListSubItems(2).Tag = n * 100000
+    oLI.ListSubItems(1).Text = oLI.ListSubItems(1).Text & "!"
+End Sub
+Public Sub Paint(lv As ListView)
+    Dim oLI As ListItem
+    For Each oLI In lv.ListItems
+        If Val(oLI.Text) > 1 Then oLI.ListSubItems(1).ForeColor = &H80&
+    Next
+End Sub
+Public Function Cnt(lv As ListView) As Long
+    Cnt = lv.ListItems.count + Len(lv.ListItems(1).ListSubItems(2).Text)
+End Function
+Public Sub Bless(ByVal s As String, ByVal n As Long)
+    Dim x As Integer
+    For x = 0 To 1
+        frmMain.cmbB(x).AddItem s & " (" & n & ")"
+        frmMain.cmbB(x).ItemData(frmMain.cmbB(x).NewIndex) = n
+    Next x
+End Sub
+'''
+
+
 def make_db(path):
     con = sqlite3.connect(path)
     con.execute('CREATE TABLE "Items" ("Number" INTEGER, "Name" TEXT, "Max" INTEGER)')
@@ -122,6 +152,50 @@ class ShimTests(unittest.TestCase):
     def test_msgbox_returns_the_default_button(self):
         self.assertEqual(int(self.env().call("AskUser")), 7)   # Yes/No, second button is No
         self.assertEqual(int(shims.msgbox_result(0)), 1)
+
+
+class RecordingListViewTests(unittest.TestCase):
+    def env(self):
+        it = Interpreter()
+        it.load_source(ROWS_VB, "modR", "bas")
+        it.ensure_ready()
+        it.bind("frmMain", shims.FormShim({"cmbB": {"$array": {"0": {}, "1": {}}}}, harness.decode))
+        return it
+
+    def test_rows_record_text_tags_and_sub_items(self):
+        it = self.env()
+        lv = shims.RecordingListViewShim()
+        it.call("AddRow", lv, 3)
+        it.call("AddRow", lv, 1)
+        # strings are CStr of what was assigned, a Tag keeps its Variant until dumped, an unassigned Tag is null
+        self.assertEqual(lv.dump(None), [["3", "6", ["row3!", ["1.5", "300000", None]]], ["1", "2", ["row1!", ["0.5", "100000", None]]]])
+
+    def test_a_pass_sets_fore_colors_and_reads_back(self):
+        it = self.env()
+        lv = shims.RecordingListViewShim()
+        for n in (1, 2):
+            it.call("AddRow", lv, n)
+        it.call("Paint", lv)
+        self.assertEqual(lv.dump(None)[0][2][0], "row1!")
+        self.assertEqual(lv.dump(None)[1][2][0], ["row2!", None, 128])
+        self.assertEqual(int(it.call("Cnt", lv)), 2 + 3)   # two rows + Len("0.5")
+
+    def test_preloaded_rows_and_sub_item_bounds(self):
+        lv = shims.RecordingListViewShim([{"Text": "7", "Tag": "x", "Sub": ["a", ["b", "t"]]}])
+        self.assertEqual(lv.dump(None), [["7", "x", ["a", ["b", "t", None]]]])
+        item = lv.vb_get("ListItems", [V.I16(1)])
+        with self.assertRaises(VBError) as e:
+            item.vb_get("ListSubItems", [V.I16(3)])
+        self.assertEqual(e.exception.number, 35600)
+
+    def test_add_item_appends_and_tells_its_index(self):
+        it = self.env()
+        it.call("Bless", "bolt", 12)
+        it.call("Bless", "heal", 30)
+        combo = it.externals["frmmain"].vb_get("cmbB", [V.I16(1)])
+        self.assertEqual(combo.items["list"], {0: "bolt (12)", 1: "heal (30)"})
+        self.assertEqual(int(combo.items["itemdata"][1]), 30)
+        self.assertEqual(int(combo.vb_get("NewIndex", [])), 1)
 
 
 class ScenarioTests(unittest.TestCase):

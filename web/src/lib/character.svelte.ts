@@ -191,3 +191,54 @@ export function createCharacterStore(client: CharacterClient = characterClient, 
 }
 
 export type CharacterStore = ReturnType<typeof createCharacterStore>;
+
+// ---------- the shared store ----------
+// The Character tab and the calculators look at one character, as MME's windows all read the main
+// form. The store is created on first use and lives for the page.
+
+let shared: CharacterStore | undefined;
+
+export function getCharacterStore(): CharacterStore {
+	return (shared ??= createCharacterStore());
+}
+
+const LAST_KEY = 'touchstone.character.last';
+
+/** Remembers which saved character was open last, for the next visit. */
+export function rememberLastCharacter(name: string | undefined) {
+	try {
+		if (name) localStorage.setItem(LAST_KEY, name);
+	} catch {
+		// private window or blocked storage: the app still works, it just starts empty
+	}
+}
+
+const opened = new WeakMap<CharacterStore, Promise<string | undefined>>();
+
+/**
+ * Opens the character that was open last (or the first saved one) unless one is already being
+ * edited. Runs once per store; resolves to the name opened.
+ */
+export function openLastCharacter(store: CharacterStore): Promise<string | undefined> {
+	let p = opened.get(store);
+	if (!p) {
+		p = (async () => {
+			await store.refreshList();
+			let last: string | null = null;
+			try {
+				last = localStorage.getItem(LAST_KEY);
+			} catch {
+				// see rememberLastCharacter()
+			}
+			const names = store.saved.map((s) => s.name);
+			const name = last && names.includes(last) ? last : names[0];
+			if (name && store.doc.name === '' && !store.storedName) {
+				await store.load(name);
+				return name;
+			}
+			return undefined;
+		})();
+		opened.set(store, p);
+	}
+	return p;
+}

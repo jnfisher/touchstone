@@ -49,6 +49,7 @@ use crate::gear::{
     self, CharStats, GearInput, ItemManagerRow, STAT_COUNT, SecondHalfInput, calc_character_stats,
     carried_items,
 };
+use crate::monster_glue::CharSimInputs;
 use crate::spell_cast::SpellCasterProfile;
 use crate::spells::SpellText;
 use crate::{Profile, RulesError};
@@ -420,7 +421,13 @@ impl CharacterState {
     /// The slice of the profile `CalculateAttack` reads.
     #[must_use]
     pub fn attack_profile(&self) -> attack::CharacterProfile {
-        let p = &self.profile;
+        Self::attack_profile_of(&self.profile)
+    }
+
+    /// The same slice for any profile, such as one [`CharacterState::profile_for`] built for
+    /// another kind of attack, or the profile of "no character".
+    #[must_use]
+    pub fn attack_profile_of(p: &CharacterProfile) -> attack::CharacterProfile {
         attack::CharacterProfile {
             is_loaded_character: p.is_loaded_character,
             level: p.level,
@@ -490,6 +497,32 @@ impl CharacterState {
     #[must_use]
     pub fn spell_caster(&self) -> SpellCasterProfile {
         self.profile.spell_caster()
+    }
+
+    /// The controls `SetupMonsterAttackSimWithCharStats` reads for the loaded character (P3-14b):
+    /// AC and DR captions, MR text, the dodge and resist tags and the anti-magic box. A character
+    /// whose `SetupClass` did not run keeps the box as the character file stored it.
+    #[must_use]
+    pub fn sim_inputs(&self) -> CharSimInputs {
+        let tag = |i: usize| self.stats.stat_tag[i];
+        CharSimInputs {
+            class: self.character.class.filter(|&c| c > 0).unwrap_or(0),
+            ac: self.stats.stat[2],
+            dr: self.stats.stat[3],
+            // an MR the procedure could not compute leaves the box empty, which reads as 0
+            mr: f64::from(self.magic_res.unwrap_or(0)),
+            dodge: self.dodge.value,
+            anti_magic: self
+                .class_setup
+                .as_ref()
+                .map_or(self.character.anti_magic, |s| s.anti_magic),
+            prot_evil: tag(20).unwrap_or(0.0),
+            resist_col: tag(28),
+            resist_fir: tag(27),
+            resist_sto: tag(25),
+            resist_lit: tag(29),
+            resist_wat: tag(26),
+        }
     }
 
     /// The attack and heal choice with the values `RefreshCombatHealingValues` wrote.

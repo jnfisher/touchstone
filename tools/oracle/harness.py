@@ -166,7 +166,7 @@ class _Dump:
 # ----------------------------------------------------------------------------- environment
 
 class Env:
-    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None):
+    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False):
         self.mme = mme
         shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra) if database else None
@@ -181,10 +181,11 @@ class Env:
         for name in SHIMMED_PROCS:
             it.procs.pop(name.lower(), None)
         self._bind_procs()
-        if frm:
-            self._bind_paste_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
         it.intrinsic_hooks["inputbox"] = self._inputbox
+        if paste_procs:
+            self._bind_paste_procs()
+            it.intrinsic_hooks["inputbox"] = self._inputbox_paste
         self.inputbox_answers = []
         self.loaded_forms = []
         self.class_names = {m.name: m for m in it.modules.values() if m.is_class}
@@ -247,14 +248,23 @@ class Env:
                   "LV_Sort_ColumnClickOrSticky", "RefreshListviewItemColors_ItemManager"):
             it.bind_proc(n, lambda it_, *a: None)
 
-    def _inputbox(self, it, *a):
-        """InputBox(prompt, title, default): a case's "inputbox" answers in order, else the default (OK pressed)."""
+    def _inputbox_paste(self, it, *a):
+        """InputBox for family paste_char: a case's "inputbox" answers in order, else the default (OK pressed).
+        Other families use `_inputbox` (an exhausted list cancels)."""
         text = V.c_str(a[0]) if a else ""
         default = V.c_str(a[2]) if len(a) > 2 and a[2] is not V.MISSING else ""
         self.rec.add("inputbox", text=text, default=default)
         if self.inputbox_answers:
             return self.inputbox_answers.pop(0)
         return default
+    def _inputbox(self, it, prompt=None, title=None, default=None, *rest):
+        """InputBox: answers from the case's "inputbox" list in call order (null accepts the default,
+        an exhausted list cancels, which is an empty string)."""
+        dflt = V.c_str(default) if default is not None and default is not V.MISSING else ""
+        ans = self.inputbox_answers.pop(0) if self.inputbox_answers else ""
+        ans = dflt if ans is None else ans
+        self.rec.add("inputbox", prompt=V.c_str(prompt) if prompt is not None else "", default=dflt, answer=ans)
+        return ans
 
     def _bind_procs(self):
         it = self.it
@@ -325,6 +335,7 @@ class Env:
         it.depth = 0
         it.rnd.state = 0x50000 if rnd is None else rnd & 0xFFFFFF
         self.rec.events.clear()
+        self.saved = {}
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
         it.bind("Forms", shims.FormsCollection(self.loaded_forms))
@@ -391,11 +402,19 @@ class Env:
                 u.set_field(name.lower(), decode(val))
         return u
 
-    def call(self, objs, step, results):
-        target = step["call"]
+    def build_args(self, spec, objs, refs, lv=None):
+        """Call arguments from a step's `args`. Beyond the plain values: `{"ref": ...}` (ByRef), `{"udt": ...}`
+        (a Type; `out` makes it ByRef and lands in the step's refs), `{"obj": name}` (an object of the case),
+        `{"saved": name}` (the ByRef Type a previous step kept under its `as` name, shared so later calls see
+        what earlier ones left in it) and `{"lv": true}` (the recording ListView of a `rows` step)."""
         args = []
-        refs = []
-        for a in step.get("args", []):
+        for a in spec:
+            if isinstance(a, dict) and "saved" in a:
+                args.append(self.saved[a["saved"]][a.get("index", 0)])
+                continue
+            if isinstance(a, dict) and "lv" in a:
+                args.append(lv)
+                continue
             if isinstance(a, dict) and str(a.get("ref", "")).startswith("array:"):
                 # ByRef array argument: {"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]};
                 # without bounds the array starts unallocated, as a bare `Dim x() As T` does.
@@ -429,6 +448,9 @@ class Env:
                 args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:
                 args.append(decode(a))
+        return args
+
+    def invoke(self, objs, target, args):
         if "." in target:
             oname, meth = target.split(".", 1)
             r = self.get(objs[oname], meth, args)
@@ -444,10 +466,61 @@ class Env:
             if proc is None:
                 raise OracleFatal("unknown procedure %s" % target)
             r = self.it.call_proc(proc, None, args, [None] * len(args))
+        return r
+
+    def call(self, objs, step, results):
+        target = step["call"]
+        refs = []
+        args = self.build_args(step.get("args", []), objs, refs)
+        r = self.invoke(objs, target, args)
         if "as" in step:
             results[step["as"]] = encode(r) if r is not None else None
         if refs:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
+            self.saved[step.get("as", target)] = refs
+
+    def rows_step(self, objs, st, results):
+        """Step `{"rows": {"table", "index", "keys", "lv": "each"|"shared", "watch"}, "call", "args", "as", "post"}`:
+        for each key, seek that record in the table's global recordset and call a ListView-building procedure
+        (`{"lv": true}` in `args` is a recording ListView). `lv` "each" (default) gives every key a fresh ListView
+        and stores `null` or the one row it built; "shared" fills one ListView with every key and stores its rows,
+        after the `post` calls (`{"call", "args"}` with `{"lv": true}` as the ListView) ran on it, each result and
+        the ListView after it going to `<as>.post`. `watch` names a control element (`cmbCharBless(0)`) whose
+        list gains entries (AddItem): `<as>.watch` holds `[text, ItemData]` or null per key. Rows are
+        `[Text, Tag, [[sub Text, sub Tag, sub ForeColor], ..]]`; a Tag or ForeColor never assigned is null."""
+        spec = st["rows"]
+        rs = self.it.get_global(spec["table"])
+        rs.vb_set("index", [], spec["index"])
+        shared = spec.get("lv") == "shared"
+        lv_shared = shims.RecordingListViewShim() if shared else None
+        watch = None
+        if spec.get("watch"):
+            wname, widx = re.match(r"(\w+)\((\d+)\)$", spec["watch"]).groups()
+            watch = self.it.externals["frmmain"].vb_get(wname, [V.I16(int(widx))])
+        per, seen = [], []
+        for key in spec["keys"]:
+            rs.vb_get("seek", ["=", decode(key)])
+            lv = lv_shared or shims.RecordingListViewShim()
+            before = len(watch.items.get("list", {})) if watch else 0
+            args = self.build_args(st.get("args", []), objs, [], lv)
+            self.invoke(objs, st["call"], args)
+            if not shared:
+                rows = lv.dump(encode)
+                per.append(rows[0] if rows else None)
+            if watch is not None:
+                lst, data = watch.items.get("list", {}), watch.items.get("itemdata", {})
+                seen.append([lst[before], int(data.get(before, 0))] if len(lst) > before else None)
+        name = st["as"]
+        post = []
+        for p in st.get("post", []):
+            pargs = self.build_args(p.get("args", []), objs, [], lv_shared)
+            r = self.invoke(objs, p["call"], pargs)
+            post.append({"result": encode(r) if r is not None else None, "rows": lv_shared.dump(encode)})
+        results[name] = lv_shared.dump(encode) if shared else per
+        if post:
+            results[name + ".post"] = post
+        if watch is not None:
+            results[name + ".watch"] = seen
 
     _READ = re.compile(r"^(?P<obj>[A-Za-z_]\w*)\.(?P<prop>\w+)(?:\[(?P<idx>[^\]]*)\])?$")
 
@@ -531,6 +604,7 @@ class Env:
                         v = {"$array": {**base, **{i: {**base.get(i, {}), **e} for i, e in v["$array+"].items()}}}
                     cur[k] = v
         self.set_forms(forms)
+        self.inputbox_answers = list(case.get("inputbox") or [])
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
         objs = {}
@@ -546,7 +620,9 @@ class Env:
                     # The instance also stands in for an (unset) object-typed module global.
                     self.it.global_cell(spec["global"]).v = objs[name]
             for st in steps:
-                if "set" in st:
+                if "rows" in st:
+                    self.rows_step(objs, st, out)
+                elif "set" in st:
                     oname, prop = st["set"].split(".", 1)
                     idx = [decode(i) for i in st.get("index", [])]
                     self.put(objs[oname], prop, idx, decode(st["value"]))
@@ -591,8 +667,10 @@ def build_fixture(family, mme=None, sdir=None):
     scn = json.loads(raw)
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
-    env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"))
-    # "modules": extra MME files a family needs; "frm": procedures cut from a form; "db_extra": invented rows
+    env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
+              paste_procs=bool(scn.get("paste_procs")))
+    # "modules": extra MME files a family needs; "frm": procedures cut from a form; "db_extra": invented rows;
+    # "paste_procs": stub frmMain's screen/disk procedures and answer InputBox with the default (paste_char)
     setup = {"globals": scn.get("globals", {}), "forms": scn.get("forms", {})}
     if "read" in scn:                       # family-wide default reads; a case's own "read" replaces them
         setup["read"] = scn["read"]

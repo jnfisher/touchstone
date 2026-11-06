@@ -1,6 +1,7 @@
 // The five calculator windows (frmExpCalc, frmCoinConvert, frmSwingCalc, frmBSCalc, frmHitCalc): their
 // defaults, the mapping from form state to the `POST /api/calc/*` bodies, and the response shapes.
-import type { Item, Monster } from './api';
+import type { ClassRec, Item, Monster } from './api';
+import { WEAPON_SLOT, type CharacterDoc, type EvalState } from './character';
 
 export const CALCULATORS = [
 	{ slug: 'exp', label: 'Exp Calculator' },
@@ -44,6 +45,14 @@ export interface CoinResult {
 	/** Copper value of the destination's coin. */
 	current_coin: number;
 	weights: [string, string];
+	charm: CharmButton;
+}
+
+/** `cmdCharm`: its caption (CRLF between lines) and the percent of the amount it leaves. */
+export interface CharmButton {
+	enabled: boolean;
+	caption: string;
+	percent: number | null;
 }
 
 export interface SwingResult extends Failable {
@@ -59,6 +68,9 @@ export interface SwingResult extends Failable {
 	damage_caption: string;
 	speed: string;
 	max_encum: string;
+	/** `txtTrueAVG(7)`; null when a box did not fit a Long. */
+	true_average: string | null;
+	true_average_error: string | null;
 }
 
 export interface BackstabResult extends Failable {
@@ -240,6 +252,46 @@ export interface SwingForm {
 	maxEncumAuto: boolean;
 	speed: string;
 	speedOption: number;
+	/** `txtTrueAVG(0..5)`: the MegaMUD Hit, Extra and Crit percentages and averages. */
+	mega: MegaBoxes;
+}
+
+export interface MegaBoxes {
+	hitPct: string;
+	hitAvg: string;
+	extraPct: string;
+	extraAvg: string;
+	critPct: string;
+	critAvg: string;
+}
+
+export const MEGA_EMPTY: MegaBoxes = {
+	hitPct: '',
+	hitAvg: '',
+	extraPct: '',
+	extraAvg: '',
+	critPct: '',
+	critAvg: ''
+};
+
+/** The six strings `cmdPasteMega_Click` writes, in box order, as the form's boxes. */
+export function megaFromFields(f: readonly string[]): MegaBoxes {
+	return {
+		hitPct: f[0] ?? '',
+		hitAvg: f[1] ?? '',
+		extraPct: f[2] ?? '',
+		extraAvg: f[3] ?? '',
+		critPct: f[4] ?? '',
+		critAvg: f[5] ?? ''
+	};
+}
+
+export interface MegaResult {
+	ok: boolean;
+	fields: string[] | null;
+	/** The message box MME would show. */
+	message: string | null;
+	error: number | null;
 }
 
 /** frmSwingCalc's design-time values; Max Enc. is 100 strength's capacity. */
@@ -255,7 +307,8 @@ export const SWING_DEFAULTS: SwingForm = {
 	maxEncum: '4800',
 	maxEncumAuto: true,
 	speed: '100',
-	speedOption: 1
+	speedOption: 1,
+	mega: MEGA_EMPTY
 };
 
 export function swingRequest(f: SwingForm) {
@@ -272,7 +325,13 @@ export function swingRequest(f: SwingForm) {
 		max_encum: f.maxEncum,
 		max_encum_auto: f.maxEncumAuto,
 		speed: f.speed,
-		speed_option: f.speedOption
+		speed_option: f.speedOption,
+		hit_pct: f.mega.hitPct,
+		hit_avg: f.mega.hitAvg,
+		extra_pct: f.mega.extraPct,
+		extra_avg: f.mega.extraAvg,
+		crit_pct: f.mega.critPct,
+		crit_avg: f.mega.critAvg
 	};
 }
 
@@ -374,6 +433,17 @@ export interface HitCharacter {
 	bsWeapon: number | null;
 	strike: HitStrike;
 	accyAdj: string;
+	/** `txtCharStats(0).Tag` and the level box, which the backstab accuracy reads. */
+	strength: string;
+	level: string;
+	/** `nGlobalCharAccyAbils`, `...Other`, `...Items`, vile ward and the equipped weapon's numbers. */
+	accyAbilities: string;
+	accyOther: string;
+	accyItems: string;
+	vileWard: string;
+	weaponNumber: string;
+	weaponAccy: string;
+	weaponBsAccy: string;
 }
 
 export interface HitForm {
@@ -455,7 +525,16 @@ export const HIT_DEFAULTS: HitForm = {
 		classNumber: null,
 		bsWeapon: null,
 		strike: 'normal',
-		accyAdj: '0'
+		accyAdj: '0',
+		strength: '0',
+		level: '0',
+		accyAbilities: '0',
+		accyOther: '0',
+		accyItems: '0',
+		vileWard: '0',
+		weaponNumber: '0',
+		weaponAccy: '0',
+		weaponBsAccy: '0'
 	}
 };
 
@@ -506,7 +585,16 @@ export function hitRequest(f: HitForm, ev: HitEvent) {
 			...(c.classNumber === null ? {} : { class: c.classNumber }),
 			...(c.bsWeapon === null ? {} : { bs_weapon: c.bsWeapon }),
 			strike: c.strike,
-			accy_adj: wholeOrZero(c.accyAdj)
+			accy_adj: wholeOrZero(c.accyAdj),
+			strength: c.strength,
+			level: c.level,
+			accy_abilities: wholeOrZero(c.accyAbilities),
+			accy_other: wholeOrZero(c.accyOther),
+			accy_items: wholeOrZero(c.accyItems),
+			vile_ward: wholeOrZero(c.vileWard),
+			weapon_number: wholeOrZero(c.weaponNumber),
+			weapon_accy: wholeOrZero(c.weaponAccy),
+			weapon_bs_accy: wholeOrZero(c.weaponBsAccy)
 		}
 	};
 }
@@ -548,6 +636,197 @@ export function captionLines(s: string): string[] {
 	return s === '' ? [] : s.split(/\r?\n/);
 }
 
+// ---------- the current character ----------
+
+/**
+ * The numbers the calculator windows copy from the main form (`txtCharStats(i).Tag`,
+ * `lblInvenCharStat(i)`, `nEquippedItem(16)`, ...), taken from the Character tab's evaluation. Text
+ * boxes are strings because MME reads them with `Val`.
+ */
+export interface CalcCharacter {
+	classNumber: number;
+	/** `GetClassCombat`: 1..5, 3 when the class gives nothing else. */
+	combat: number;
+	classStealth: boolean;
+	globalFilter: boolean;
+	level: string;
+	strength: string;
+	agility: string;
+	charm: number;
+	/** `lblInvenCharStat(0)` and `(1)`. */
+	encum: string;
+	maxEncum: string;
+	maxDamage: string;
+	stealth: string;
+	bsMin: string;
+	bsMax: string;
+	accuracy: string;
+	ac: string;
+	dodge: string;
+	protEvil: string;
+	bsAccuracy: string;
+	/** The equipped weapon (`nEquippedItem(16)`); null when the slot is empty. */
+	weapon: number | null;
+	/** The weapon the backstab uses: the chosen one when Backstab is on, else the equipped one. */
+	bsWeapon: number | null;
+	strike: HitStrike;
+	accyAdj: number;
+	shadowAc: number;
+	accyAbilities: number;
+	accyOther: number;
+	accyItems: number;
+	vileWard: number;
+	weaponAccy: number;
+	weaponBsAccy: number;
+	weaponNumber: number;
+}
+
+/** A number as MME's `Val` reads a caption: thousands separators dropped, junk is 0. */
+export function captionNumber(s: string | undefined): number {
+	const m = /^\s*(-?\d+(?:\.\d+)?)/.exec((s ?? '').replace(/,/g, ''));
+	return m ? Number(m[1]) : 0;
+}
+
+const box = (n: number) => String(n);
+
+/** Port of GetClassCombat: `CombatLVL - 2`, 1 for no class. */
+export function classCombat(c: ClassRec | undefined): number {
+	return c ? c.combat_lvl - 2 : 1;
+}
+
+/** Port of GetClassStealth: the class has ability 103. */
+export function classHasStealth(c: ClassRec | undefined): boolean {
+	return c?.abilities.some((a) => a.ability === 103) ?? false;
+}
+
+/** The attack choice as the Hit Calculator's strike list names it. */
+export function strikeOf(attackType: number, martialArt: number): HitStrike {
+	if (attackType === 6) return 'bash';
+	if (attackType === 7) return 'smash';
+	if (attackType === 4 && martialArt === 2) return 'kick';
+	if (attackType === 4 && martialArt === 3) return 'jumpkick';
+	return 'normal';
+}
+
+/**
+ * What the calculators take from the loaded character, or undefined while no character is
+ * evaluated (no class or race yet, or the server has not answered).
+ */
+export function calcCharacter(
+	doc: CharacterDoc,
+	ev: EvalState | undefined,
+	classes: ClassRec[]
+): CalcCharacter | undefined {
+	if (!ev || doc.class === null || doc.race === null) return undefined;
+	const cls = classes.find((c) => c.number === doc.class);
+	const tag = (i: number) => ev.calc?.stat_tags[i] ?? 0;
+	const stat = (i: number) => box(captionNumber(ev.stats[i]));
+	const combat = classCombat(cls);
+	const weapon = doc.equipped[WEAPON_SLOT] > 0 ? doc.equipped[WEAPON_SLOT] : null;
+	const chosen = doc.attack.backstab && doc.attack.backstab_weapon > 0 ? doc.attack.backstab_weapon : null;
+	return {
+		classNumber: doc.class,
+		combat: combat >= 1 && combat <= 5 ? combat : 3,
+		classStealth: classHasStealth(cls),
+		globalFilter: doc.global_filter,
+		level: box(doc.level),
+		strength: box(ev.stat_values[0]),
+		agility: box(ev.stat_values[3]),
+		charm: ev.stat_values[5],
+		encum: stat(0),
+		maxEncum: stat(1),
+		maxDamage: stat(11),
+		stealth: stat(19),
+		bsMin: stat(14),
+		bsMax: stat(15),
+		accuracy: box(tag(10)),
+		ac: box(Math.trunc(tag(2))),
+		dodge: box(tag(8)),
+		protEvil: box(tag(20)),
+		bsAccuracy: box(tag(13)),
+		weapon,
+		bsWeapon: chosen ?? weapon,
+		strike: strikeOf(doc.attack.attack_type, doc.attack.martial_art),
+		accyAdj: ev.calc?.attack_accy_adj ?? 0,
+		shadowAc: ev.calc?.shadow_ac ?? 0,
+		accyAbilities: ev.calc?.accy_abilities ?? 0,
+		accyOther: ev.calc?.accy_other ?? 0,
+		accyItems: ev.calc?.accy_items ?? 0,
+		vileWard: ev.calc?.vile_ward ?? 0,
+		weaponAccy: ev.calc?.weapon_accy ?? 0,
+		weaponBsAccy: ev.calc?.weapon_bs_accy ?? 0,
+		weaponNumber: ev.calc?.weapon_number ?? 0
+	};
+}
+
+/** A box MME only overwrites when the character's value is above 0; otherwise it keeps its text. */
+const positive = (value: string, keep: string) => (captionNumber(value) > 0 ? value : keep);
+
+/** frmSwingCalc `Form_Load`: combat from the class, the stat boxes and the equipped weapon. */
+export function swingFromCharacter(c: CalcCharacter, f: SwingForm): SwingForm {
+	return {
+		...f,
+		combat: c.combat,
+		agility: positive(c.agility, f.agility),
+		level: positive(c.level, f.level),
+		strength: positive(c.strength, f.strength),
+		encum: positive(c.encum, f.encum),
+		// The strength box rewrites Max Enc. first and the character's own value follows it.
+		maxEncum: positive(c.maxEncum, f.maxEncum),
+		maxEncumAuto: captionNumber(c.maxEncum) > 0 ? false : f.maxEncumAuto,
+		weapon: c.weapon ?? f.weapon
+	};
+}
+
+/** frmBSCalc `Form_Load`. */
+export function backstabFromCharacter(c: CalcCharacter, f: BackstabForm): BackstabForm {
+	const nonZero = (value: string, keep: string) => (captionNumber(value) !== 0 ? value : keep);
+	return {
+		...f,
+		strength: positive(c.strength, f.strength),
+		level: positive(c.level, f.level),
+		maxDmg: nonZero(c.maxDamage, f.maxDmg),
+		stealth: nonZero(c.stealth, f.stealth),
+		classStealth: c.classStealth,
+		bsMin: nonZero(c.bsMin, f.bsMin),
+		bsMax: nonZero(c.bsMax, f.bsMax),
+		weapon: c.weapon ?? f.weapon
+	};
+}
+
+/** The Hit Calculator's character section (SetHitCalcVals reads these from the main form). */
+export function hitFromCharacter(c: CalcCharacter, f: HitCharacter): HitCharacter {
+	return {
+		...f,
+		accuracy: c.accuracy,
+		ac: c.ac,
+		dodge: c.dodge,
+		protEvil: c.protEvil,
+		stealth: c.stealth,
+		bsAccuracy: c.bsAccuracy,
+		agility: c.agility,
+		shadowAc: String(c.shadowAc),
+		classNumber: c.classNumber,
+		bsWeapon: c.bsWeapon,
+		strike: c.strike,
+		accyAdj: String(c.accyAdj),
+		strength: c.strength,
+		level: c.level,
+		accyAbilities: String(c.accyAbilities),
+		accyOther: String(c.accyOther),
+		accyItems: String(c.accyItems),
+		vileWard: String(c.vileWard),
+		weaponNumber: String(c.weaponNumber),
+		weaponAccy: String(c.weaponAccy),
+		weaponBsAccy: String(c.weaponBsAccy)
+	};
+}
+
+/** The charm number the coin window sends: only while the global filter is on, as MME checks. */
+export function coinCharm(c: CalcCharacter | undefined): number | undefined {
+	return c && c.globalFilter ? c.charm : undefined;
+}
+
 // ---------- transport ----------
 
 type FetchFn = typeof fetch;
@@ -563,7 +842,7 @@ export class CalcError extends Error {
 
 /** `POST /api/calc/<name>`; a 400 carries the server's reason as the error message. */
 export function createCalcClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
-	async function post<T>(name: CalcSlug, body: unknown): Promise<T> {
+	async function post<T>(name: CalcSlug | 'mega-stat', body: unknown): Promise<T> {
 		const res = await fetchFn(`/api/calc/${name}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -579,6 +858,7 @@ export function createCalcClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		exp: (body: ReturnType<typeof expRequest>) => post<ExpCalcResult>('exp', body),
 		coin: (body: object) => post<CoinResult>('coin', body),
 		swing: (body: ReturnType<typeof swingRequest>) => post<SwingResult>('swing', body),
+		megaStat: (text: string) => post<MegaResult>('mega-stat', { text }),
 		backstab: (body: ReturnType<typeof backstabRequest>) => post<BackstabResult>('backstab', body),
 		hit: (body: ReturnType<typeof hitRequest>) => post<HitResult>('hit', body)
 	};

@@ -1,9 +1,11 @@
 <script lang="ts">
 	// frmHitCalc: the chance to hit and be dodged for a normal attack or a backstab, between the
 	// current character, a monster, a remembered player or typed numbers.
+	import { untrack } from 'svelte';
 	import { api, type ClassRec } from '$lib/api';
 	import {
 		applyHit,
+		hitFromCharacter,
 		calcClient,
 		captionLines,
 		HIT_BOXES,
@@ -22,6 +24,8 @@
 		type WeaponChoice
 	} from '$lib/calc';
 	import CalcFrame from './CalcFrame.svelte';
+	import { useCurrentCharacter } from './current.svelte';
+	import UseCharacter from './UseCharacter.svelte';
 	import Field from './Field.svelte';
 	import { headingCls, inputCls, labelCls } from './styles';
 	import WeaponPicker from './WeaponPicker.svelte';
@@ -73,11 +77,31 @@
 				classes = c.filter((x) => x.name !== '');
 				// Form_Load: the first monster is selected, then the window is filled in.
 				form.monster = monsters[0]?.number ?? null;
-				form.character.classNumber = classes[0]?.number ?? null;
+				if (!current.active) form.character.classNumber = classes[0]?.number ?? null;
 				send({ event: 'refresh' });
 			})
 			.catch((e: unknown) => (loadError = e instanceof Error ? e.message : String(e)));
 		return () => (alive = false);
+	});
+
+	// SetHitCalcVals reads the character from the main form: with the switch on its numbers fill the
+	// section below and the window refreshes, as it does when the character changes in MME.
+	const current = useCurrentCharacter();
+	const locked = $derived(current.active);
+	let appliedKey = '';
+	$effect(() => {
+		const c = current.active ? current.character : undefined;
+		if (!c) {
+			appliedKey = '';
+			return;
+		}
+		const key = JSON.stringify(c);
+		if (key === appliedKey) return;
+		appliedKey = key;
+		untrack(() => {
+			form.character = hitFromCharacter(c, $state.snapshot(form.character) as HitForm['character']);
+			if (form.enabled !== null) send({ event: 'refresh' });
+		});
 	});
 
 	const box = (ev: HitEvent) => () => send(ev, 120);
@@ -161,6 +185,7 @@
 <CalcFrame title="Hit Calculator" testid="calc-hit">
 	{#snippet inputs()}
 		<div class="flex flex-col gap-4">
+			<UseCharacter {current} />
 			<WeaponPicker
 				choices={monsters}
 				bind:value={form.monster}
@@ -247,25 +272,26 @@
 			</div>
 
 			<details open class="border-t pt-3" data-testid="hit-character">
-				<summary class="{labelCls} cursor-pointer">Current character (until the Character tab)</summary>
+				<summary class="{labelCls} cursor-pointer">Current character</summary>
 				<div class="mt-3 flex flex-col gap-3">
 					<div class="grid grid-cols-3 gap-3">
-						<Field label="Accuracy" bind:value={form.character.accuracy} oninput={charEdited} testid="hit-char-accuracy" />
-						<Field label="AC" bind:value={form.character.ac} oninput={charEdited} testid="hit-char-ac" />
-						<Field label="Dodge" bind:value={form.character.dodge} oninput={charEdited} testid="hit-char-dodge" />
-						<Field label="Prot. Evil" bind:value={form.character.protEvil} oninput={charEdited} testid="hit-char-prot-evil" />
-						<Field label="Stealth" bind:value={form.character.stealth} oninput={charEdited} testid="hit-char-stealth" />
-						<Field label="BS Accuracy" bind:value={form.character.bsAccuracy} oninput={charEdited} testid="hit-char-bs-accuracy" />
-						<Field label="Agility" bind:value={form.character.agility} oninput={charEdited} testid="hit-char-agility" />
-						<Field label="Shadow AC" bind:value={form.character.shadowAc} oninput={charEdited} testid="hit-char-shadow-ac" hint="The AC a shadow form adds; taken off AC vs Char." />
+						<Field label="Accuracy" bind:value={form.character.accuracy} oninput={charEdited} disabled={locked} testid="hit-char-accuracy" />
+						<Field label="AC" bind:value={form.character.ac} oninput={charEdited} disabled={locked} testid="hit-char-ac" />
+						<Field label="Dodge" bind:value={form.character.dodge} oninput={charEdited} disabled={locked} testid="hit-char-dodge" />
+						<Field label="Prot. Evil" bind:value={form.character.protEvil} oninput={charEdited} disabled={locked} testid="hit-char-prot-evil" />
+						<Field label="Stealth" bind:value={form.character.stealth} oninput={charEdited} disabled={locked} testid="hit-char-stealth" />
+						<Field label="BS Accuracy" bind:value={form.character.bsAccuracy} oninput={charEdited} disabled={locked} testid="hit-char-bs-accuracy" />
+						<Field label="Agility" bind:value={form.character.agility} oninput={charEdited} disabled={locked} testid="hit-char-agility" />
+						<Field label="Shadow AC" bind:value={form.character.shadowAc} oninput={charEdited} disabled={locked} testid="hit-char-shadow-ac" hint="The AC a shadow form adds; taken off AC vs Char." />
 					</div>
 					<label class="flex flex-col gap-1">
 						<span class={labelCls}>Class</span>
 						<select
 							bind:value={form.character.classNumber}
 							onchange={charEdited}
+							disabled={locked}
 							data-testid="hit-char-class"
-							class={inputCls}
+							class="{inputCls} disabled:opacity-60"
 						>
 							{#each classes as c (c.number)}<option value={c.number}>{c.name}</option>{/each}
 						</select>
@@ -276,13 +302,14 @@
 							<select
 								bind:value={form.character.strike}
 								onchange={charEdited}
+								disabled={locked}
 								data-testid="hit-char-strike"
-								class={inputCls}
+								class="{inputCls} disabled:opacity-60"
 							>
 								{#each HIT_STRIKES as s (s.value)}<option value={s.value}>{s.label}</option>{/each}
 							</select>
 						</label>
-						<Field label="Accy adj." bind:value={form.character.accyAdj} oninput={charEdited} testid="hit-char-accy-adj" />
+						<Field label="Accy adj." bind:value={form.character.accyAdj} oninput={charEdited} disabled={locked} testid="hit-char-accy-adj" />
 					</div>
 					<WeaponPicker
 						choices={bsWeapons}
@@ -290,6 +317,7 @@
 						label="Backstab weapon"
 						testid="hit-bs-weapon"
 						clearable
+						disabled={locked}
 						onchoose={charEdited}
 					/>
 				</div>
@@ -334,7 +362,7 @@
 			<p class="text-muted-foreground mt-6 max-w-prose text-xs">
 				Each box and option works as in MME: picking Current Char., a monster or a player fills the boxes
 				in; Manual leaves them for you. A starred minimum means the defender's class changes it. The
-				character's numbers are typed in here until the Character tab can supply them. Vile ward and
+				character's numbers come from the Character tab while "Use current character" is on, and are typed in otherwise. Vile ward and
 				the evilness list are GreaterMUD-only and not shown.
 			</p>
 		{:else}

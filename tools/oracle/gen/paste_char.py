@@ -791,6 +791,7 @@ def main():
     scn = scenario()
     scn["data"] = build_data()
     scn["db_extra"] = {"Items": EXTRA_ITEMS}
+    scn["paste_procs"] = True
     with open(OUT, "w", newline="\n") as f:
         json.dump(scn, f, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         f.write("\n")
