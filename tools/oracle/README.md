@@ -66,7 +66,7 @@ directly and through compiled VB source). Beyond it:
 `fixtures/scenarios/<family>.json` in, `fixtures/rules/<family>.json` out (byte-identical on a re-run;
 nothing time- or path-dependent is written). `check` is what `.github/workflows/oracle-check.yml`
 runs (manual). `check` builds families in parallel worker processes (`-j N`, default
-`min(4, cpu count)`, biggest scenario first) and prints each family as it finishes. Code: `harness.py` (environment, case runner, value coding), `shims.py` (recordsets,
+`min(4, cpu count)`, the slowest families split into pieces of cases) and prints each family as it finishes. Code: `harness.py` (environment, case runner, value coding), `shims.py` (recordsets,
 forms), `scenario.py` (grids and seeded samples).
 
 ### Scenario file

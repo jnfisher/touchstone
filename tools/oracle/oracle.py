@@ -211,12 +211,22 @@ def cmd_gen(args):
     return 0
 
 
-def _check_worker(fam):
-    """Build one family's fixture in a worker process; returns (family, bytes, seconds)."""
+# Rough CPU seconds of the slow families (`gen`, one core). Only used to decide how many pieces a family
+# is split into for `check`; a stale number costs speed, never correctness.
+COST_HINTS = {"combat": 150, "paste_party": 270, "textblock": 50, "monster_glue": 40, "monster_glue_char": 70,
+              "item_match": 40, "exp": 25, "gear2": 25, "gear": 20}
+PIECE_SECONDS = 45
+
+
+def _check_worker(task):
+    """Build one family (or one piece of it) in a worker process."""
     import time
     import harness
+    fam, k, n = task
     t = time.time()
-    return fam, harness.build_fixture(fam), time.time() - t
+    if n == 1:
+        return fam, k, n, harness.build_fixture(fam), time.time() - t
+    return fam, k, n, harness.build_fixture(fam, part=(k, n)), time.time() - t
 
 
 def cmd_check(args):
@@ -225,7 +235,7 @@ def cmd_check(args):
     import harness
     fams = args.families or harness.families()
     jobs = args.jobs or min(4, os.cpu_count() or 1)
-    jobs = max(1, min(jobs, len(fams)))
+    jobs = max(1, jobs)
     bad = 0
     t0 = time.time()
 
@@ -251,16 +261,30 @@ def cmd_check(args):
 
     if jobs == 1:
         for fam in fams:
-            bad += report(*_check_worker(fam))
+            fam, _, _, data, secs = _check_worker((fam, 0, 1))
+            bad += report(fam, data, secs)
     else:
         import multiprocessing
-        # Start the biggest scenarios first so the slowest family does not begin last; each result
-        # is compared as it arrives, so the output order follows completion.
-        order = sorted(fams, key=lambda f: -os.path.getsize(os.path.join(harness.scenario_dir(), f + ".json"))
-                       if os.path.exists(os.path.join(harness.scenario_dir(), f + ".json")) else 0)
+        tasks = []
+        for fam in fams:
+            n = max(1, min(jobs, -(-COST_HINTS.get(fam, 0) // PIECE_SECONDS)))
+            tasks += [(fam, k, n) for k in range(n)]
+        # the costliest pieces first, so the slowest family does not start last
+        tasks.sort(key=lambda t: -COST_HINTS.get(t[0], 0) / t[2])
+        pieces = {}
+        spent = {}
         with multiprocessing.get_context("fork").Pool(jobs) as pool:
-            for fam, data, secs in pool.imap_unordered(_check_worker, order, chunksize=1):
-                bad += report(fam, data, secs)
+            for fam, k, n, data, secs in pool.imap_unordered(_check_worker, tasks, chunksize=1):
+                spent[fam] = spent.get(fam, 0) + secs
+                if n == 1:
+                    bad += report(fam, data, secs)
+                    continue
+                pieces.setdefault(fam, []).append(data)
+                if len(pieces[fam]) == n:
+                    import harness as h
+                    head = pieces[fam][0][0]
+                    allc = [c for part in pieces[fam] for c in part[1]]
+                    bad += report(fam, h.assemble_fixture(head, allc), spent[fam])
     print("checked %d families in %.1fs (jobs=%d)" % (len(fams), time.time() - t0, jobs))
     return 1 if bad else 0
 

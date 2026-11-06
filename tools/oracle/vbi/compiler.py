@@ -252,6 +252,16 @@ class Compiler:
         if op in BIN_ARITH:
             fn = BIN_ARITH[op]
             return lambda fr: fn(a(fr), b(fr))
+        if op in ("and", "or"):
+            is_and = op == "and"
+
+            def flogic(fr):
+                x = a(fr)
+                y = b(fr)                   # VB evaluates both operands
+                if type(x) is bool and type(y) is bool:
+                    return (x and y) if is_and else (x or y)
+                return V.logic(op, x, y)
+            return flogic
         if op in LOGIC:
             return lambda fr: V.logic(op, a(fr), b(fr))
         if op in ("=", "<>") and (self._variant_vs_text(node.l, node.r, ctx) or self._variant_vs_text(node.r, node.l, ctx)):
@@ -504,6 +514,39 @@ class Compiler:
             if k in ("local", "clsvar", "global"):
                 base = self.name_value(target, ctx)
                 name = target.name
+
+                if len(argfns) == 1:
+                    a0 = argfns[0]
+
+                    def fi1(fr):
+                        arr = base(fr)
+                        v = a0(fr)
+                        if type(arr) is VBArray and type(v) in _INTS:
+                            b = arr.bounds           # one-dimensional, in range: read the element directly
+                            if b is not None and len(b) == 1:
+                                i = int(v) - b[0][0]
+                                if 0 <= i <= b[0][1] - b[0][0]:
+                                    return arr.data[i]
+                        return self.index_value(arr, [self.deref(v)], name)
+                    return fi1
+
+                if len(argfns) == 2:
+                    a0, a1 = argfns
+
+                    def fi2(fr):
+                        arr = base(fr)
+                        v = a0(fr)
+                        w = a1(fr)
+                        if type(arr) is VBArray and type(v) in _INTS and type(w) in _INTS:
+                            b = arr.bounds
+                            if b is not None and len(b) == 2:
+                                (l0, h0), (l1, h1) = b
+                                i = int(v)
+                                j = int(w)
+                                if l0 <= i <= h0 and l1 <= j <= h1:
+                                    return arr.data[(i - l0) * (h1 - l1 + 1) + (j - l1)]
+                        return self.index_value(arr, [self.deref(v), self.deref(w)], name)
+                    return fi2
 
                 def fi(fr):
                     arr = base(fr)

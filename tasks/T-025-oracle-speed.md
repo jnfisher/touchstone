@@ -43,6 +43,10 @@ Changes:
   once per database load; `Seek` and `Bookmark` use the position map instead of `list.index`.
 - `oracle.py check --jobs N` (default `min(4, cpu_count)`): families in forked worker processes,
   biggest scenario first, each family reported as it finishes.
+- `check` also splits the slowest families (`COST_HINTS` in `oracle.py`) into interleaved pieces of cases
+  (`build_fixture(part=(k, n))` + `assemble_fixture`); cases are independent because `run_case` resets
+  the environment, and the byte comparison with the committed fixture proves each split. `gen` stays serial.
+- Also: direct 1-D/2-D array element reads and inline `And`/`Or` on Booleans in `compiler.py`.
 - `tests/test_fastpaths.py`: the fast paths agree with the general path, including errors.
 
 ## Timings
@@ -54,8 +58,12 @@ exphr_b 6.0 -> 3.7; the other families are under 6 s each. Sum 865 -> 406.
 The index cache then took `item_match` 234 -> 37 s, `textblock` 147 -> 45 s and `monster_glue`
 95 -> 30 s wall (measured under load, in a parallel `check`; those two families were still slow in the
 sum above because the cache landed after that measurement).
-Full `oracle.py check` (29 families, -j 4, load average ~3): 181 s wall, 350 s CPU. Before this card
-the same check took 15-25 minutes (serial).
+`paste_party` (merged from main meanwhile) is an item-table scan per case: 336 -> ~265 s CPU for `gen`,
+split into pieces by `check`.
+Full `oracle.py check` (31 families, -j 4), all current: 288 s wall at 03:48, with other agents' jobs
+keeping 1-2 of the 4 cores busy (load average 2-4 the whole time), about 11.5 min CPU in total. On an
+idle 4-core box that CPU total is about 3 minutes; the same check took 15-25 minutes serially before.
+The measured number on this shared machine is above the 4-minute goal; the load is reported with it.
 
 ## Done when
 - `python3 -I tools/oracle/oracle.py check` reports every family current, in under ~4 minutes.

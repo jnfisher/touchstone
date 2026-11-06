@@ -42,3 +42,15 @@ class FastPaths(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SplitFamily(unittest.TestCase):
+    def test_pieces_assemble_to_the_whole(self):
+        import harness
+        try:
+            whole = harness.build_fixture("exphr_d")
+        except Exception as e:      # MME cache or database not fetched on this machine
+            self.skipTest(str(e))
+        parts = [harness.build_fixture("exphr_d", part=(k, 3)) for k in range(3)]
+        merged = harness.assemble_fixture(parts[0][0], [c for p in parts for c in p[1]])
+        self.assertEqual(whole, merged)
