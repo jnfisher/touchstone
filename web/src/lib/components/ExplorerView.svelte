@@ -257,7 +257,7 @@
 				class="bg-background border-input hover:bg-accent h-8 rounded-md border px-3 text-sm disabled:opacity-50"
 				disabled={selectedId === undefined || !(Number(selectedId) > 0)}
 				aria-pressed={on}
-				data-testid="compare-toggle"
+				data-testid="compare-add"
 				onclick={() => cmp.toggle(compareKind, Number(selectedId))}
 			>
 				{on ? 'Remove from compare' : 'Add to compare'}
