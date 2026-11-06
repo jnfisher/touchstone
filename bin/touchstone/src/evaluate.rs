@@ -128,11 +128,70 @@ pub struct Options {
     pub vs_mr: BoxText,
 }
 
+/// The global filter bar (card P4-21): `chkGlobalFilter` and the boxes of its frame.
+///
+/// The defaults are the case `ItemIsUsableByChar` answers true for at once (level 999, any class,
+/// any alignment), so a bar left alone filters nothing.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct GlobalFilterBody {
+    /// Mirror the loaded character (class, race, level, alignment, and its stats for the row
+    /// calculations); the class, race, level and alignment below are then ignored.
+    pub use_character: bool,
+    /// `cmbGlobalClass`: a class number, 0 for the first entry (any class).
+    pub class: i32,
+    /// `cmbGlobalRace`.
+    pub race: i32,
+    /// `txtGlobalLevel(0)`.
+    pub level: i32,
+    /// `cmbGlobalAlignment.ListIndex`: 0 any, 1 good, 2 neutral, 3 evil.
+    pub alignment: i32,
+    /// `txtGlobalMinLVL`.
+    pub min_item_level: i32,
+}
+
+impl Default for GlobalFilterBody {
+    fn default() -> Self {
+        Self {
+            use_character: false,
+            class: 0,
+            race: 0,
+            level: MAX_LEVEL,
+            alignment: 0,
+            min_item_level: 0,
+        }
+    }
+}
+
+impl GlobalFilterBody {
+    fn validate(&self) -> Result<(), (StatusCode, String)> {
+        let id = 0..=i32::from(i16::MAX);
+        if !id.contains(&self.class) || !id.contains(&self.race) {
+            return Err(bad("class and race must be record numbers"));
+        }
+        if !(0..=MAX_LEVEL).contains(&self.level) {
+            return Err(bad(format!("level must be 0 to {MAX_LEVEL}")));
+        }
+        if !(0..=MAX_LEVEL).contains(&self.min_item_level) {
+            return Err(bad(format!("min_item_level must be 0 to {MAX_LEVEL}")));
+        }
+        if !(0..=3).contains(&self.alignment) {
+            return Err(bad(
+                "alignment must be 0 (any), 1 (good), 2 (neutral) or 3 (evil)",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct EvaluateBody {
-    /// The loaded character; it is used when its `global_filter` is on, as `chkGlobalFilter`.
+    /// The loaded character; it is used when the global filter says so (`use_character`), or,
+    /// with no `global_filter` object, when its own `global_filter` is on, as `chkGlobalFilter`.
     pub character: Option<CharacterDto>,
+    /// The global filter bar; absent means the character's own flag decides.
+    pub global_filter: Option<GlobalFilterBody>,
     pub options: Options,
 }
 
@@ -418,6 +477,9 @@ struct Ctx<'a> {
     accuracy_tag: String,
     /// The global filter's class, race, level, alignment and minimum item level.
     who: GlobalChar,
+    /// `chkGlobalFilter.Value = 1`: the lists keep to what `who` can use. True too for a filter
+    /// that has its own values and no character (`state` is then `None`).
+    filter_on: bool,
     /// `nEquippedItem`.
     equipped_items: [i32; 20],
 }
@@ -447,7 +509,7 @@ fn filter_env<'a>(ctx: &'a Ctx<'a>) -> FilterEnv<'a> {
         profile: Profile::Stock,
         world: ctx.world,
         only_in_game: true,
-        global_filter: ctx.state.is_some(),
+        global_filter: ctx.filter_on,
         who: ctx.who,
         equipped: ctx.equipped_items,
         martial_skill: martial,
@@ -537,7 +599,7 @@ fn armour(ctx: &Ctx, opts: &Options) -> Built {
         ability: ability_filter(opts),
         ..ArmourFilter::default()
     };
-    let list = filter_armour(&filter_env(ctx), &filter, ctx.state.is_some());
+    let list = filter_armour(&filter_env(ctx), &filter, ctx.filter_on);
     let rows = list
         .entries
         .iter()
@@ -628,6 +690,12 @@ fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
 /// character that is not well formed.
 pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, ApiError> {
     req.options.validate()?;
+    if let Some(g) = &req.global_filter {
+        g.validate()?;
+        if g.use_character && req.character.is_none() {
+            return Err(bad("use_character needs a character"));
+        }
+    }
     let nmr = nmr_ver(&world.info.nmr_version);
     let avg = compute_avg_level_max_stats(Profile::Stock, &world.races).all_stats;
 
@@ -635,6 +703,18 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
     let mut level_text = "0".to_owned();
     let mut who = GlobalChar::default();
     let mut equipped_items = [0; 20];
+    let mut filter_on = false;
+    if let Some(g) = req.global_filter.as_ref().filter(|g| !g.use_character) {
+        // the bar's own values: the character, if one came along, stays out of it
+        filter_on = true;
+        who = GlobalChar {
+            level: g.level,
+            class: g.class,
+            race: g.race,
+            alignment: g.alignment,
+            min_item_level: g.min_item_level,
+        };
+    }
     if let Some(dto) = &req.character {
         let ch = dto.to_character().map_err(bad)?;
         if ch.class.is_none() || ch.race.is_none() {
@@ -643,10 +723,14 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
                 "pick a class and race".into(),
             ));
         }
-        if dto.global_filter {
+        let (use_char, min_item_level) = match &req.global_filter {
+            Some(g) => (g.use_character, g.min_item_level),
+            None => (dto.global_filter, dto.options.min_item_level),
+        };
+        if use_char {
             let opts = PipelineOptions {
                 hide_class_race: dto.options.hide_class_race,
-                min_item_level: dto.options.min_item_level,
+                min_item_level,
                 dat_ver_caption: world.info.dat_file_version.clone(),
                 nmr_ver: nmr,
                 avg_level_max_all_stats: avg,
@@ -659,13 +743,14 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
                 )
             })?;
             state = Some(st);
+            filter_on = true;
             level_text = ch.level.to_string();
             who = GlobalChar {
                 level: ch.level,
                 class: ch.class.unwrap_or(0),
                 race: ch.race.unwrap_or(0),
                 alignment: i32::from(ch.alignment),
-                min_item_level: dto.options.min_item_level,
+                min_item_level,
             };
             equipped_items = ch.equipped;
         }
@@ -682,6 +767,7 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
         level_text,
         accuracy_tag,
         who,
+        filter_on,
         equipped_items,
     };
     let built = match tab {
