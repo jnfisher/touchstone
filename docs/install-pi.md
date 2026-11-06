@@ -47,7 +47,8 @@ sudo install -m 0644 touchstone.example.toml /etc/touchstone/touchstone.toml
 ## The user and the database permissions
 
 Create a dedicated user with no login and no home, and add it to the group that owns the game's
-files (check with `ls -l` on the database; `mud` below is a placeholder):
+files (check with `ls -l` on the database; `quicksilver service install --system` runs the game as
+the `quicksilver` user and group):
 
 ```sh
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin touchstone
