@@ -246,7 +246,7 @@ pub fn refresh_all(
             hp_bonus: stats.stat[5],
         },
     );
-    let magic_res = refresh_magic_res(t[1], t[2], stats.plus_mr);
+    let magic_res = refresh_magic_res(profile, t[1], t[2], stats.plus_mr);
     let picklocks = refresh_picklocks(profile, f64::from(level), t[3], t[1], t[5], stats.stat[22]);
     let bless_mana = bless_mana_per_round(profile, world, f64::from(level), &ch.bless);
 

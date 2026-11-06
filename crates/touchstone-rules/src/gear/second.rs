@@ -181,13 +181,14 @@ fn run(input: &GearInput, q: &SecondHalfInput, s: &mut CharStats) -> Res<()> {
     if hide {
         s.put(24, f64::from(s.plus_mr));
     } else {
-        let mr = calc_mr(to_long(t[1])?, to_long(t[2])?, s.plus_mr);
+        let mr = calc_mr(input.profile, to_long(t[1])?, to_long(t[2])?, s.plus_mr);
         s.put(24, f64::from(mr));
     }
 
     // dodge
     if (level > 0 || t[5] > 0.0 || t[3] > 0.0) && !hide {
         let d = calc_dodge(
+            input.profile,
             to_integer(level)?,
             cint_f(t[3])?,
             cint_f(t[5])?,

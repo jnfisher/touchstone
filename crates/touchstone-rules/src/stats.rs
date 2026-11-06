@@ -545,11 +545,18 @@ fn mana_regen_steps(
 }
 
 /// Port of modMMudFunc CalcMR: magic resistance from intellect and willpower; 0 on overflow.
+///
+/// Quicksilver (R12) counts a third of the stat part above `mr_stat_knee`; the modifiers (gear and
+/// spells) are added after the knee, as in stock.
 #[must_use]
-pub fn calc_mr(intellect: i32, willpower: i32, modifiers: i32) -> i32 {
+pub fn calc_mr(profile: Profile, intellect: i32, willpower: i32, modifiers: i32) -> i32 {
     let run = || -> Result<i32, Vb6Error> {
         let sum = vb::add_i32(intellect, vb::mul_i32(willpower, 3)?)?;
-        vb::clng(vb::fix(f64::from(sum) / 4.0) + f64::from(modifiers))
+        let mut stat_part = vb::fix(f64::from(sum) / 4.0);
+        if let Profile::Quicksilver(b) = profile {
+            stat_part = Balance::knee_third(stat_part as i64, b.mr_stat_knee) as f64;
+        }
+        vb::clng(stat_part + f64::from(modifiers))
     };
     run().unwrap_or(0)
 }

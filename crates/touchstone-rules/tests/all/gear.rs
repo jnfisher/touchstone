@@ -541,8 +541,14 @@ fn second_input(header: &Value, case: &Value) -> SecondHalfInput {
     q
 }
 
-fn run_calc_both_halves(world: &World, header: &Value, case: &Value) -> Result<(), String> {
-    let input = gear_input(world, header, case)?;
+fn run_calc_both_halves(
+    profile: Profile,
+    world: &World,
+    header: &Value,
+    case: &Value,
+) -> Result<(), String> {
+    let mut input = gear_input(world, header, case)?;
+    input.profile = profile;
     let got =
         calc_character_stats(&input, &second_input(header, case)).map_err(|e| format!("{e:?}"))?;
     let out = &case["outputs"];
@@ -603,11 +609,16 @@ fn run_calc_both_halves(world: &World, header: &Value, case: &Value) -> Result<(
 // cut at the call to RefreshMagic.
 #[test]
 fn gear2_cases_match_the_oracle() {
+    check_gear2(Profile::Stock);
+}
+
+/// Shared with the Quicksilver identity harness.
+pub(crate) fn check_gear2(profile: Profile) {
     let fx = fixture::load("gear2");
     let w = world(&fx.header["data"]);
     let mut fails = Vec::new();
     for case in &fx.cases {
-        if let Err(e) = run_calc_both_halves(&w, &fx.header, case) {
+        if let Err(e) = run_calc_both_halves(profile, &w, &fx.header, case) {
             fails.push(format!("{}: {e}", case["id"].as_str().unwrap()));
         }
     }
