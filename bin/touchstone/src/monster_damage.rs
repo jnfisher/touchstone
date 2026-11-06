@@ -297,6 +297,7 @@ pub fn calculate(
     sim_rounds: i32,
 ) -> Result<Calculated, (StatusCode, String)> {
     let world = &loaded.world;
+    let profile = loaded.profile;
     let load = loaded.info.load_count;
     let done = state
         .monster_damage()
@@ -314,10 +315,17 @@ pub fn calculate(
         party: body.party.clone(),
         ..MonsterControls::default()
     };
-    let (ctx, chr, desc) = character_side(world, &body.character, &controls, state, sim_rounds)?;
+    let (ctx, chr, desc) = character_side(
+        profile,
+        world,
+        &body.character,
+        &controls,
+        state,
+        sim_rounds,
+    )?;
     let party = controls.party();
     let env = GlueEnv {
-        profile: Profile::Stock,
+        profile,
         nmr_ver: ctx.nmr,
     };
     // MME's generator is one for the whole session; a calculation starts it from the initial state so that the same
@@ -392,6 +400,7 @@ pub(crate) fn char_defense_description(
 /// The character as the sim and the stale check read it: the prepared request, `CharSimInputs` and
 /// `SetCharDefenseDescription`'s text (`None` where MME exits without one: no class).
 fn character_side<'a>(
+    profile: Profile,
     world: &'a World,
     character: &CharacterDto,
     controls: &MonsterControls,
@@ -409,7 +418,7 @@ fn character_side<'a>(
             ..Options::default()
         },
     };
-    let ctx = prepare(world, &req)?;
+    let ctx = prepare(profile, world, &req)?;
     let exp = run_settings(state, Some(character)).0;
     let snap = Snapshot::uncalculated(world);
     let (chr, desc) = with_monster_env(

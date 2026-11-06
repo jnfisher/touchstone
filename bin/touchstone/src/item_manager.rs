@@ -12,6 +12,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use touchstone_model::World;
+use touchstone_rules::Profile;
 use touchstone_rules::game_text::ListRow;
 use touchstone_rules::item_manager::{self, action};
 use touchstone_rules::paste_char::{Prompter, VB_NO, VB_YES};
@@ -58,6 +59,7 @@ pub struct ItemManagerResponse {
 }
 
 fn load_rows(
+    profile: Profile,
     world: &World,
     req: &ItemManagerRequest,
 ) -> Result<(Vec<ListRow>, touchstone_rules::character::Character), String> {
@@ -68,7 +70,7 @@ fn load_rows(
     let rows = match &req.rows {
         Some(r) if r.len() > MAX_ROWS => return Err(format!("at most {MAX_ROWS} rows")),
         Some(r) => r.iter().map(row_from_json).collect(),
-        None => rows_from_stacks(world, &req.character, &ch),
+        None => rows_from_stacks(profile, world, &req.character, &ch),
     };
     Ok((rows, ch))
 }
@@ -126,8 +128,12 @@ fn finish(
 }
 
 /// `LoadCharacter`'s list, sorted by Value as the Item Manager shows a fresh paste.
-pub fn rows(world: &World, req: &ItemManagerRequest) -> Result<ItemManagerResponse, String> {
-    let (mut rows, _) = load_rows(world, req)?;
+pub fn rows(
+    profile: Profile,
+    world: &World,
+    req: &ItemManagerRequest,
+) -> Result<ItemManagerResponse, String> {
+    let (mut rows, _) = load_rows(profile, world, req)?;
     if req.rows.is_none() {
         sort_by_value_desc(&mut rows);
     }
@@ -142,11 +148,15 @@ pub fn rows(world: &World, req: &ItemManagerRequest) -> Result<ItemManagerRespon
 }
 
 /// `LV_SetActionCell` for the Action buttons.
-pub fn action(world: &World, req: &ItemManagerRequest) -> Result<ItemManagerResponse, String> {
+pub fn action(
+    profile: Profile,
+    world: &World,
+    req: &ItemManagerRequest,
+) -> Result<ItemManagerResponse, String> {
     if !(action::DROP_HIDE..=action::CLEAR).contains(&req.action) {
         return Err(format!("{} is not an Action button", req.action));
     }
-    let (mut rows, _) = load_rows(world, req)?;
+    let (mut rows, _) = load_rows(profile, world, req)?;
     let sel = selection(req, rows.len());
     let mut ask = Asker::new(&req.answers);
     let mut weight = req.character.add_weight;
@@ -155,7 +165,7 @@ pub fn action(world: &World, req: &ItemManagerRequest) -> Result<ItemManagerResp
             ask.msgbox(t, VB_YES) == VB_YES
         });
     if ask.pending.is_some() {
-        return Ok(waiting(req, &load_rows(world, req)?.0, ask));
+        return Ok(waiting(req, &load_rows(profile, world, req)?.0, ask));
     }
     let mut character = req.character.clone();
     character.add_weight = weight;
@@ -175,15 +185,19 @@ pub fn action(world: &World, req: &ItemManagerRequest) -> Result<ItemManagerResp
 }
 
 /// `LV_DeleteSelected`.
-pub fn delete(world: &World, req: &ItemManagerRequest) -> Result<ItemManagerResponse, String> {
-    let (mut rows, _) = load_rows(world, req)?;
+pub fn delete(
+    profile: Profile,
+    world: &World,
+    req: &ItemManagerRequest,
+) -> Result<ItemManagerResponse, String> {
+    let (mut rows, _) = load_rows(profile, world, req)?;
     let sel = selection(req, rows.len());
     let mut ask = Asker::new(&req.answers);
     let out = item_manager::delete_selected(&mut rows, &sel, &mut || {
         ask.msgbox("Are you sure you want to delete the selected rows?", VB_NO) == VB_YES
     });
     if ask.pending.is_some() {
-        return Ok(waiting(req, &load_rows(world, req)?.0, ask));
+        return Ok(waiting(req, &load_rows(profile, world, req)?.0, ask));
     }
     if out.declined {
         return finish(
@@ -212,7 +226,11 @@ pub struct CopyResponse {
 }
 
 /// `LV_CopySelectedActionsToClipboard`.
-pub fn copy(world: &World, req: &ItemManagerRequest) -> Result<CopyResponse, String> {
+pub fn copy(
+    _profile: Profile,
+    world: &World,
+    req: &ItemManagerRequest,
+) -> Result<CopyResponse, String> {
     let rows: Vec<ListRow> = req
         .rows
         .as_deref()
@@ -230,11 +248,16 @@ pub fn copy(world: &World, req: &ItemManagerRequest) -> Result<CopyResponse, Str
 }
 
 /// "Add to Item Manager": `LV_AddRowByItemNumber(item, "Manual", "MANUAL", 1)` for a getable item.
-pub fn add(world: &World, req: &ItemManagerRequest) -> Result<ItemManagerResponse, String> {
-    let (mut rows, ch) = load_rows(world, req)?;
+pub fn add(
+    profile: Profile,
+    world: &World,
+    req: &ItemManagerRequest,
+) -> Result<ItemManagerResponse, String> {
+    let (mut rows, ch) = load_rows(profile, world, req)?;
     let mut messages = Vec::new();
     if item_manager::item_is_getable(world, req.item) {
         let log = add_rows_by_item(
+            profile,
             world,
             &req.character,
             &ch,
@@ -267,7 +290,7 @@ macro_rules! route {
             Body(req): Body<ItemManagerRequest>,
         ) -> ApiResult {
             let loaded = state.current();
-            json(&$f(&loaded.world, &req).map_err(bad)?)
+            json(&$f(loaded.profile, &loaded.world, &req).map_err(bad)?)
         }
     };
 }

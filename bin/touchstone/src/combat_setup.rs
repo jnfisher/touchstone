@@ -52,6 +52,7 @@ fn unprocessable(msg: &str) -> ApiError {
 
 /// The character, evaluated as the Char tab does; the dialog needs its panels and weapon globals.
 fn evaluate_character(
+    profile: Profile,
     world: &World,
     dto: &CharacterDto,
 ) -> Result<(Character, CharacterState), ApiError> {
@@ -65,11 +66,10 @@ fn evaluate_character(
         item_manager: dto.gear_rows(world),
         dat_ver_caption: world.info.dat_file_version.clone(),
         nmr_ver: nmr_ver(&world.info.nmr_version),
-        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
-            .all_stats,
+        avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
         ..PipelineOptions::default()
     };
-    let st = refresh_all(Profile::Stock, world, &ch, &opts)
+    let st = refresh_all(profile, world, &ch, &opts)
         .map_err(|e| unprocessable(&format!("cannot evaluate this character: {e}")))?;
     Ok((ch, st))
 }
@@ -129,13 +129,14 @@ pub struct Options {
 
 /// Port of frmPopUpOptions `RefreshSpells` and `RefreshItems`, with `bOnlyInGame` on.
 pub fn options(
+    profile: Profile,
     world: &World,
     dto: &CharacterDto,
     recovery_only: bool,
 ) -> Result<Options, ApiError> {
-    let (ch, st) = evaluate_character(world, dto)?;
+    let (ch, st) = evaluate_character(profile, world, dto)?;
     let class = ch.class.unwrap_or(0);
-    let env = usable_env(world);
+    let env = usable_env(profile, world);
     let mut out = Options {
         nmr_ver: nmr_ver(&world.info.nmr_version),
         recovery_only,
@@ -393,6 +394,7 @@ fn caster(t: &touchstone_rules::character::CharacterProfile, overhead: f64) -> S
 /// Port of frmPopUpOptions `RefreshCombatStats`.
 #[allow(clippy::too_many_lines)] // one MME procedure, in its order
 fn combat_stats(
+    profile: Profile,
     world: &World,
     ch: &Character,
     st: &CharacterState,
@@ -469,13 +471,12 @@ fn combat_stats(
     };
     let t_char = st.profile_for(world, mud, 0);
 
-    let names = AbilityEnv::for_world(world, Profile::Stock);
+    let names = AbilityEnv::for_world(world, profile);
     let cast_env = SpellCastEnv {
-        profile: Profile::Stock,
+        profile,
         spells: &world.spells,
         text: &names,
-        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
-            .all_stats,
+        avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
     };
     let max_mana = vb::clng(inputs.max_mana)?;
 
@@ -555,12 +556,12 @@ fn combat_stats(
         accuracy_tag: &accuracy_tag,
     };
     let weapon = inputs.weapon_number[0];
-    let swing = |profile: &touchstone_rules::character::CharacterProfile, mud: AttackTypeMud, w| {
+    let swing = |cp: &touchstone_rules::character::CharacterProfile, mud: AttackTypeMud, w| {
         let mut casts = String::new();
         calculate_attack(
-            Profile::Stock,
+            profile,
             &attack_env,
-            &CharacterState::attack_profile_of(profile),
+            &CharacterState::attack_profile_of(cp),
             &AttackRequest {
                 attack_type: mud as i32,
                 weapon_number: w,
@@ -675,19 +676,19 @@ fn combat_stats(
 /// `GetCurrentAttackName`, short (the button) and long (a description), for a character's attack.
 #[must_use]
 pub fn attack_names(
+    profile: Profile,
     world: &World,
     ch: &Character,
     st: &CharacterState,
     recovery_only: bool,
 ) -> (String, String) {
     let inputs = st.profile_inputs();
-    let names = AbilityEnv::for_world(world, Profile::Stock);
+    let names = AbilityEnv::for_world(world, profile);
     let party = PartyFilter::default();
     let ctx = Context {
-        profile: Profile::Stock,
+        profile,
         nmr_ver: nmr_ver(&world.info.nmr_version),
-        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
-            .all_stats,
+        avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
         hide_record_numbers: false,
         recovery_only,
         classes: &world.classes,
@@ -707,22 +708,23 @@ pub fn attack_names(
 
 /// The dialog's numbers for a draft choice. `character.attack` is the saved choice.
 pub fn preview(
+    profile: Profile,
     world: &World,
     dto: &CharacterDto,
     draft: &AttackDto,
     recovery_only: bool,
 ) -> Result<Preview, ApiError> {
     check_draft(draft)?;
-    let (ch, st) = evaluate_character(world, dto)?;
+    let (ch, st) = evaluate_character(profile, world, dto)?;
     let applied = apply_choice(&dto.attack, draft);
     let (attack_name, attack_name_long) = {
         let mut next = dto.clone();
         next.attack = applied.clone();
         let next = next.to_character().map_err(bad)?;
         // the profile for the name is the saved one's; only the choice differs
-        attack_names(world, &next, &st, recovery_only)
+        attack_names(profile, world, &next, &st, recovery_only)
     };
-    let (attack, heal, error_text) = match combat_stats(world, &ch, &st, draft) {
+    let (attack, heal, error_text) = match combat_stats(profile, world, &ch, &st, draft) {
         Ok(s) => (s.attack, s.heal, None),
         // MME's handler leaves the captions as they were
         Err(e) => (
@@ -755,7 +757,12 @@ pub async fn options_route(
     Body(req): Body<OptionsReq>,
 ) -> ApiResult {
     let loaded: Arc<_> = state.current();
-    json(&options(&loaded.world, &req.character, req.recovery_only)?)
+    json(&options(
+        loaded.profile,
+        &loaded.world,
+        &req.character,
+        req.recovery_only,
+    )?)
 }
 
 #[derive(Deserialize)]
@@ -773,8 +780,10 @@ pub async fn preview_route(
     Body(req): Body<PreviewReq>,
 ) -> ApiResult {
     let loaded = state.current();
+    let profile = loaded.profile;
     let draft = req.draft.unwrap_or_else(|| req.character.attack.clone());
     json(&preview(
+        profile,
         &loaded.world,
         &req.character,
         &draft,

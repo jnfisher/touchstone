@@ -75,6 +75,7 @@ fn parts() -> WorldParts {
         info: Info {
             nmr_version: "v1".into(),
             dat_file_version: "v1".into(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),

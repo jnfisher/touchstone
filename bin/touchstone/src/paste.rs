@@ -307,6 +307,7 @@ pub struct PasteCharacterResponse {
 /// What a charm is worth to the shops: the charm tag and its bonus from the gear and bless
 /// bonuses, as the Char tab holds them when a paste starts.
 fn charm_of(
+    profile: Profile,
     world: &World,
     ch: &Character,
     min_item_level: i32,
@@ -321,11 +322,10 @@ fn charm_of(
         item_manager,
         dat_ver_caption: world.info.dat_file_version.clone(),
         nmr_ver: nmr_ver(&world.info.nmr_version),
-        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
-            .all_stats,
+        avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
         ..PipelineOptions::default()
     };
-    match refresh_all(Profile::Stock, world, ch, &opts) {
+    match refresh_all(profile, world, ch, &opts) {
         Ok(st) => (
             vb::cstr(st.stats.stat_with_bonus[5]),
             st.stats.label_bonus[5],
@@ -370,6 +370,7 @@ fn stat_texts(stats: &[i32; 6]) -> [String; 6] {
 
 /// The Char tab a paste starts from.
 fn start_state(
+    profile: Profile,
     world: &World,
     req: &PasteCharacterRequest,
     ch: Character,
@@ -378,6 +379,7 @@ fn start_state(
 ) -> PasteState {
     let (combos, sel) = combos_for(&ch.equipped);
     let (charm_tag, charm_bonus) = charm_of(
+        profile,
         world,
         &ch,
         req.character.options.min_item_level,
@@ -401,8 +403,19 @@ fn start_state(
 }
 
 /// `LoadCharacter`'s Item Manager: the carried rows, then the stashed ones.
-pub(crate) fn rows_from_stacks(world: &World, dto: &CharacterDto, ch: &Character) -> Vec<ListRow> {
-    let (charm_tag, _) = charm_of(world, ch, dto.options.min_item_level, dto.gear_rows(world));
+pub(crate) fn rows_from_stacks(
+    profile: Profile,
+    world: &World,
+    dto: &CharacterDto,
+    ch: &Character,
+) -> Vec<ListRow> {
+    let (charm_tag, _) = charm_of(
+        profile,
+        world,
+        ch,
+        dto.options.min_item_level,
+        dto.gear_rows(world),
+    );
     let who = who_for(ch);
     let menv = MatchEnv {
         world,
@@ -424,6 +437,7 @@ pub(crate) fn rows_from_stacks(world: &World, dto: &CharacterDto, ch: &Character
 /// `LV_AddRowByItemNumber` for the character's current charm and usability; the handled errors
 /// MME would report come back as events.
 pub(crate) fn add_rows_by_item(
+    profile: Profile,
     world: &World,
     dto: &CharacterDto,
     ch: &Character,
@@ -431,6 +445,7 @@ pub(crate) fn add_rows_by_item(
     adds: &[(i32, &str, &str, i32)],
 ) -> Vec<Event> {
     let (charm_tag, _) = charm_of(
+        profile,
         world,
         ch,
         dto.options.min_item_level,
@@ -564,6 +579,7 @@ fn events_json(events: &[PasteEvent], prompts: &[Prompt]) -> Vec<EventJson> {
 
 /// The paste, with the Char-tab reset MME does in the middle of it.
 pub fn paste_character(
+    profile: Profile,
     world: &World,
     req: &PasteCharacterRequest,
 ) -> Result<PasteCharacterResponse, String> {
@@ -577,9 +593,9 @@ pub fn paste_character(
     let char_loaded = req.char_loaded.unwrap_or(!ch.name.is_empty());
     let rows = match &req.rows {
         Some(r) => r.iter().map(row_from_json).collect(),
-        None => rows_from_stacks(world, &req.character, &ch),
+        None => rows_from_stacks(profile, world, &req.character, &ch),
     };
-    let mut st = start_state(world, req, ch, rows, char_loaded);
+    let mut st = start_state(profile, world, req, ch, rows, char_loaded);
     let (mut out, ask) = run_once(world, req, &mut st, &req.answers);
     let mut run = Run {
         st,
@@ -619,7 +635,7 @@ pub fn paste_character(
         base = blank_character(&req.character);
         let blank = base.to_character()?;
         let rows = run.st.rows.clone();
-        let mut st2 = start_state(world, req, blank, rows, false);
+        let mut st2 = start_state(profile, world, req, blank, rows, false);
         // the reset also puts the combos and what is in them back to empty
         st2.sel = [0; EQUIP_SLOTS];
         let (out2, ask2) = run_once(world, req, &mut st2, &answers2);
@@ -682,7 +698,8 @@ pub async fn character_route(
     Body(req): Body<PasteCharacterRequest>,
 ) -> ApiResult {
     let loaded = state.current();
-    json(&paste_character(&loaded.world, &req).map_err(bad)?)
+    let profile = loaded.profile;
+    json(&paste_character(profile, &loaded.world, &req).map_err(bad)?)
 }
 
 // ---------- party paste ----------
@@ -848,7 +865,11 @@ fn race_list(world: &World) -> Vec<ListEntry> {
     .collect()
 }
 
-pub fn paste_party(world: &World, req: &PastePartyRequest) -> Result<PastePartyResponse, String> {
+pub fn paste_party(
+    profile: Profile,
+    world: &World,
+    req: &PastePartyRequest,
+) -> Result<PastePartyResponse, String> {
     if req.text.len() > MAX_TEXT {
         return Err(format!("the paste is longer than {MAX_TEXT} bytes"));
     }
@@ -875,7 +896,7 @@ pub fn paste_party(world: &World, req: &PastePartyRequest) -> Result<PastePartyR
     let classes = class_list(world);
     let races = race_list(world);
     let env = paste_party::PasteEnv {
-        profile: Profile::Stock,
+        profile,
         items: &world.items,
         classes: &world.classes,
         races: &world.races,
@@ -885,8 +906,7 @@ pub fn paste_party(world: &World, req: &PastePartyRequest) -> Result<PastePartyR
         only_in_game: req.only_in_game.unwrap_or(true),
         use_second_wrist: req.second_wrist.unwrap_or(true),
         nmr_ver: nmr_ver(&world.info.nmr_version),
-        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
-            .all_stats,
+        avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
         dat_ver_caption: &world.info.dat_file_version,
         no_data_continue: req.no_data_continue.unwrap_or(false),
     };
@@ -943,7 +963,8 @@ pub async fn party_route(
     Body(req): Body<PastePartyRequest>,
 ) -> ApiResult {
     let loaded = state.current();
-    json(&paste_party(&loaded.world, &req).map_err(bad)?)
+    let profile = loaded.profile;
+    json(&paste_party(profile, &loaded.world, &req).map_err(bad)?)
 }
 
 // ---------- party: Continue ----------

@@ -146,6 +146,7 @@ pub(crate) fn world(data: &Value) -> World {
         info: Info {
             nmr_version: String::new(),
             dat_file_version: String::new(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),
