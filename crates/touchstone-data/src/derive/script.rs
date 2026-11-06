@@ -75,13 +75,17 @@ fn starts_with_keyword(seg: &str) -> bool {
         .is_some_and(|w| keyword(w).is_some())
 }
 
-/// Whether any clause of the text is a keyword other than `message` and `addevil`.
+/// Whether any clause of the text starts with a keyword other than `message` and `addevil`. The
+/// word has to be the keyword itself: prose such as "price, you may rest" is no clause.
 pub(super) fn has_action(text: &str) -> bool {
     text.split('\n')
         .flat_map(|l| l.split(':'))
         .filter_map(|seg| seg.split_whitespace().next())
-        .filter_map(keyword)
-        .any(|k| k != "message" && k != "addevil")
+        .any(|w| {
+            KEYWORDS
+                .iter()
+                .any(|k| w.eq_ignore_ascii_case(k) && *k != "message" && *k != "addevil")
+        })
 }
 
 /// A signed whole number: an optional sign and ASCII digits, nothing else.
