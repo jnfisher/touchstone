@@ -851,6 +851,9 @@ class Compiler:
 
                     def sa(fr, value):
                         arr = base(fr)
+                        if isinstance(arr, ExtObject) and argfns:      # `dict(key) = value` on a shim object
+                            arr.vb_set("", [self.deref(a(fr)) for a in argfns], value)
+                            return
                         if not isinstance(arr, VBArray):
                             raise VBError(13)
                         if not argfns:

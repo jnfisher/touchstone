@@ -309,6 +309,8 @@ class ControlShim(ExtObject):
     Text/Caption/Tag, -1 for ListIndex, 0 otherwise). Indexed properties (ItemData, List) hold a
     dict keyed by index; a control-array element is a sub-control."""
 
+    COMBO_METHODS = ("additem", "clear")
+
     def __init__(self, props=None, decode=_plain):
         self.props = {}
         self.items = {}
@@ -319,24 +321,40 @@ class ControlShim(ExtObject):
 
     def load(self, key, v):
         kl = key.lower()
-        if isinstance(v, list):
+        if kl == "items" and isinstance(v, list):
+            # a combo given by its ItemData alone: {"Items": [0, 1813, 929]} (the List texts are never read)
+            self.items["list"] = {i: str(x) for i, x in enumerate(v)}
+            self.items["itemdata"] = {i: self.decode(x) for i, x in enumerate(v)}
+        elif isinstance(v, list):
             self.items[kl] = {i: self.decode(x) for i, x in enumerate(v)}
         elif isinstance(v, dict) and v.get("t") is None:
             self.items[kl] = {int(i): self.decode(x) for i, x in v.items()}
         else:
             self.props[kl] = self.decode(v)
 
+    def _combo_method(self, n, args):
+        """ComboBox/ListBox methods: AddItem text[, index] (NewIndex is where it landed) and Clear."""
+        lst = self.items.setdefault("list", {})
+        data = self.items.setdefault("itemdata", {})
+        rows = [(lst[i], data.get(i, V.I32(0))) for i in sorted(lst)]
+        if n == "clear":
+            rows = []
+            at = None
+        else:
+            at = V.int_value(args[1]) if len(args) > 1 and args[1] is not V.MISSING else len(rows)
+            if at < 0 or at > len(rows):
+                raise VBError(380, "Invalid property value")
+            rows.insert(at, (V.c_str(args[0]), V.I32(0)))
+        self.items["list"] = {i: r[0] for i, r in enumerate(rows)}
+        self.items["itemdata"] = {i: r[1] for i, r in enumerate(rows)}
+        if at is not None:
+            self.props["newindex"] = V.I32(at)
+        return None
+
     def vb_get(self, name, args):
         n = name.lower()
-        if n == "additem" and args:
-            # a list control gains an entry (at the end, or at the given index); NewIndex tells where it went
-            lst = self.items.setdefault("list", {})
-            at = V.int_value(args[1]) if len(args) > 1 else (max(lst) + 1 if lst else 0)
-            for k in sorted((k for k in lst if k >= at), reverse=True):
-                lst[k + 1] = lst.pop(k)
-            lst[at] = V.c_str(args[0])
-            self.props["newindex"] = V.I32(at)
-            return None
+        if n in ("additem", "clear") and n in self.COMBO_METHODS:
+            return self._combo_method(n, args)
         if args:
             tbl = self.items.get(n)
             i = V.int_value(args[0])
@@ -686,9 +704,20 @@ class ControlArrayShim(ExtObject):
         self.members = members
 
     def vb_get(self, name, args):
-        if name.lower() == "count":
+        n = name.lower()
+        if n == "count":
             return V.I32(max(self.members) + 1 if self.members else 0)
+        if n == "ubound":
+            return V.I16(max(self.members) if self.members else -1)
+        if n == "item":
+            i = V.int_value(args[0])
+            if i not in self.members:
+                raise VBError(340, "Control array element does not exist")
+            return self.members[i]
         raise VBError(438)
+
+    def vb_default(self, args):
+        return self.vb_get("item", args)
 
 
 class NoopShim(ExtObject):
@@ -807,15 +836,18 @@ class ClipboardShim(ExtObject):
 
 
 class FormsCollection(ExtObject):
-    """`Forms`: no form is ever loaded in the oracle."""
+    """`Forms`: no form is loaded unless a case names some in `loaded_forms` (FormIsLoaded walks it)."""
+
+    def __init__(self, names=()):
+        self.forms = [ControlShim({"Name": n}) for n in names]
 
     def vb_get(self, name, args):
         if name.lower() == "count":
-            return V.I16(0)
+            return V.I16(len(self.forms))
         raise VBError(438)
 
     def vb_iter(self):
-        return iter(())
+        return iter(self.forms)
 
     def vb_default(self, args):
         raise VBError(9)
@@ -840,3 +872,119 @@ def msgbox_result(buttons):
     default = (b >> 8) & 3
     table = {0: (1,), 1: (1, 2), 2: (3, 4, 5), 3: (6, 7, 2), 4: (6, 7), 5: (4, 2)}.get(base, (1,))
     return V.I16(table[min(default, len(table) - 1)])
+
+
+class DictionaryShim(ExtObject):
+    """Scripting.Dictionary: insertion-ordered, binary (case-sensitive) text keys, numeric keys by value.
+    Only what MME's lair code touches: Exists, Add, Count, Keys, Item (read and write)."""
+
+    vb_typename = "Dictionary"
+
+    def __init__(self):
+        self.items = {}
+
+    @staticmethod
+    def _k(v):
+        return v if isinstance(v, str) else V.as_float(v)
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "exists":
+            return self._k(args[0]) in self.items
+        if n == "add":
+            k = self._k(args[0])
+            if k in self.items:
+                raise VBError(457, "This key is already associated with an element of this collection")
+            self.items[k] = (args[0], args[1])
+            return None
+        if n == "count":
+            return V.I32(len(self.items))
+        if n == "keys":
+            return _KeyList([kv[0] for kv in self.items.values()])
+        if n == "item":
+            return self.vb_default(args)
+        raise VBError(438)
+
+    def vb_set(self, name, args, value):
+        if name.lower() in ("", "item"):
+            k = self._k(args[0])
+            self.items[k] = (self.items[k][0] if k in self.items else args[0], value)
+            return
+        raise VBError(438)
+
+    def vb_default(self, args):
+        k = self._k(args[0])
+        if k not in self.items:
+            self.items[k] = (args[0], "")
+        return self.items[k][1]
+
+
+class _KeyList(ExtObject):
+    def __init__(self, keys):
+        self.keys = keys
+
+    def vb_iter(self):
+        return iter(self.keys)
+
+
+class FakeMonsters(ExtObject):
+    """tabMonsters positioned on one invented row: only `.Fields("name")` reads (lair cases)."""
+
+    def __init__(self, row):
+        self.row = row
+
+    def vb_get(self, name, args):
+        if name.lower() == "fields":
+            return _field(self.row, args[0]) if args else _FakeFields(self.row)
+        raise VBError(438)
+
+
+def _field(row, name):
+    v = row[V.c_str(name)]
+    return V.mk_i32(v) if isinstance(v, int) else v      # DAO hands back a Long for an integer column
+
+
+class _FakeFields(ExtObject):
+    def __init__(self, row):
+        self.row = row
+
+    def vb_default(self, args):
+        return _field(self.row, args[0])
+
+
+class FakeDB(ExtObject):
+    """`DB` for CalculateAverageLairs: OpenRecordset of its Monsters query answers with the case's
+    invented rows, filtered the way the query's Like "*(lair)*" does (Jet: case-insensitive)."""
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    def vb_get(self, name, args):
+        if name.lower() == "openrecordset":
+            return FakeRows([r for r in self.rows if "(lair)" in r["Summoned By"].lower()])
+        raise VBError(438)
+
+
+class FakeRows(ExtObject):
+    def __init__(self, rows):
+        self.rows = rows
+        self.pos = 0
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "eof":
+            return self.pos >= len(self.rows)
+        if n == "movefirst":
+            self.pos = 0
+        elif n == "movenext":
+            self.pos += 1
+        elif n == "movelast":
+            self.pos = max(len(self.rows) - 1, 0)
+        elif n == "close":
+            pass
+        elif n == "fields":
+            row = self.rows[self.pos]
+            return _field(row, args[0]) if args else _FakeFields(row)
+        else:
+            raise VBError(438)
+        return None
