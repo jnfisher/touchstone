@@ -536,3 +536,154 @@ async fn bad_names_and_bodies_are_rejected() {
     assert!(!e.dir.path().join("data/characters/ok.json").exists());
     assert!(!e.dir.path().join("data/characters/..json").exists());
 }
+
+async fn raw(
+    app: &axum::Router,
+    method: &str,
+    uri: &str,
+    body: Vec<u8>,
+) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    let req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .body(Body::from(body))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (status, headers, bytes.to_vec())
+}
+
+fn sample(name: &str) -> Vec<u8> {
+    std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/data/mmec")
+            .join(name),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn mmec_import_applies_load_rules_and_exports() {
+    let e = env();
+    // Head=9 is a torso item, so MME places it in the torso slot; 99 is no class in this database;
+    // the weapon 48 is real, 9999 is not an item
+    let file = "[PlayerInfo]\r\nName=Imp\r\nClass=1\r\nRace=2\r\nLevel=12\r\nStrength=70\r\n\
+        CurrentAttackType=1\r\nWeaponVSCharAC=77\r\n[Inventory]\r\nHead=9\r\nWrist2=426\r\n\
+        Finger1=433\r\nFinger2=434\r\nWeapon=48\r\nEyes=9999\r\nIM_CARRIED=48|2,9999|1,\r\n\
+        [MonsterFilter]\r\nHP=123\r\n"
+        .as_bytes()
+        .to_vec();
+    let (status, _, body) = raw(&e.app, "POST", "/api/characters/import", file.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let dto: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(dto["name"], "Imp");
+    assert_eq!(
+        (dto["class"].clone(), dto["race"].clone()),
+        (json!(1), json!(2))
+    );
+    let eq = dto["equipped"].as_array().unwrap();
+    assert_eq!(
+        (eq[4].clone(), eq[0].clone(), eq[6].clone()),
+        (json!(9), json!(0), json!(426))
+    );
+    assert_eq!(
+        (
+            eq[9].clone(),
+            eq[10].clone(),
+            eq[16].clone(),
+            eq[17].clone()
+        ),
+        (json!(433), json!(434), json!(48), json!(0))
+    );
+    assert_eq!(dto["attack"]["attack_type"], 1);
+    assert_eq!(dto["carried"], json!([{"item": 48, "qty": 2}]));
+    // same name again is refused until overwrite is asked for
+    let (status, _, _) = raw(&e.app, "POST", "/api/characters/import", file.clone()).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _, _) = raw(
+        &e.app,
+        "POST",
+        "/api/characters/import?overwrite=true",
+        file,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, headers, bytes) =
+        raw(&e.app, "GET", "/api/characters/Imp/export.mmec", vec![]).await;
+    assert_eq!(status, StatusCode::OK);
+    let disp = headers["content-disposition"].to_str().unwrap();
+    assert!(
+        disp.starts_with("attachment; filename=\"Imp.mmec\""),
+        "{disp}"
+    );
+    let text = String::from_utf8(bytes).unwrap();
+    assert!(text.starts_with("[PlayerInfo]\r\nName=Imp\r\n"));
+    assert!(text.contains("\r\nWeaponVSCharAC=77\r\n"));
+    assert!(text.contains("\r\nTorso=9\r\n") && text.contains("\r\nWrist=426\r\n"));
+    assert!(text.contains("\r\nIM_CARRIED=48|2,\r\n"));
+    assert!(text.contains("[MonsterFilter]\r\nHP=123\r\n"));
+    let (status, _, _) = raw(&e.app, "GET", "/api/characters/nobody/export.mmec", vec![]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn mmec_import_names_and_bad_files() {
+    let e = env();
+    let f = sample("empty-name.mmec");
+    // no Name in the file: the uploaded file's name is used
+    let (status, _, body) = raw(
+        &e.app,
+        "POST",
+        "/api/characters/import?file=C%3A%5Cchars%5CGrim.MMEC",
+        f.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["name"],
+        "Grim"
+    );
+    // nothing to name it by
+    let (status, _, _) = raw(&e.app, "POST", "/api/characters/import", f.clone()).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // an explicit bad name
+    let (status, _, _) = raw(&e.app, "POST", "/api/characters/import?name=..%2Fx", f).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // not a character file
+    let (status, _, _) = raw(
+        &e.app,
+        "POST",
+        "/api/characters/import?name=x",
+        b"junk".to_vec(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // the non-ASCII sample keeps its cp1252 name
+    let (status, _, body) = raw(
+        &e.app,
+        "POST",
+        "/api/characters/import",
+        sample("thief-backstab.mmec"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["name"],
+        "Kit \u{e9}"
+    );
+    let (_, headers, _) = raw(
+        &e.app,
+        "GET",
+        "/api/characters/Kit%20%C3%A9/export.mmec",
+        vec![],
+    )
+    .await;
+    let disp = headers["content-disposition"].to_str().unwrap();
+    assert!(
+        disp.contains("filename=\"Kit _.mmec\"") && disp.contains("UTF-8''Kit%20%C3%A9.mmec"),
+        "{disp}"
+    );
+}
