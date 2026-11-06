@@ -413,6 +413,8 @@ struct Ctx<'a> {
     /// The loaded character's state when it is used (`chkGlobalFilter` on).
     state: Option<CharacterState>,
     level_text: String,
+    /// `lblInvenCharStat(10).Tag`, the accuracy a swing falls back on.
+    accuracy_tag: String,
 }
 
 impl Ctx<'_> {
@@ -591,6 +593,7 @@ fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
     let mut env = RowEnv::for_world(ctx.world, Profile::Stock, equipped);
     env.dat_ver_caption = &ctx.world.info.dat_file_version;
     env.avg_level_max_all_stats = ctx.avg;
+    env.accuracy_tag = &ctx.accuracy_tag;
     env.global_level_text = ctx.state.is_some().then_some(ctx.level_text.as_str());
     env
 }
@@ -634,12 +637,17 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
             level_text = ch.level.to_string();
         }
     }
+    let accuracy_tag = state
+        .as_ref()
+        .and_then(|st| st.stats.stat_tag[10])
+        .map_or_else(String::new, vb::cstr);
     let ctx = Ctx {
         world,
         nmr,
         avg,
         state,
         level_text,
+        accuracy_tag,
     };
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),

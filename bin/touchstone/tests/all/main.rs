@@ -3,6 +3,7 @@ mod calc;
 mod character;
 mod common;
 mod detail;
+mod evaluate;
 
 mod health {
     use axum::body::Body;
