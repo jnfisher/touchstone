@@ -21,6 +21,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/calc/coin", post(calc::calc_coin))
         .route("/api/calc/swing", post(calc::calc_swing))
         .route("/api/calc/backstab", post(calc::calc_backstab))
+        .route("/api/calc/hit", post(calc::calc_hit))
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
         .route("/api/spells/{number}/effect", get(detail::spell_effect))
