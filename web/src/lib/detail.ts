@@ -91,6 +91,8 @@ export interface PaneRequest {
 	charm?: number;
 	show_charm?: boolean;
 	show_sell?: boolean;
+	/** Items: Options > Show shops first in item references (`mnuShopsFirst.Checked`). */
+	shops_first?: boolean;
 }
 
 /**
@@ -105,6 +107,7 @@ export function paneBody(
 		charm?: number;
 		showCharm?: boolean;
 		showSell?: boolean;
+		shopsFirst?: boolean;
 		options?: EvalOptions;
 		keepCharacter?: boolean;
 	} = {}
@@ -115,6 +118,7 @@ export function paneBody(
 	if (extra.charm !== undefined) body.charm = extra.charm;
 	if (extra.showCharm) body.show_charm = true;
 	if (extra.showSell) body.show_sell = true;
+	if (extra.shopsFirst) body.shops_first = true;
 	return body;
 }
 

@@ -29,6 +29,25 @@ describe('menu actions', () => {
 		expect(x.toggles.at(-1)).toEqual(['monsters', 4]);
 	});
 
+	it('opens the Compare tab after an add, not a removal, when Jump to Equip/Lists on Add is checked', async () => {
+		const x = deps();
+		const setActive = vi.fn();
+		const d = { ...(x.d as object), jump: () => true } as never;
+		(d as { cmp: { setActive: unknown } }).cmp.setActive = setActive;
+		const a = createMenuActions(d);
+		await a.run('saveList', { list: 'weapons', number: 9 });
+		expect(setActive).toHaveBeenCalledWith('weapons');
+		expect(x.go).toHaveBeenLastCalledWith('/compare');
+		x.go.mockClear();
+		// weapon 5 is already on the list, so this removes it
+		await a.run('saveList', { list: 'weapons', number: 5 });
+		expect(x.go).not.toHaveBeenCalled();
+		// unchecked: stay where you are
+		const off = createMenuActions({ ...(x.d as object), jump: () => false } as never);
+		await off.run('saveList', { list: 'weapons', number: 10 });
+		expect(x.go).not.toHaveBeenCalled();
+	});
+
 	it('opens the calculators and the combat setup with what MME passes them', async () => {
 		const x = deps();
 		const a = createMenuActions(x.d);

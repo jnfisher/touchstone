@@ -4,7 +4,7 @@
 	import { exportUrl, isMmecName } from '$lib/character';
 	import { getCharacterStore, openLastCharacter, rememberLastCharacter } from '$lib/character.svelte';
 	import { cardCls } from '../calc/styles';
-	import PasteDialog from '../paste/PasteDialog.svelte';
+	import { getOptionsStore } from '$lib/options.svelte';
 	import CombatDialog from './CombatDialog.svelte';
 	import { combatPrefill } from '$lib/handoff.svelte';
 	import BlessPanel from './BlessPanel.svelte';
@@ -47,7 +47,7 @@
 	}
 	$effect(() => rememberLastCharacter(store.storedName));
 
-	let pasting = $state(false);
+	const options = getOptionsStore();
 	let combat = $state(false);
 	let combatGoto = $state<{ backstab?: number; spell?: number }>();
 	// a menu's "Set Combat Backstab Weapon" / "Set as Combat Attack/Heal Spell" opens the setup on that choice
@@ -154,7 +154,7 @@
 		<button
 			type="button"
 			class="border-input h-8 rounded-md border px-3 text-sm"
-			onclick={() => (pasting = true)}
+			onclick={() => options.pasteCharacter()}
 			data-testid="char-paste">Paste character</button
 		>
 		<button
@@ -186,13 +186,9 @@
 		</section>
 	</div>
 	<section class="{cardCls} mt-4" aria-label="Equipment"><EquipPanel {store} {items} /></section>
-	<section class="{cardCls} mt-4" aria-label="Item Manager"><ItemManagerPanel {store} {items} onpaste={() => (pasting = true)} /></section>
+	<section class="{cardCls} mt-4" aria-label="Item Manager"><ItemManagerPanel {store} {items} onpaste={() => options.pasteCharacter()} /></section>
 	<section class="{cardCls} mt-4" aria-label="Derived stats"><DerivedPanel {store} /></section>
 </div>
-
-{#if pasting}
-	<PasteDialog {store} onclose={() => (pasting = false)} />
-{/if}
 
 {#if combat}
 	<CombatDialog {store} goto={combatGoto} onclose={() => ((combat = false), (combatGoto = undefined))} />

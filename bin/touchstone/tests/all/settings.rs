@@ -85,6 +85,9 @@ async fn defaults_are_what_mme_runs_with() {
     assert_eq!(v["monster_sim_rounds"], 500);
     assert_eq!(v["route_waypoint_interval"], 25);
     assert_eq!(v["auto_load_last_char"], true);
+    // frmMain LoadSettings reads a missing JumpToCompare / ShopsFirstInRefs as 0.
+    assert_eq!(v["jump_to_compare"], false);
+    assert_eq!(v["shops_first"], false);
 }
 
 #[tokio::test]
@@ -102,7 +105,9 @@ async fn put_applies_cmd_save_click_rules() {
         },
         "monster_sim_rounds": 20,
         "route_waypoint_interval": 0,
-        "auto_load_last_char": false
+        "auto_load_last_char": false,
+        "jump_to_compare": true,
+        "shops_first": true
     });
     let (st, v) = call(&app, "PUT", "/api/settings", Some(&body)).await;
     assert_eq!(st, StatusCode::OK, "{v}");
@@ -127,6 +132,8 @@ async fn put_applies_cmd_save_click_rules() {
     // Blank or 0 means the default 25.
     assert_eq!(v["route_waypoint_interval"], 25);
     assert_eq!(v["auto_load_last_char"], false);
+    assert_eq!(v["jump_to_compare"], true);
+    assert_eq!(v["shops_first"], true);
 
     let big = json!({"monster_sim_rounds": 99999, "route_waypoint_interval": 5000});
     let (_, v) = call(&app, "PUT", "/api/settings", Some(&big)).await;

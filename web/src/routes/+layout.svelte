@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { untrack } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -14,8 +15,16 @@
 	import { pageTitle } from '$lib/view';
 	import { getCharacterStore } from '$lib/character.svelte';
 	import GlobalFilterBar from '$lib/components/GlobalFilterBar.svelte';
+	import MenuDialogs from '$lib/components/MenuDialogs.svelte';
+	import InfoPopover from '$lib/components/InfoPopover.svelte';
+	import OptionsMenu from '$lib/components/OptionsMenu.svelte';
+	import PasteDialog from '$lib/components/paste/PasteDialog.svelte';
+	import { getOptionsStore } from '$lib/options.svelte';
+	import { getNavStore } from '$lib/navhistory.svelte';
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 
 	let { children } = $props();
 
@@ -26,13 +35,24 @@
 
 	const view = createViewStore(typeof localStorage === 'undefined' ? undefined : localStorage);
 	const character = getCharacterStore();
-	let settingsOpen = $state(false);
+	const options = getOptionsStore();
+	const nav = getNavStore();
+	// the app's own back/forward list (MME's nav history): every page the router shows is a visit
+	$effect(() => {
+		const path = page.url.pathname;
+		untrack(() => nav.shown(path));
+	});
 	const title = $derived(pageTitle(view.options, character.doc.name));
 
 	const current = $derived(page.params.section ?? '');
 	const calcName = $derived(page.url.pathname.startsWith('/calc/') ? page.params.name : undefined);
 
 	function onKeydown(e: KeyboardEvent) {
+		// Alt+Left / Alt+Right: the browser's own history shortcut is kept when ours has nowhere to go
+		if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+			if ((e.key === 'ArrowLeft' ? nav.back() : nav.forward())) e.preventDefault();
+			return;
+		}
 		if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
 		const slug = sectionForKey(e.key);
 		if (slug) {
@@ -65,6 +85,28 @@
 		</header>
 
 		<nav class="flex items-center gap-2 border-b px-4 py-1" data-testid="tabs">
+			<div class="flex items-center gap-1">
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="outline" size="icon-sm" aria-label="Back" disabled={!nav.canBack} data-testid="nav-back" onclick={() => nav.back()}>
+								<ArrowLeftIcon />
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>Back (Alt+Left)</Tooltip.Content>
+				</Tooltip.Root>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="outline" size="icon-sm" aria-label="Forward" disabled={!nav.canForward} data-testid="nav-forward" onclick={() => nav.forward()}>
+								<ArrowRightIcon />
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>Forward (Alt+Right)</Tooltip.Content>
+				</Tooltip.Root>
+			</div>
 			<div class="min-w-0 flex-1 overflow-x-auto">
 				<Tabs.Root value={current} onValueChange={(v) => void goto(`/${v}`)}>
 					<Tabs.List class="w-max">
@@ -95,6 +137,8 @@
 					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
+			<OptionsMenu />
+			<InfoPopover />
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
@@ -104,7 +148,7 @@
 							size="icon-sm"
 							aria-label="Settings"
 							data-testid="settings-button"
-							onclick={() => (settingsOpen = true)}
+							onclick={() => options.openSettings()}
 						>
 							<SettingsIcon />
 						</Button>
@@ -119,5 +163,15 @@
 			{@render children()}
 		</main>
 	</div>
-	<SettingsDialog bind:open={settingsOpen} {theme} {view} />
+	<MenuDialogs />
+	{#if options.notice}
+		<div role="alert" class="bg-popover text-popover-foreground fixed right-3 bottom-3 z-[70] flex items-center gap-3 rounded-md border px-3 py-2 text-sm shadow-md" data-testid="options-notice">
+			<span>{options.notice}</span>
+			<button type="button" class="border-input hover:bg-accent h-6 rounded-md border px-2 text-xs" onclick={() => options.dismissNotice()}>OK</button>
+		</div>
+	{/if}
+	<SettingsDialog bind:open={options.settingsOpen} {theme} {view} />
+	{#if options.pasteOpen}
+		<PasteDialog store={character} onclose={() => (options.pasteOpen = false)} />
+	{/if}
 </Tooltip.Provider>

@@ -23,6 +23,10 @@ export interface Settings {
   monster_sim_rounds: number;
   route_waypoint_interval: number;
   auto_load_last_char: boolean;
+  /** `JumpToCompare`: Options > Jump to Equip/Lists on Add. */
+  jump_to_compare: boolean;
+  /** `ShopsFirstInRefs`: Options > Show shops first in item references. */
+  shops_first: boolean;
 }
 
 export const KNOB_MIN = 0.01;
@@ -59,6 +63,8 @@ export function defaultSettings(): Settings {
     monster_sim_rounds: 500,
     route_waypoint_interval: WAYPOINT_DEFAULT,
     auto_load_last_char: true,
+    jump_to_compare: false,
+    shops_first: false,
   };
 }
 
@@ -176,6 +182,9 @@ export interface Draft {
   simRounds: string;
   waypoint: string;
   autoLoad: boolean;
+  /** Not on the Settings window (they are Options menu items); carried so a save keeps them. */
+  jumpToCompare: boolean;
+  shopsFirst: boolean;
 }
 
 export function toDraft(s: Settings, block: ExpHrBlock = s.exp_per_hour.global): Draft {
@@ -191,6 +200,8 @@ export function toDraft(s: Settings, block: ExpHrBlock = s.exp_per_hour.global):
     simRounds: fmt(s.monster_sim_rounds),
     waypoint: fmt(s.route_waypoint_interval),
     autoLoad: s.auto_load_last_char,
+    jumpToCompare: s.jump_to_compare,
+    shopsFirst: s.shops_first,
   };
 }
 
@@ -208,6 +219,8 @@ export function draftSettings(d: Draft, globalBlock: ExpHrBlock): Settings {
     monster_sim_rounds: clampSimRounds(vbVal(d.simRounds)),
     route_waypoint_interval: clampWaypoint(vbVal(d.waypoint)),
     auto_load_last_char: d.autoLoad,
+    jump_to_compare: d.jumpToCompare,
+    shops_first: d.shopsFirst,
   };
 }
 
