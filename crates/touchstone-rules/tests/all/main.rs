@@ -29,6 +29,7 @@ mod item_value;
 mod lair_info;
 mod lairs;
 mod locations;
+mod map;
 mod mega_stat;
 mod misc_detail;
 mod mmec;

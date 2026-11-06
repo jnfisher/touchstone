@@ -280,7 +280,7 @@ class Env:
             self.it.bind_proc("MapDrawOnRoom", draw)
             self.it.bind_proc("MapRecClear", lambda it_: self.map.clear())
             self.it.bind_proc("MapRecWas", was)
-            for n, v in (("vbHourglass", 11), ("vbDefault", 0), ("vbInformation", 64)):
+            for n, v in (("vbHourglass", 11), ("vbDefault", 0), ("vbInformation", 64), ("vbMinimized", 1), ("vbNormal", 0), ("vbOKOnly", 0), ("vbModeless", 0)):
                 self.it.bind(n, V.I32(v))
         for n in [n for one in specs for n in one.get("record_procs", [])]:
             # a procedure the code under test calls for its effect on the screen: the call and its arguments are the output
@@ -831,6 +831,11 @@ class Env:
             # the recording ListView of another form: "%flv.frmResults.lvResults"
             _, fname, cname = expr.split(".")
             return self.it.externals[fname.lower()].vb_get(cname, []).dump(encode)
+        if expr == "%evpop":
+            # the events recorded so far (MsgBox texts, recorded calls), taken out of the case's list
+            ev = list(self.rec.events)
+            self.rec.events.clear()
+            return ev
         if expr.startswith("%map."):
             return self.read_map(expr[5:])
         if expr == "%tip":

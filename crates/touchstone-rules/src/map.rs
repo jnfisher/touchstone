@@ -928,12 +928,12 @@ impl<'a> Mapper<'a> {
     }
 }
 
-/// The centre cell MME ends up with: the caller's, unless it is outside the grid (frmMain falls back to
-/// 345 only when it exceeds the last cell; frmMap's `ResizeMap` also falls back below the first cell; a
-/// cell between the grid's columns or rows cannot be reached from the window and falls back too).
+/// The centre cell MME ends up with: the caller's, unless it is past the last cell or before the first
+/// (frmMain only checks the upper end; frmMap's `ResizeMap` checks both). A cell between the columns of a
+/// narrow grid is kept: MME does not look, and charts from it as given.
 fn resolve_center(geo: &Geometry, asked: Option<i32>) -> i32 {
     match asked {
-        Some(c) if c != 0 && geo.on_grid(c) => c,
+        Some(c) if c >= geo.first && c <= geo.last => c,
         _ => geo.default_center,
     }
 }
@@ -998,7 +998,11 @@ fn build_grid(world: &World, req: &MapRequest, start: RoomKey, m: Mapper<'_>) ->
             alt_room: m.alt_room[c].1,
             alt_state: i32::from(m.alt_state[c]),
         };
-        if map != 0 || row.state != 0 || row.alt_map != 0 || row.alt_room != 0 || row.alt_state != 0
+        if map != 0
+            || row.state != 0
+            || row.alt_map != 0
+            || row.alt_room != 0
+            || row.alt_state != 0
             || row.back != WHITE
         {
             raw.push(row);
@@ -1515,7 +1519,10 @@ pub fn presets_with(saved: &[SavedPreset]) -> Vec<Preset> {
                 room = s.room;
             }
             if map == 0 || room == 0 || name.is_empty() {
-                let (n, m, r) = DEFAULT_PRESETS.get(index).copied().unwrap_or(("unset", 1, 1));
+                let (n, m, r) = DEFAULT_PRESETS
+                    .get(index)
+                    .copied()
+                    .unwrap_or(("unset", 1, 1));
                 name = n.to_string();
                 map = m;
                 room = r;

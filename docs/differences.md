@@ -473,3 +473,34 @@ Under `Profile::Quicksilver` with rest and meditate mana on (R10: a balance whos
 - No engine figure exists for a whole exp/hr (the balance tool reports damage bands only). The vectors cross-check
   the recovery component from the engine's own ticks: exact for mana over a 210-second cycle, within one slow tick
   plus one rest tick (51 seconds) and the 20- versus 21-second rest period (5 percent) for the time to restore both bars.
+
+## Graphical map layout (M-001)
+
+The layout engine ports `MapStartMapping`, `MapActivateCell` and `MapMapExits` for frmMain's fixed grid and frmMap's six
+sizes, and returns MME's draw list beside a categorised view. Parity is exact on the oracle cases; these are the places
+where the port stops short of the window or reads the data on purpose.
+
+- **MegaMUD known rooms.** The fourth "also mark" choice (stars for rooms a MegaMUD rooms file knows) and the
+  "MegaMUD Known Room" tooltip lines need a file the server does not read. `AlsoMark` has None, Shops and Spells.
+- **Tooltips.** The layout does not build tooltip text. A cell carries its room key and, after an overwrite pass, the
+  room it displaced; the text is `rooms::room_tooltip`. A VB run-time error inside MME's tooltip code would end
+  `MapMapExits` for that room early (no exits followed). None occurs on the stock data (no oracle case
+  shows a handled error), so the port does not model it.
+- **Options that only change tooltips** (`chkMapOptions` 5, and 6 or 11 for "show all exits") are not in `MapOptions`.
+- **Alignment exits.** frmMain's line colour table tests exit type 30, which its exit-type table never produces (an
+  alignment exit is 20), so frmMain draws those lines in the default colour and frmMap in dark red. Both are kept.
+- **Centre cell.** A centre outside the grid's first and last cell falls back to the surface's own centre, as
+  `MapStartMapping` and `ResizeMap` do; a cell between the columns of a narrow grid (cell 25 of the 20-column grid) is
+  kept and charted from, as MME does. The window cannot produce one (it centres on a clicked cell).
+- **Overwrite and duplicates.** `MapGrid.cells` lists the cell scan's survivors: with duplicates off a room that two
+  cells hold keeps the higher-numbered cell (the scan visits the lower one first and clears it), not the first one
+  reached. MME does this; the card's "first come" is first in cell order.
+- **Marks stay on a replaced cell.** Squares, circles and stars MME drew for a room an overwrite pass displaced stay on
+  the canvas under the new room. `Marker`s are the union of everything drawn on the cell, as the picture is.
+- **Zoom grids** differ from the others in line widths only, which the port does not draw; the cell numbers (from 9001,
+  stride 28) are kept.
+- **Preset editing** (`EditPreset`, the registry values) is client state. `presets_with` applies `LoadPresets`' rule for
+  saved values (a zero map or room, or an empty name, falls back to the default).
+- **Spell ranges in "what leads here".** `GetCurrentSpellMinMax` is asked without a level, so `gAvgLevelMaxAllStats` does
+  not matter to it; the endpoint passes 0. A textblock spell whose range is a single number is not tested at all
+  (MME assigns the number and never uses it).
