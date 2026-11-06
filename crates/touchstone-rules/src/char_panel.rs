@@ -514,10 +514,15 @@ pub fn refresh_picklocks(
 ///
 /// # Errors
 /// The VB6 error number where an argument does not fit a Long (MME's handler leaves the box as it was).
-pub fn refresh_magic_res(intellect: f64, willpower: f64, plus_mr: i32) -> Result<i32, i32> {
+pub fn refresh_magic_res(
+    profile: Profile,
+    intellect: f64,
+    willpower: f64,
+    plus_mr: i32,
+) -> Result<i32, i32> {
     let i = lng(intellect).map_err(code)?;
     let w = lng(willpower).map_err(code)?;
-    Ok(calc_mr(i, w, plus_mr))
+    Ok(calc_mr(profile, i, w, plus_mr))
 }
 
 /// Result of [`refresh_dodge`].

@@ -277,7 +277,10 @@ pub(crate) fn run(profile: Profile, case: &Value) -> Result<(), String> {
             };
             eq!(cur_out(calc_mana_regen(p, &input)), cur(r))
         }
-        "CalcMR" => eq!(calc_mr(arg(a, 0), arg(a, 1), arg(a, 2)), want_i().unwrap()),
+        "CalcMR" => eq!(
+            calc_mr(profile, arg(a, 0), arg(a, 1), arg(a, 2)),
+            want_i().unwrap()
+        ),
         "CalcMaxHP" => eq!(
             calc_max_hp(arg(a, 0), arg(a, 1), arg(a, 2), arg(a, 3)),
             want_i().unwrap()

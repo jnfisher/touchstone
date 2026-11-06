@@ -238,3 +238,13 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   history entry, so the browser's back button keeps its own list.
 - The data version (`LoadInfo`'s version label, creation date, NMR version) is shown in an info popover, with the row
   counts. MME's "this database lacks features" warnings for old NMR versions are not shown.
+
+## Quicksilver knees (Q-006)
+
+- Under the Quicksilver profile the magic resistance and dodge knees (R12, R13) apply to the character's own
+  Intellect/Willpower and Agility wherever MME calls `CalcMR` and `CalcDodge` (the character panel, the gear
+  aggregation, the party paste). A monster's magic resistance and dodge are data and are not compressed.
+- The crit knee (R11) is applied inside `CalcAttack`'s crit block, so MME's cap of 99 stays after it. The server has
+  no such cap on the compressed value; it only matters for a crit chance above 197, far beyond the game's range.
+- The "knee out of reach" values of the neutral balance are 2^31 - 1, not the game's 16-bit stat ceiling, because
+  MME's formulas (and the fixtures that probe them) work in 32 bits.

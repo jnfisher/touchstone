@@ -18,6 +18,7 @@ use touchstone_vb6 as vb;
 use touchstone_vb6::Vb6Error;
 
 use crate::Profile;
+use crate::quicksilver::Balance;
 use crate::stats;
 
 type Res<T> = Result<T, Vb6Error>;
@@ -130,8 +131,12 @@ pub fn calc_dodge_vs_accuracy(profile: Profile, raw_dodge: i32, accy: i32, _clas
 /// Port of modMMudFunc CalcDodge: raw dodge from level, agility, charm and the cumulative bonus,
 /// plus the low-encumbrance bonus when `max_encum` is above 0. MME's defaults are
 /// `current_encum = 0` and `max_encum = -1`. Integer overflow gives 0 (MME's handler).
+///
+/// Quicksilver (R13) counts a third of the agility above `dodge_agi_knee` in the `(agility - 50) / 3`
+/// term.
 #[must_use]
 pub fn calc_dodge(
+    profile: Profile,
     level: i16,
     agility: i16,
     charm: i16,
@@ -139,6 +144,11 @@ pub fn calc_dodge(
     current_encum: f64,
     max_encum: f64,
 ) -> i32 {
+    let agility = match profile {
+        // The knee only lowers the value, so it still fits an Integer.
+        Profile::Quicksilver(b) => Balance::knee_third(i64::from(agility), b.dodge_agi_knee) as i16,
+        Profile::Stock => agility,
+    };
     let steps = || -> Res<i16> {
         let mut dodge = vb::cint(vb::fix(f64::from(level) / 5.0))?;
         dodge = vb::cint(f64::from(dodge) + vb::fix(f64::from(vb::sub_i16(charm, 50)?) / 5.0))?;

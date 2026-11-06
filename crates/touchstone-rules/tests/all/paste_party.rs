@@ -310,6 +310,11 @@ fn equip(m: &Member) -> String {
 
 #[test]
 fn paste_party_fixture() {
+    check_fixture(Profile::Stock);
+}
+
+/// Shared with the Quicksilver identity harness.
+pub(crate) fn check_fixture(profile: Profile) {
     let fx = fixture::load("paste_party");
     let data = &fx.header["data"];
     let items: Vec<Item> = data["items"].as_array().unwrap().iter().map(item).collect();
@@ -367,7 +372,7 @@ fn paste_party_fixture() {
                 .map(|a| a.iter().map(|x| x.as_str().map(str::to_string)).collect())
                 .unwrap_or_default();
             let env = PasteEnv {
-                profile: Profile::Stock,
+                profile,
                 items: &items,
                 classes: &classes,
                 races: &races,

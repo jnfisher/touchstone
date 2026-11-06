@@ -323,6 +323,7 @@ fn run_mr(f: &Forms, case: &Value) -> Result<(), String> {
         .as_i64()
         .unwrap_or(0) as i32;
     let got = refresh_magic_res(
+        Profile::Stock,
         f.val("txtCharStats", 1, "Tag"),
         f.val("txtCharStats", 2, "Tag"),
         plus,

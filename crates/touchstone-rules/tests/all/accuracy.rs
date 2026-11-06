@@ -138,6 +138,7 @@ pub(crate) fn run(profile: Profile, case: &Value) -> Result<(), String> {
         ),
         "CalcDodge" => eq!(
             calc_dodge(
+                p,
                 int(a, 0) as i16,
                 int(a, 1) as i16,
                 int(a, 2) as i16,
