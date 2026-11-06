@@ -33,6 +33,9 @@
 //! empty, the rows built so far remain and no sort is requested; the error numbers are in
 //! [`ItemDetail::errors`].
 
+// MME's `For x = 0 To 19` loops index several parallel arrays; the port keeps them as written.
+#![allow(clippy::needless_range_loop)]
+
 use std::cell::Cell;
 
 use touchstone_model::{Item, Spell, World};
@@ -365,7 +368,8 @@ pub fn compare_weapons(a: &Item, b: &Item) -> String {
         }
     }
     if a.armour_class != b.armour_class || a.damage_resist != b.damage_resist {
-        let n = round_up(f64::from(a.armour_class) / 10.0) - round_up(f64::from(b.armour_class) / 10.0);
+        let n =
+            round_up(f64::from(a.armour_class) / 10.0) - round_up(f64::from(b.armour_class) / 10.0);
         let n2 = f64::from(a.damage_resist) / 10.0 - f64::from(b.damage_resist) / 10.0;
         if n != 0.0 || n2 != 0.0 {
             out = aa(
@@ -1055,13 +1059,27 @@ impl Run<'_> {
         if slot1 >= 0 {
             let i1 = rec(item1)?;
             if item.gettable != i1.gettable {
-                cmp1 = aa(&cmp1, if !i1.gettable { "+Getable" } else { "+Not Getable" });
+                cmp1 = aa(
+                    &cmp1,
+                    if !i1.gettable {
+                        "+Getable"
+                    } else {
+                        "+Not Getable"
+                    },
+                );
             }
         }
         if slot2 >= 0 {
             let i2 = rec(item2)?;
             if item.gettable != i2.gettable {
-                cmp2 = aa(&cmp2, if !i2.gettable { "+Getable" } else { "+Not Getable" });
+                cmp2 = aa(
+                    &cmp2,
+                    if !i2.gettable {
+                        "+Getable"
+                    } else {
+                        "+Not Getable"
+                    },
+                );
             }
         }
         if item.not_droppable {
@@ -1244,15 +1262,28 @@ impl Run<'_> {
                     }
                     if y == 0 {
                         for (which, flag, t, class_ok, cast_sp) in [
-                            (1usize, &mut flag1, &mut t1, &mut s_class_ok1, &mut s_cast_sp1),
-                            (2usize, &mut flag2, &mut t2, &mut s_class_ok2, &mut s_cast_sp2),
+                            (
+                                1usize,
+                                &mut flag1,
+                                &mut t1,
+                                &mut s_class_ok1,
+                                &mut s_cast_sp1,
+                            ),
+                            (
+                                2usize,
+                                &mut flag2,
+                                &mut t2,
+                                &mut s_class_ok2,
+                                &mut s_cast_sp2,
+                            ),
                         ] {
                             if which == 2 && slot2 < 0 {
                                 continue;
                             }
                             match find_ability(&abils, which, a, must_match) {
                                 None => {
-                                    let t3 = self.ability.get_abil_diff_text(a, v, 0, n_pct[y], false);
+                                    let t3 =
+                                        self.ability.get_abil_diff_text(a, v, 0, n_pct[y], false);
                                     if !t3.is_empty() {
                                         if a == 59 {
                                             *class_ok = aa(class_ok, &format!("+{t3}"));
@@ -1260,12 +1291,16 @@ impl Run<'_> {
                                             *cast_sp = aa(cast_sp, &format!("+{t3}"));
                                         } else {
                                             *flag = true;
-                                            *t = aa(t, &format!("{}{t3}", if v == 0 { "+" } else { "" }));
+                                            *t = aa(
+                                                t,
+                                                &format!("{}{t3}", if v == 0 { "+" } else { "" }),
+                                            );
                                         }
                                     }
                                 }
                                 Some(r) if r != v => {
-                                    let t3 = self.ability.get_abil_diff_text(a, v, r, n_pct[y], false);
+                                    let t3 =
+                                        self.ability.get_abil_diff_text(a, v, r, n_pct[y], false);
                                     if !t3.is_empty() {
                                         *flag = true;
                                         *t = aa(t, &t3);
@@ -1389,7 +1424,7 @@ impl Run<'_> {
             &races,
             &s_races,
             "Races",
-            &race_name,
+            race_name,
             RestrictionStyle::Restricted,
             (&mut cmp1, &mut cmp2),
         );
@@ -1476,7 +1511,12 @@ impl Run<'_> {
         // the text
         let mut s_str = String::new();
         let mut parts: Vec<DetailRow> = Vec::new();
-        let mut piece = |kind: DetailKind, label: &str, value: &str, s: &mut String, glue: &str, text: String| {
+        let mut piece = |kind: DetailKind,
+                         label: &str,
+                         value: &str,
+                         s: &mut String,
+                         glue: &str,
+                         text: String| {
             *s = auto_append(s, &text, glue);
             parts.push(DetailRow {
                 kind,
@@ -1485,28 +1525,84 @@ impl Run<'_> {
             });
         };
         if !get_drop.is_empty() {
-            piece(DetailKind::Flags, "", &get_drop, &mut s_str, " -- ", get_drop.clone());
+            piece(
+                DetailKind::Flags,
+                "",
+                &get_drop,
+                &mut s_str,
+                " -- ",
+                get_drop.clone(),
+            );
         }
         if !s_uses.is_empty() {
-            piece(DetailKind::Uses, "Uses", &s_uses, &mut s_str, " -- ", format!("Uses: {s_uses}"));
+            piece(
+                DetailKind::Uses,
+                "Uses",
+                &s_uses,
+                &mut s_str,
+                " -- ",
+                format!("Uses: {s_uses}"),
+            );
         }
         if !s_abil.is_empty() {
-            piece(DetailKind::Abilities, "Abilities", &s_abil, &mut s_str, " -- ", format!("Abilities: {s_abil}"));
+            piece(
+                DetailKind::Abilities,
+                "Abilities",
+                &s_abil,
+                &mut s_str,
+                " -- ",
+                format!("Abilities: {s_abil}"),
+            );
         }
         if !s_casts.is_empty() {
-            piece(DetailKind::Casts, "Casts", &s_casts, &mut s_str, " -- ", format!("Casts: {s_casts}"));
+            piece(
+                DetailKind::Casts,
+                "Casts",
+                &s_casts,
+                &mut s_str,
+                " -- ",
+                format!("Casts: {s_casts}"),
+            );
         }
         if !s_class_ok.is_empty() {
-            piece(DetailKind::ClassOk, "ClassOK", &s_class_ok, &mut s_str, " -- ", format!("ClassOK: {s_class_ok}"));
+            piece(
+                DetailKind::ClassOk,
+                "ClassOK",
+                &s_class_ok,
+                &mut s_str,
+                " -- ",
+                format!("ClassOK: {s_class_ok}"),
+            );
         }
         if !s_classes.is_empty() {
-            piece(DetailKind::Classes, "Classes", &s_classes, &mut s_str, " -- ", format!("Classes: {s_classes}"));
+            piece(
+                DetailKind::Classes,
+                "Classes",
+                &s_classes,
+                &mut s_str,
+                " -- ",
+                format!("Classes: {s_classes}"),
+            );
         }
         if !s_races.is_empty() {
-            piece(DetailKind::Races, "Races", &s_races, &mut s_str, " -- ", format!("Races: {s_races}"));
+            piece(
+                DetailKind::Races,
+                "Races",
+                &s_races,
+                &mut s_str,
+                " -- ",
+                format!("Races: {s_races}"),
+            );
         }
         if !s_negate.is_empty() {
-            piece(DetailKind::Negates, "Negates", &s_negate, &mut s_str, " -- ", format!("Negates: {s_negate}"));
+            piece(
+                DetailKind::Negates,
+                "Negates",
+                &s_negate,
+                &mut s_str,
+                " -- ",
+                format!("Negates: {s_negate}"),
+            );
         }
         for (slot, which, cmp) in [(slot1, item1, &mut cmp1), (slot2, item2, &mut cmp2)] {
             if slot >= 0 {
@@ -1519,7 +1615,14 @@ impl Run<'_> {
                 }
                 let label = format!("Compared to {}", other.name);
                 let text = format!("{label}: {cmp}");
-                piece(DetailKind::Compared, &label, cmp, &mut s_str, "\r\n\r\n", text);
+                piece(
+                    DetailKind::Compared,
+                    &label,
+                    cmp,
+                    &mut s_str,
+                    "\r\n\r\n",
+                    text,
+                );
             }
         }
 
@@ -1594,7 +1697,10 @@ impl Run<'_> {
                 }
                 w.push_str(&format!(" - Avg Hit: {}", dmg.avg_hit));
                 if dmg.max_crit > 0 && dmg.crit_chance > 0 {
-                    w = aa(&w, &format!("Avg/Max Crit: {}/{}", dmg.avg_crit, dmg.max_crit));
+                    w = aa(
+                        &w,
+                        &format!("Avg/Max Crit: {}/{}", dmg.avg_crit, dmg.max_crit),
+                    );
                     w.push_str(&format!(" ({}%", dmg.crit_chance));
                     if dmg.qnd_bonus > 0 {
                         w.push_str(&format!(" w/{}qnd", dmg.qnd_bonus));

@@ -17,6 +17,7 @@ mod filters;
 mod game_text;
 mod gear;
 mod hit_calc;
+mod item_detail;
 mod item_match;
 mod item_value;
 mod lair_info;

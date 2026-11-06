@@ -81,6 +81,29 @@ def choose(count):
 
 
 SEL = choose(150)
+
+
+def spell_effects(sn, depth=0):
+    """Ability numbers a cast spell reaches (its own, and through EndCast / learn / give-spell abilities)."""
+    sp = spells.get(sn)
+    if sp is None or depth > 3:
+        return set()
+    out = set()
+    for a, v in ab(sp, 10):
+        out.add(a)
+        if a in (42, 43, 151, 153, 160) and v:
+            out |= spell_effects(v, depth + 1)
+    return out
+
+
+# items whose spells add reference rows of every kind (teleport, summon, textblock, nested casts)
+for want in (140, 12, 148, 151, 160, 42, 122):
+    hits = [n for n in NAMED if any(a == 43 and want in spell_effects(v) for a, v in ab(items[n], 20)) or
+            any(a == want for a, v in ab(items[n], 20))]
+    for n in sorted(hits, key=lambda n: H("eff", want, n))[:4]:
+        if n not in SEL:
+            SEL.append(n)
+SEL = sorted(SEL)
 SEL_W = [n for n in SEL if items[n]["ItemType"] == 1]
 EXTRA_W = sorted(sorted(WEAPONS, key=lambda n: H("w", n))[:30])
 ALL_W = sorted(set(SEL_W) | set(EXTRA_W))
@@ -123,7 +146,7 @@ def case(cid, steps, forms=None, globals_=None):
 def combat(speed=0, vs=(40, 5, 20), mode=5, idx=0):
     return {"chkWeaponOptions": arr({0: {"Value": 5}, 3: {"Value": 1}, 4: {"Value": speed}}),
             "txtWeaponExtras": arr({2: {"Text": str(vs[0])}, 3: {"Text": str(vs[1])}, 4: {"Text": str(vs[2])}}),
-            "cmbWeaponCombos": arr({1: {"ListIndex": idx, "ItemData": [mode]}})}
+            "cmbWeaponCombos": arr({1: {"ListIndex": idx, "ItemData": [mode], "StrictItemData": True}})}
 
 
 def stride(seq, n, off=0):
@@ -207,6 +230,8 @@ CHARS = [("warrior", "ladder-c1-l50", 0), ("mage", "ladder-c12-l50", 1)]
 for who, base, k in CHARS:
     f = json.loads(json.dumps(PC[base]["forms"]["frmMain"]))
     f["txtGlobalLevel"]["$array"]["1"] = {"Text": f["txtGlobalLevel"]["$array"]["0"]["Text"]}
+    for combo in ("cmbGlobalClass", "cmbGlobalRace"):      # a loaded combo has entries (GetClassStealth checks ListCount)
+        f[combo]["$array"]["0"]["List"] = ["None", "selected"]
     g = json.loads(json.dumps(PC[base]["globals"]))
     eq = list(g["nEquippedItem"])
     mine = loadout(k)
