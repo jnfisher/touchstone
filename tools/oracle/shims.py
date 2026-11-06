@@ -99,8 +99,14 @@ class Database:
                 rows = [tuple(_vb_value(x, d) for x, d in zip(r, decls))
                         for r in con.execute('SELECT * FROM "%s" ORDER BY rowid' % name)]
                 if name in self.only:
-                    keep = set(self.only[name])
-                    rows = [r for r in rows if r[0] in keep]
+                    keep = self.only[name]
+                    if keep and isinstance(keep[0], list):
+                        # a table keyed by two columns (Rooms: map, room): keep the listed [first, second] pairs
+                        pairs = {(int(a), int(b)) for a, b in keep}
+                        rows = [r for r in rows if (int(r[0]), int(r[1])) in pairs]
+                    else:
+                        keep = set(keep)
+                        rows = [r for r in rows if r[0] in keep]
                 for extra in self.extra.get(name, []):
                     rows.append(tuple(_vb_value(extra.get(c), d) for c, d in zip(cols, decls)))
             finally:
@@ -1016,6 +1022,25 @@ def msgbox_result(buttons):
     default = (b >> 8) & 3
     table = {0: (1,), 1: (1, 2), 2: (3, 4, 5), 3: (6, 7, 2), 4: (6, 7), 5: (4, 2)}.get(base, (1,))
     return V.I16(table[min(default, len(table) - 1)])
+
+
+class TipShim(ExtObject):
+    """objToolTip that keeps the text of the last SetToolTipItem(hWnd, id, left, top, right, bottom, text, flag)
+    call (the map cell tooltip, family rooms); every other member does nothing."""
+
+    def __init__(self):
+        self.text = None
+
+    def vb_get(self, name, args):
+        if name.lower() == "settooltipitem" and len(args) >= 7:
+            self.text = V.c_str(args[6])
+        return None
+
+    def vb_set(self, name, args, value):
+        return None
+
+    def vb_default(self, args):
+        return None
 
 
 class DictionaryShim(ExtObject):
