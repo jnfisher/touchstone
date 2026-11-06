@@ -109,7 +109,11 @@ fn finish(
     stash_changed: bool,
     messages: Vec<String>,
 ) -> Result<ItemManagerResponse, String> {
-    character.set_saved_from_rows(rows)?;
+    // SaveCharacter fails on a quantity past 32767; the lists then stay as they were
+    let mut messages = messages;
+    if let Err(e) = character.set_saved_from_rows(rows) {
+        messages.push(e);
+    }
     Ok(ItemManagerResponse {
         character,
         rows: rows.iter().map(row_to_json).collect(),

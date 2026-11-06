@@ -662,8 +662,9 @@ pub fn paste_character(
         sort_by_value_desc(&mut rows);
     }
     let mut character = lossless_dto(&base, &run.st).padded();
-    // the saved lists follow the Item Manager as SaveCharacter writes them
-    character.set_saved_from_rows(&rows)?;
+    // the saved lists follow the Item Manager as SaveCharacter writes them; a row it cannot write
+    // (a quantity past 32767 is its error 6) leaves the lists as they were, the paste still stands
+    let _ = character.set_saved_from_rows(&rows);
     Ok(PasteCharacterResponse {
         character,
         events,
