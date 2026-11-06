@@ -92,7 +92,7 @@ fn cur_out(c: Currency) -> i64 {
 }
 
 /// Runs one case; returns a description of the mismatch, if any.
-fn run(case: &Value) -> Result<(), String> {
+pub(crate) fn run(profile: Profile, case: &Value) -> Result<(), String> {
     let inp = &case["inputs"];
     let out = &case["outputs"];
     let expect_err = case
@@ -108,7 +108,7 @@ fn run(case: &Value) -> Result<(), String> {
     } else {
         ("ComputeAvgLevelMaxStats", vec![])
     };
-    let p = Profile::Stock;
+    let p = profile;
     let a = &args[..];
 
     // Compare an Ok value against the expected output / error.
@@ -360,12 +360,12 @@ fn run(case: &Value) -> Result<(), String> {
     }
 }
 
-#[test]
-fn stats_fixture_cases() {
+/// Runs every stats fixture case under `profile`; the layer-1 identity harness reuses it.
+pub(crate) fn check_fixture(profile: Profile) {
     let fx = fixture::load("stats");
     let mut bad = Vec::new();
     for case in &fx.cases {
-        if let Err(msg) = run(case) {
+        if let Err(msg) = run(profile, case) {
             bad.push(format!(
                 "{}: {msg}\n   inputs {}",
                 case["id"], case["inputs"]
@@ -379,4 +379,9 @@ fn stats_fixture_cases() {
         fx.cases.len(),
         bad.iter().take(8).cloned().collect::<Vec<_>>().join("\n")
     );
+}
+
+#[test]
+fn stats_fixture_cases() {
+    check_fixture(Profile::Stock);
 }

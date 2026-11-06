@@ -41,6 +41,8 @@ mod paste_char;
 mod paste_party;
 mod pipeline;
 mod quicksilver_balance;
+mod quicksilver_identity;
+mod quicksilver_vectors;
 mod reachability;
 mod rooms;
 mod rows;

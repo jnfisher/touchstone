@@ -33,6 +33,22 @@ Generating fixtures is a development step, run in a cloud session and committed.
 part of PR CI. A manual workflow (`oracle-check`, `workflow_dispatch`) regenerates everything and
 fails if the committed fixtures are stale.
 
+## Quicksilver vectors and the identity harness
+
+The Quicksilver profile has no MME oracle (see `docs/quicksilver-profile.md` part 4). Two things stand
+in for it:
+
+- **Engine vectors.** `tools/qs-vectors/run.sh` links Quicksilver's own rule crates (checkout named by
+  `QUICKSILVER_DEV`, read-only; build directory `QS_VECTORS_TARGET`, default
+  `~/.cache/touchstone/qs-vectors/`) and writes `fixtures/quicksilver/<family>.json`: inputs, the engine's
+  answer under the 1.20.0 balance (`v120`) and under stock-equivalent settings (`neutral`). `run.sh --check`
+  fails if a committed file is stale. Like the oracle it is a development step, never part of PR CI.
+  `tests/all/quicksilver_vectors.rs` screens each `neutral` column against the stock MME function; the
+  rule's own card checks the `v120` column.
+- **Identity harness.** `tests/all/quicksilver_identity.rs` runs the MME fixtures through
+  `Profile::Quicksilver(&Balance::NEUTRAL)` and expects the MME answers. A card that makes a family
+  parametric adds that family's fixture test there.
+
 ## No manual verification
 
 Nobody runs MME on Windows to check results. If the oracle and the port disagree and the cause
