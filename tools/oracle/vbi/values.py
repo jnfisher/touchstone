@@ -555,6 +555,10 @@ def arith(op, a, b):
         x, y = int(a), int(b)
         n = x + y if op == "+" else x - y if op == "-" else x * y
         return _fit(n, _RANK[ta] if _RANK[ta] > _RANK[tb] else _RANK[tb])
+    if (ta is float and tb in _INTS) or (tb is float and ta in _INTS):
+        x, y = float(a), float(b)       # Double with an integer type is a Double operation
+        z = x + y if op == "+" else x - y if op == "-" else x * y
+        return mk_dbl(z)
     a = _prep(a)
     b = _prep(b)
     if type(a) is str or type(b) is str:
@@ -596,6 +600,12 @@ def mul(a, b):
 
 
 def div(a, b):
+    ta, tb = type(a), type(b)
+    if (ta is float or ta in INT_TYPES) and (tb is float or tb in INT_TYPES) and (ta is float or tb is float):
+        y = float(b)
+        if y == 0:
+            raise VBError(11)
+        return mk_dbl(float(a) / y)
     a = _prep(a)
     b = _prep(b)
     if type(a) is str:
@@ -691,6 +701,9 @@ def concat(a, b):
 
 def compare(a, b):
     """Return -1/0/1, or None when unordered (never for our types)."""
+    ta, tb = type(a), type(b)
+    if (ta is float or ta in INT_TYPES) and (tb is float or tb in INT_TYPES):
+        return (a > b) - (a < b)        # exact: integer types fit a double
     a, b = to_boolnum(a), to_boolnum(b)
     ta, tb = type(a), type(b)
     if ta is str and tb is str:

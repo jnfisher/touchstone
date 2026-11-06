@@ -5,7 +5,7 @@
     python3 -I tools/oracle/oracle.py report [--json]  # unbound names and procedures that run without shims
     python3 -I tools/oracle/oracle.py call PROC [ARG...]   # call one procedure with simple arguments
     python3 -I tools/oracle/oracle.py gen FAMILY|--all [--out DIR]   # write fixtures/rules/<family>.json
-    python3 -I tools/oracle/oracle.py check [FAMILY...]    # regenerate into a temp dir, diff with the committed fixtures
+    python3 -I tools/oracle/oracle.py check [-j N] [FAMILY...]    # regenerate into a temp dir, diff with the committed fixtures
 
 MME source comes from the cache that tools/mme-fetch.sh fills (never from the repository).
 """
@@ -211,38 +211,57 @@ def cmd_gen(args):
     return 0
 
 
+def _check_worker(fam):
+    """Build one family's fixture in a worker process; returns (family, bytes, seconds)."""
+    import time
+    import harness
+    t = time.time()
+    return fam, harness.build_fixture(fam), time.time() - t
+
+
 def cmd_check(args):
     import difflib
-    import tempfile
     import time
     import harness
     fams = args.families or harness.families()
+    jobs = args.jobs or min(4, os.cpu_count() or 1)
+    jobs = max(1, min(jobs, len(fams)))
     bad = 0
     t0 = time.time()
-    with tempfile.TemporaryDirectory() as tmp:
+
+    def report(fam, data, secs):
+        committed = os.path.join(harness.rules_dir(), fam + ".json")
+        if not os.path.exists(committed):
+            print("%s: MISSING fixtures/rules/%s.json" % (fam, fam))
+            return 1
+        with open(committed, "rb") as f:
+            old = f.read()
+        if old == data:
+            print("%s: current (%.1fs)" % (fam, secs), flush=True)
+            return 0
+        print("%s: STALE" % fam)
+        diff = difflib.unified_diff(old.decode().splitlines(), data.decode().splitlines(),
+                                    "committed", "regenerated", lineterm="", n=0)
+        for i, line in enumerate(diff):
+            if i >= 40:
+                print("  ... (diff truncated)")
+                break
+            print("  " + line[:200])
+        return 1
+
+    if jobs == 1:
         for fam in fams:
-            data = harness.build_fixture(fam)
-            with open(os.path.join(tmp, fam + ".json"), "wb") as f:
-                f.write(data)
-            committed = os.path.join(harness.rules_dir(), fam + ".json")
-            if not os.path.exists(committed):
-                print("%s: MISSING fixtures/rules/%s.json" % (fam, fam))
-                bad += 1
-                continue
-            old = open(committed, "rb").read()
-            if old == data:
-                print("%s: current" % fam)
-                continue
-            bad += 1
-            print("%s: STALE" % fam)
-            diff = difflib.unified_diff(old.decode().splitlines(), data.decode().splitlines(),
-                                        "committed", "regenerated", lineterm="", n=0)
-            for i, line in enumerate(diff):
-                if i >= 40:
-                    print("  ... (diff truncated)")
-                    break
-                print("  " + line[:200])
-    print("checked %d families in %.1fs" % (len(fams), time.time() - t0))
+            bad += report(*_check_worker(fam))
+    else:
+        import multiprocessing
+        # Start the biggest scenarios first so the slowest family does not begin last; each result
+        # is compared as it arrives, so the output order follows completion.
+        order = sorted(fams, key=lambda f: -os.path.getsize(os.path.join(harness.scenario_dir(), f + ".json"))
+                       if os.path.exists(os.path.join(harness.scenario_dir(), f + ".json")) else 0)
+        with multiprocessing.get_context("fork").Pool(jobs) as pool:
+            for fam, data, secs in pool.imap_unordered(_check_worker, order, chunksize=1):
+                bad += report(fam, data, secs)
+    print("checked %d families in %.1fs (jobs=%d)" % (len(fams), time.time() - t0, jobs))
     return 1 if bad else 0
 
 
@@ -262,6 +281,7 @@ def main(argv=None):
     g.add_argument("--out")
     k = sub.add_parser("check")
     k.add_argument("families", nargs="*")
+    k.add_argument("--jobs", "-j", type=int, default=0, help="worker processes (default min(4, cpu count))")
     a = ap.parse_args(argv)
     return {"parse": cmd_parse, "report": cmd_report, "call": cmd_call, "gen": cmd_gen, "check": cmd_check}[a.cmd](a)
 

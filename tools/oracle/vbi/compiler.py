@@ -1,4 +1,5 @@
 """Compiles procedure ASTs into flat instruction lists and expressions into Python closures."""
+import operator
 from .ast import Node
 from .errors import VBError, OracleUnbound, EndProgram, VBSyntaxError
 from . import values as V
@@ -207,6 +208,19 @@ class Compiler:
         op = node.op
         a = self.cx(node.l, ctx)
         b = self.cx(node.r, ctx)
+        if op in ("+", "-", "*"):
+            fn = BIN_ARITH[op]
+            pyop = {"+": operator.add, "-": operator.sub, "*": operator.mul}[op]
+
+            def fast(fr):
+                x = a(fr)
+                y = b(fr)
+                if type(x) is float and type(y) is float:
+                    z = pyop(x, y)
+                    if z - z == 0.0:        # finite; NaN/Infinity go the slow way to raise Overflow
+                        return z
+                return fn(x, y)
+            return fast
         if op in BIN_ARITH:
             fn = BIN_ARITH[op]
             return lambda fr: fn(a(fr), b(fr))
