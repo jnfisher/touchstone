@@ -357,3 +357,30 @@ Under `Profile::Quicksilver` only; the stock rules are untouched.
   player who has not just cast.
 - The neutral balance sets `backstab_energy_pct` to 100000, so a stab always fills the round (the energy is
   capped at the round's 1000) and no blow follows it, which is MME's stab.
+
+## Quicksilver: class melee share and the Thief opportunist (Q-011)
+
+Under `Profile::Quicksilver` only; the stock rules are untouched.
+
+- The class share (R5) scales the damage range of every non-stab blow: normal, bash, smash, punch, kick and
+  jumpkick. It reads the class number (1 to 15, other values leave the range whole) and the character's real
+  level, and applies to the range as MME holds it after the weapon, the damage bonuses and the martial-arts
+  damage are added. The move's own multiplier (kick and jumpkick pre-roll, bash and smash tripling and
+  quintupling), the critical range and the target's damage reduction all come after, as in the engine. The
+  percentage keeps its fraction between anchors; each end of the range is truncated on its own.
+- A manual damage figure (the party panel and `specify_damage`) is not scaled: it is a number the caller
+  chose, with no class behind it. The max-level mock profile (level 0) has no class either and keeps its range.
+  A stab keeps its own figures; it is not scaled.
+- The opportunist (R4) is added to `calculate_attack` as an expectation: per landed blow, the chance
+  `opportunist_pct`, times the mean bonus after the target's damage reduction, times the share of landed blows
+  that deal damage at all (a fully absorbed blow never finds an opening). It is added to `round_total` and
+  `first_round_damage`, so the stab opener's follow-up blows and everything built on `round_total` carry it;
+  `round_physical` and `min_round_damage` do not (a proc is a chance, not a floor). The detail line gains
+  "Opportunist: N% for M". It never crits and the weapon plays no part. Its level terms are held to
+  `scalecap` and its range uses the Backstab Min and Max of the gear, as the engine's does.
+- The target is assumed to survive the blow, as the rest of MME's steady-state damage does. A bonus that kills
+  the target early is not modelled; whether Model D should stop the procs on a killing blow is card Q-014.
+- Bash and smash blows can open too (the engine rolls after any non-stab blow); a bash's tripling does not
+  apply to the bonus.
+- `calc_true_average` is unchanged: its inputs are numbers the caller supplies, and MME has no class there.
+- The neutral balance already holds every class share at 100 and `opportunist_pct` at 0, so nothing is added.

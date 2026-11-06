@@ -43,6 +43,7 @@ mod pipeline;
 mod quicksilver_backstab;
 mod quicksilver_balance;
 mod quicksilver_identity;
+mod quicksilver_melee;
 mod quicksilver_opener;
 mod quicksilver_regen;
 mod quicksilver_vectors;
