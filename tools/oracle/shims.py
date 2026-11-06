@@ -309,6 +309,8 @@ class ControlShim(ExtObject):
     Text/Caption/Tag, -1 for ListIndex, 0 otherwise). Indexed properties (ItemData, List) hold a
     dict keyed by index; a control-array element is a sub-control."""
 
+    COMBO_METHODS = ("additem", "clear")
+
     def __init__(self, props=None, decode=_plain):
         self.props = {}
         self.items = {}
@@ -319,24 +321,40 @@ class ControlShim(ExtObject):
 
     def load(self, key, v):
         kl = key.lower()
-        if isinstance(v, list):
+        if kl == "items" and isinstance(v, list):
+            # a combo given by its ItemData alone: {"Items": [0, 1813, 929]} (the List texts are never read)
+            self.items["list"] = {i: str(x) for i, x in enumerate(v)}
+            self.items["itemdata"] = {i: self.decode(x) for i, x in enumerate(v)}
+        elif isinstance(v, list):
             self.items[kl] = {i: self.decode(x) for i, x in enumerate(v)}
         elif isinstance(v, dict) and v.get("t") is None:
             self.items[kl] = {int(i): self.decode(x) for i, x in v.items()}
         else:
             self.props[kl] = self.decode(v)
 
+    def _combo_method(self, n, args):
+        """ComboBox/ListBox methods: AddItem text[, index] (NewIndex is where it landed) and Clear."""
+        lst = self.items.setdefault("list", {})
+        data = self.items.setdefault("itemdata", {})
+        rows = [(lst[i], data.get(i, V.I32(0))) for i in sorted(lst)]
+        if n == "clear":
+            rows = []
+            at = None
+        else:
+            at = V.int_value(args[1]) if len(args) > 1 and args[1] is not V.MISSING else len(rows)
+            if at < 0 or at > len(rows):
+                raise VBError(380, "Invalid property value")
+            rows.insert(at, (V.c_str(args[0]), V.I32(0)))
+        self.items["list"] = {i: r[0] for i, r in enumerate(rows)}
+        self.items["itemdata"] = {i: r[1] for i, r in enumerate(rows)}
+        if at is not None:
+            self.props["newindex"] = V.I32(at)
+        return None
+
     def vb_get(self, name, args):
         n = name.lower()
-        if n == "additem" and args:
-            # a list control gains an entry (at the end, or at the given index); NewIndex tells where it went
-            lst = self.items.setdefault("list", {})
-            at = V.int_value(args[1]) if len(args) > 1 else (max(lst) + 1 if lst else 0)
-            for k in sorted((k for k in lst if k >= at), reverse=True):
-                lst[k + 1] = lst.pop(k)
-            lst[at] = V.c_str(args[0])
-            self.props["newindex"] = V.I32(at)
-            return None
+        if n in ("additem", "clear") and n in self.COMBO_METHODS:
+            return self._combo_method(n, args)
         if args:
             tbl = self.items.get(n)
             i = V.int_value(args[0])
@@ -686,9 +704,20 @@ class ControlArrayShim(ExtObject):
         self.members = members
 
     def vb_get(self, name, args):
-        if name.lower() == "count":
+        n = name.lower()
+        if n == "count":
             return V.I32(max(self.members) + 1 if self.members else 0)
+        if n == "ubound":
+            return V.I16(max(self.members) if self.members else -1)
+        if n == "item":
+            i = V.int_value(args[0])
+            if i not in self.members:
+                raise VBError(340, "Control array element does not exist")
+            return self.members[i]
         raise VBError(438)
+
+    def vb_default(self, args):
+        return self.vb_get("item", args)
 
 
 class NoopShim(ExtObject):
@@ -807,15 +836,18 @@ class ClipboardShim(ExtObject):
 
 
 class FormsCollection(ExtObject):
-    """`Forms`: no form is ever loaded in the oracle."""
+    """`Forms`: no form is loaded unless a case names some in `loaded_forms` (FormIsLoaded walks it)."""
+
+    def __init__(self, names=()):
+        self.forms = [ControlShim({"Name": n}) for n in names]
 
     def vb_get(self, name, args):
         if name.lower() == "count":
-            return V.I16(0)
+            return V.I16(len(self.forms))
         raise VBError(438)
 
     def vb_iter(self):
-        return iter(())
+        return iter(self.forms)
 
     def vb_default(self, args):
         raise VBError(9)

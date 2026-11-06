@@ -14,7 +14,7 @@ CONSTANTS = {
     "vbokonly": I32(0), "vbokcancel": I32(1), "vbyesno": I32(4), "vbyesnocancel": I32(3),
     "vbcritical": I32(16), "vbquestion": I32(32), "vbexclamation": I32(48), "vbinformation": I32(64),
     "vbyes": I32(6), "vbno": I32(7), "vbok": I32(1), "vbcancel": I32(2), "vbretry": I32(4),
-    "vbabort": I32(3), "vbignore": I32(5), "vbdefaultbutton2": I32(256),
+    "vbabort": I32(3), "vbignore": I32(5), "vbdefaultbutton2": I32(256), "vbdefaultbutton1": I32(0), "vbdefaultbutton3": I32(512),
     "vbnone": I32(0), "vbtwips": I32(1), "vbpixels": I32(3), "vbnormalfocus": I32(1),
     "vbhide": I32(0), "vbmaximizedfocus": I32(3), "vbminimizedfocus": I32(2),
     "vbempty": I16(0), "vbnull": I16(1), "vbinteger": I16(2), "vblong": I16(3), "vbsingle": I16(4),
