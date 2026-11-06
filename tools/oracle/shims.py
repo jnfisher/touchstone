@@ -11,7 +11,7 @@ import sqlite3
 from vbi import values as V
 from vbi.errors import VBError
 from vbi.objects import ExtObject
-from vbi.values import NULL, NOTHING
+from vbi.values import NULL, NOTHING, EMPTY
 
 # Index names MME sets (`tabX.Index = "..."`) and the columns each orders by. The stock .mdb names
 # them; mdbtools does not export index definitions, so this is read off how MME calls Seek: one key
@@ -231,6 +231,9 @@ class Recordset(ExtObject):
         if n == "close":
             self.closed = True
             return None
+        if n == "clone":
+            # an independent cursor over the same rows, in table (insertion) order
+            return Recordset(self.db, self.tname)
         raise VBError(438)
 
     def vb_set(self, name, args, value):
@@ -352,16 +355,58 @@ class ControlShim(ExtObject):
 
 
 class SubItemShim(ExtObject):
-    def __init__(self, text):
+    """A ListSubItem: `Text` and `Tag` (a Variant; Empty until assigned)."""
+
+    def __init__(self, text, tag=EMPTY):
         self.text = text
+        self.tag = tag
 
     def vb_get(self, name, args):
-        if name.lower() == "text":
+        n = name.lower()
+        if n == "text":
             return self.text
+        if n == "tag":
+            return self.tag
         raise VBError(438)
+
+    def vb_set(self, name, args, value):
+        n = name.lower()
+        if n == "text":
+            self.text = V.c_str(value)
+        elif n == "tag":
+            self.tag = value
+        else:
+            raise VBError(438)
 
     def vb_default(self, args):
         return self.text
+
+
+class _SubItems(ExtObject):
+    """`li.ListSubItems`: `.count`, 1-based indexing, `.Add(Index, Key, Text)` (insert at Index)."""
+
+    def __init__(self, subs):
+        self.subs = subs
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "count":
+            return V.I32(len(self.subs))
+        if n == "add":
+            idx = V.int_value(args[0]) if args and args[0] is not V.MISSING and args[0] is not None else len(self.subs) + 1
+            text = V.c_str(args[2]) if len(args) > 2 and args[2] is not V.MISSING else ""
+            if idx < 1 or idx > len(self.subs) + 1:
+                raise VBError(35600, "Index out of bounds")
+            item = SubItemShim(text)
+            self.subs.insert(idx - 1, item)
+            return item
+        raise VBError(438)
+
+    def vb_default(self, args):
+        i = V.int_value(args[0])
+        if i < 1 or i > len(self.subs):
+            raise VBError(35600, "Index out of bounds")
+        return self.subs[i - 1]
 
 
 class ListItemShim(ExtObject):
@@ -369,58 +414,85 @@ class ListItemShim(ExtObject):
 
     def __init__(self, text, subs):
         self.text = text
-        self.subs = subs
+        self.subs = [x if isinstance(x, SubItemShim) else SubItemShim(x) for x in subs]
 
     def vb_get(self, name, args):
         n = name.lower()
         if n == "text":
             return self.text
         if n == "listsubitems":
-            if not args:
-                return _CountList(self.subs, lambda t: SubItemShim(t))
-            i = V.int_value(args[0])
-            if i < 1 or i > len(self.subs):
-                raise VBError(35600, "Index out of bounds")
-            return SubItemShim(self.subs[i - 1])
+            sub = _SubItems(self.subs)
+            return sub.vb_default(args) if args else sub
         raise VBError(438)
+
+    def vb_set(self, name, args, value):
+        if name.lower() == "text":
+            self.text = V.c_str(value)
+        else:
+            raise VBError(438)
 
     def vb_default(self, args):
         return self.text
 
 
-class _CountList(ExtObject):
-    """`.count` and 1-based default indexing over a Python list."""
+class _ListItems(ExtObject):
+    """`lv.ListItems`: `.count`, 1-based indexing, `.Add()` (appends an empty row), `.Remove(i)`, `.Clear`."""
 
-    def __init__(self, items, wrap):
-        self.items = items
-        self.wrap = wrap
+    def __init__(self, rows):
+        self.rows = rows
 
     def vb_get(self, name, args):
-        if name.lower() == "count":
-            return V.I32(len(self.items))
+        n = name.lower()
+        if n == "count":
+            return V.I32(len(self.rows))
+        if n == "add":
+            li = ListItemShim("", [])
+            self.rows.append(li)
+            return li
+        if n == "remove":
+            i = V.int_value(args[0])
+            if i < 1 or i > len(self.rows):
+                raise VBError(35600, "Index out of bounds")
+            del self.rows[i - 1]
+            return None
+        if n == "clear":
+            self.rows.clear()
+            return None
         raise VBError(438)
 
     def vb_default(self, args):
         i = V.int_value(args[0])
-        if i < 1 or i > len(self.items):
+        if i < 1 or i > len(self.rows):
             raise VBError(35600, "Index out of bounds")
-        return self.wrap(self.items[i - 1])
+        return self.rows[i - 1]
 
 
 class ListViewShim(ControlShim):
-    """A ListView whose rows the scenario gives: {"$listview": [{"Text": "12", "Sub": ["", "CARRIED x2"]}]}."""
+    """A ListView whose rows the scenario gives: {"$listview": [{"Text": "12", "Sub": ["", "CARRIED x2"]}]}.
+    Rows can be added, removed and edited by the code under test; `dump()` is what a case reads back."""
 
     def __init__(self, rows, decode=_plain):
         super().__init__({}, decode)
-        self.rows = [(str(r.get("Text", "")), [str(x) for x in r.get("Sub", [])]) for r in rows]
+        self.rows = [ListItemShim(str(r.get("Text", "")), [str(x) for x in r.get("Sub", [])]) for r in rows]
 
     def vb_get(self, name, args):
         if name.lower() == "listitems":
-            lst = _CountList(self.rows, lambda r: ListItemShim(r[0], r[1]))
-            if args:
-                return lst.vb_default(args)
-            return lst
+            lst = _ListItems(self.rows)
+            return lst.vb_default(args) if args else lst
         return super().vb_get(name, args)
+
+    def dump(self, encode):
+        """Rows as [{"text", "subs": [{"t", "g"?}]}]; a sub item's Tag is left out until it was assigned."""
+        out = []
+        for r in self.rows:
+            subs = []
+            for x in r.subs:
+                d = {"t": x.text}
+                if x.tag is not EMPTY:
+                    d["g"] = encode(x.tag)
+                subs.append(d)
+            out.append({"text": r.text, "subs": subs})
+        return out
 
 
 class ControlArrayShim(ExtObject):
@@ -475,9 +547,14 @@ class ControlProxy(ExtObject):
         return form.vb_get(self.name, [])
 
 
+# The form's own public procedures that the code under test calls as `frmMain.Proc(args)`:
+# name (lower case) -> callable(list of VB args). The harness fills it from the scenario's `frm` procs.
+FORM_METHODS = {}
+
+
 class FormShim(ExtObject):
-    """frmMain (or any form): `form.control.Property`, control arrays `form.lbl(3).Caption`, and
-    the form's own public variables (set from the scenario or by code)."""
+    """frmMain (or any form): `form.control.Property`, control arrays `form.lbl(3).Caption`, the
+    form's own public variables (set from the scenario or by code) and its public procedures."""
 
     def __init__(self, spec=None, decode=_plain):
         self.controls = {}
@@ -507,6 +584,8 @@ class FormShim(ExtObject):
         n = name.lower()
         if n in self.vars:
             return self.vars[n]
+        if n in FORM_METHODS and n not in self.controls:
+            return FORM_METHODS[n](args)
         c = self.controls.get(n)
         if c is None:
             c = self.controls[n] = ControlShim(decode=self.decode)
