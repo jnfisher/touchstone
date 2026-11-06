@@ -24,6 +24,8 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 	/** What is being done now: a calculation (with its mode) or the clear. */
 	let busy = $state<DamageMode | 'clear' | undefined>();
 	let error = $state<string>();
+	/** What the last run did when it was not an error: a Cancel keeps the previous values. */
+	let note = $state<string>();
 	/** Counts every change to the stored damage, so the Monsters list and pane read it again. */
 	let version = $state(0);
 	let timer: ReturnType<typeof setInterval> | undefined;
@@ -47,6 +49,9 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 		get error() {
 			return error;
 		},
+		get note() {
+			return note;
+		},
 		get version() {
 			return version;
 		},
@@ -59,11 +64,13 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 			if (busy || !doc || !canCalculate(doc)) return false;
 			busy = mode;
 			error = undefined;
+			note = undefined;
 			timer = setInterval(() => void refresh(), pollMs);
 			let ok = false;
 			try {
-				await client.calculate(calcBody(doc, mode, party));
-				ok = true;
+				const done = await client.calculate(calcBody(doc, mode, party));
+				ok = !done.cancelled;
+				if (done.cancelled) note = 'Monster damage calculation cancelled; the previous values are kept.';
 			} catch (e) {
 				error = message(e);
 			} finally {
@@ -74,6 +81,15 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 				version++;
 			}
 			return ok;
+		},
+		/** The Cancel button of the progress line: the server stops after the monster it is on. */
+		async cancel(): Promise<void> {
+			if (!busy || busy === 'clear') return;
+			try {
+				status = await client.cancel();
+			} catch (e) {
+				error = message(e);
+			}
 		},
 		/** `ClearMonsterDamageVsCharALL` for both arrays: the menu's "Clear Calculated Monster Damage". */
 		async clear(): Promise<void> {

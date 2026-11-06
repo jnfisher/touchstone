@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { DetailGroup } from '$lib/explorers';
-	import { groupRows, refCells, refColumns, type Pane, type RefRow, type RefTarget } from '$lib/detail';
+	import { groupRows, refCells, refColumns, routeLine, type Pane, type RefRow, type RefTarget } from '$lib/detail';
 	import { lineColorClass } from '$lib/monsters';
 
 	let {
@@ -13,6 +13,7 @@
 		onLink,
 		linkable,
 		onMenu,
+		onRoute,
 		before,
 		children
 	}: {
@@ -28,6 +29,8 @@
 		linkable?: (r: RefRow) => boolean;
 		/** A right-click on a monster line, a shop stock line or a reference row (its index in that list). */
 		onMenu?: (e: { part: 'line' | 'shopLine' | 'ref'; index: number }) => void;
+		/** A double-click row of the monster pane's "Reachable" lines: open the route (the alternate one for `alt`). */
+		onRoute?: (alt: boolean) => void;
 		/** Controls that sit above the rows (the shop's charm box). */
 		before?: Snippet;
 		children?: Snippet;
@@ -82,7 +85,16 @@
 						</dt>
 						<dd oncontextmenu={() => onMenu?.({ part: 'line', index: k })} class="min-w-0 break-words whitespace-pre-wrap">
 							{#each l.cells as c, j (j)}
-								{#if l.target && onLink && j === 0}
+								{#if onRoute && j === 0 && routeLine(l.kind)}
+									<button
+										type="button"
+										class="text-left hover:underline {c.bold ? 'font-semibold' : ''} {lineColorClass(c.color)}"
+										data-testid="pane-route"
+										onclick={() => onRoute(routeLine(l.kind)?.alt ?? false)}
+									>
+										{c.text}
+									</button>
+								{:else if l.target && onLink && j === 0}
 									<button
 										type="button"
 										class="text-primary text-left hover:underline {c.bold ? 'font-semibold' : ''}"

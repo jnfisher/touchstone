@@ -763,7 +763,12 @@ fn build(
         global_filter: body.global_filter.clone(),
         options: body.options.clone(),
     };
-    let ctx = prepare(profile, world, &eval)?;
+    let ctx = prepare(
+        profile,
+        world,
+        &eval,
+        body.hide_record_numbers.unwrap_or(false),
+    )?;
     let (charm_tag, strength_tag, attack_type_mme) = match &ctx.state {
         Some(st) => (
             touchstone_vb6::cstr(st.stats.stat_with_bonus[5]),

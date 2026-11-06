@@ -9,7 +9,7 @@
 //! character. The "already asked" flags MME resets whenever the description or the party boxes change are stored as
 //! the description / box key at the time of the answer.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -121,6 +121,8 @@ struct Running {
     load: u64,
     total: usize,
     done: Arc<AtomicUsize>,
+    /// Set by `POST /api/monster-damage/cancel`; the loop looks at it between monsters.
+    cancel: Arc<AtomicBool>,
     started: Instant,
 }
 
@@ -220,7 +222,7 @@ impl MonsterDamage {
         });
     }
 
-    fn begin(&self, mode: Mode, load: u64, total: usize) -> Result<Arc<AtomicUsize>, ()> {
+    fn begin(&self, mode: Mode, load: u64, total: usize) -> Result<Progress, ()> {
         let mut r = self
             .running
             .lock()
@@ -229,14 +231,31 @@ impl MonsterDamage {
             return Err(());
         }
         let done = Arc::new(AtomicUsize::new(0));
+        let cancel = Arc::new(AtomicBool::new(false));
         *r = Some(Running {
             mode,
             load,
             total,
             done: done.clone(),
+            cancel: cancel.clone(),
             started: Instant::now(),
         });
-        Ok(done)
+        Ok(Progress { done, cancel })
+    }
+
+    /// Asks the running calculation to stop after the monster it is on. False when none is running.
+    pub fn cancel(&self) -> bool {
+        let r = self
+            .running
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match r.as_ref() {
+            Some(run) => {
+                run.cancel.store(true, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
     }
 
     fn end(&self) {
@@ -245,6 +264,12 @@ impl MonsterDamage {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
+}
+
+/// What a running calculation shares with its status and cancel requests.
+struct Progress {
+    done: Arc<AtomicUsize>,
+    cancel: Arc<AtomicBool>,
 }
 
 /// Clears `running` however the calculation ends (an error, a panic in the worker).
@@ -284,6 +309,8 @@ pub struct Calculated {
     /// Monsters whose calculation stored nothing (a VB error in MME): their entries keep what they had.
     pub skipped: usize,
     pub elapsed_ms: u64,
+    /// A cancel request stopped the run: nothing was stored and the arrays are as they were.
+    pub cancelled: bool,
 }
 
 /// `CalculateMonsterDamageVsCharALL` for the request's character (or party boxes) and store the result.
@@ -299,7 +326,7 @@ pub fn calculate(
     let world = &loaded.world;
     let profile = loaded.profile;
     let load = loaded.info.load_count;
-    let done = state
+    let Progress { done, cancel } = state
         .monster_damage()
         .begin(body.mode, load, world.monsters.len())
         .map_err(|()| {
@@ -342,7 +369,10 @@ pub fn calculate(
         &party,
         &mut sim,
         &mut rnd,
-        &mut |n, _| done.store(n, Ordering::Relaxed),
+        &mut |n, _| {
+            done.store(n, Ordering::Relaxed);
+            !cancel.load(Ordering::Relaxed)
+        },
     )
     .map_err(|e| {
         (
@@ -350,6 +380,16 @@ pub fn calculate(
             format!("the calculation failed: {e}"),
         )
     })?;
+    // a cancelled run keeps the previous arrays, whatever it had finished
+    if cancel.load(Ordering::Relaxed) {
+        return Ok(Calculated {
+            mode: body.mode,
+            monsters: total,
+            skipped: 0,
+            elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            cancelled: true,
+        });
+    }
     let skipped = results.iter().filter(|(_, v)| v.is_none()).count();
     let key = party_key(&party);
     state.monster_damage().update(load, world, |s| {
@@ -381,6 +421,7 @@ pub fn calculate(
         monsters: total,
         skipped,
         elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        cancelled: false,
     })
 }
 
@@ -418,7 +459,7 @@ fn character_side<'a>(
             ..Options::default()
         },
     };
-    let ctx = prepare(profile, world, &req)?;
+    let ctx = prepare(profile, world, &req, state.hide_record_numbers())?;
     let exp = run_settings(state, Some(character)).0;
     let snap = Snapshot::uncalculated(world);
     let (chr, desc) = with_monster_env(
@@ -477,6 +518,14 @@ pub async fn clear_route(
     json(&status_json(&state, &loaded))
 }
 
+/// `POST /api/monster-damage/cancel`: stop the running calculation after the monster it is on. The status answers;
+/// with nothing running it is the plain status.
+pub async fn cancel_route(State(state): State<Arc<AppState>>) -> ApiResult {
+    let loaded = state.current();
+    state.monster_damage().cancel();
+    json(&status_json(&state, &loaded))
+}
+
 pub async fn dismiss_route(
     State(state): State<Arc<AppState>>,
     Body(body): Body<DismissBody>,
@@ -508,6 +557,7 @@ pub fn status_json(state: &AppState, loaded: &Loaded) -> Value {
                     "mode": r.mode,
                     "done": r.done.load(Ordering::Relaxed),
                     "total": r.total,
+                    "cancelling": r.cancel.load(Ordering::Relaxed),
                     "elapsed_ms": u64::try_from(r.started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 })
             })

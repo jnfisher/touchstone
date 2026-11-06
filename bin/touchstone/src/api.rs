@@ -13,13 +13,18 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_damage, monster_sim, panes, paste, reach, rooms, settings, spell_tools,
+    item_manager, monster_damage, monster_sim, panes, paste, profile, reach, rooms, route,
+    settings, spell_tools,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/info", get(info))
         .route("/api/settings", get(settings::get).put(settings::put))
+        .route(
+            "/api/races/{number}/stat-caps",
+            get(profile::stat_caps_route),
+        )
         .route("/api/exp", get(calc::exp_table))
         .route("/api/calc/exp", post(calc::calc_exp))
         .route("/api/calc/coin", post(calc::calc_coin))
@@ -55,6 +60,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/monster-damage/clear",
             post(monster_damage::clear_route),
+        )
+        .route(
+            "/api/monster-damage/cancel",
+            post(monster_damage::cancel_route),
         )
         .route(
             "/api/monster-damage/dismiss",
@@ -101,6 +110,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/item-manager/add", post(item_manager::add_route))
         .route("/api/reachability/status", get(reach::status_route))
         .route("/api/reachability/compute", post(reach::compute_route))
+        .route("/api/reachability/route", post(route::route_route))
         .route("/api/paste/character", post(paste::character_route))
         .route("/api/paste/party", post(paste::party_route))
         .route(

@@ -9,6 +9,7 @@ const ready = { ...newCharacter('x'), class: 1, race: 2 };
 function fake() {
 	let release: (() => void) | undefined;
 	let status: DamageStatus = emptyStatus();
+	let cancelled = false;
 	const client = {
 		status: vi.fn(async () => structuredClone(status)),
 		calculate: vi.fn(
@@ -16,11 +17,22 @@ function fake() {
 				new Promise((resolve) => {
 					status = { ...status, running: { mode: body.mode, done: 40, total: 100, elapsed_ms: 2100 } };
 					release = () => {
+						// a cancelled run stores nothing: the status is as it was before
+						if (cancelled) {
+							status = emptyStatus();
+							resolve({ mode: body.mode, monsters: 100, skipped: 0, elapsed_ms: 900, cancelled: true });
+							return;
+						}
 						status = { ...emptyStatus(), char: { calculated: true }, generation: 1 };
 						resolve({ mode: body.mode, monsters: 100, skipped: 0, elapsed_ms: 3000 });
 					};
 				})
 		),
+		cancel: vi.fn(async () => {
+			if (status.running) status = { ...status, running: { ...status.running, cancelling: true } };
+			cancelled = true;
+			return structuredClone(status);
+		}),
 		clear: vi.fn(async () => {
 			status = emptyStatus();
 			return structuredClone(status);
@@ -56,6 +68,33 @@ describe('monster damage store', () => {
 		const reads = raw.status.mock.calls.length;
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(raw.status.mock.calls.length).toBe(reads);
+	});
+
+	it('cancels a running calculation, keeps the old values and says so', async () => {
+		const { client, raw, finish } = fake();
+		const store = createDamageStore(client, { pollMs: 100 });
+		const run = store.calculate(ready, 'char', DEFAULT_PARTY);
+		await vi.advanceTimersByTimeAsync(250);
+		await store.cancel();
+		expect(raw.cancel).toHaveBeenCalledTimes(1);
+		// the progress line reads "cancelling" until the server stops
+		expect(store.status.running?.cancelling).toBe(true);
+		finish();
+		expect(await run).toBe(false);
+		expect(store.status.char.calculated).toBe(false);
+		expect(store.error).toBeUndefined();
+		expect(store.note).toMatch(/cancelled/);
+		expect(store.busy).toBeUndefined();
+		// the next run clears the note
+		void store.calculate(ready, 'party', DEFAULT_PARTY);
+		expect(store.note).toBeUndefined();
+	});
+
+	it('has nothing to cancel when nothing runs, or only a clear', async () => {
+		const { client, raw } = fake();
+		const store = createDamageStore(client);
+		await store.cancel();
+		expect(raw.cancel).not.toHaveBeenCalled();
 	});
 
 	it('does not calculate without a complete character', async () => {

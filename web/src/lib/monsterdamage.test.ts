@@ -32,17 +32,19 @@ describe('monster damage requests', () => {
 		expect(JSON.parse(String(init?.body))).toEqual({ character: doc, mode: 'party', party: DEFAULT_PARTY });
 	});
 
-	it('clears both arrays unless a mode is named, and dismisses with the prompt key', async () => {
+	it('clears both arrays unless a mode is named, dismisses with the prompt key and cancels', async () => {
 		const fetchFn = vi.fn((_url: string, _init?: RequestInit) => json(emptyStatus()));
 		const c = createDamageClient(fetchFn as unknown as typeof fetch);
 		await c.clear();
 		await c.clear('char');
 		await c.dismiss({ mode: 'char', key: '71_50' });
+		await c.cancel();
 		const bodies = fetchFn.mock.calls.map(([u, i]) => [u, JSON.parse(String(i?.body))]);
 		expect(bodies).toEqual([
 			['/api/monster-damage/clear', {}],
 			['/api/monster-damage/clear', { mode: 'char' }],
-			['/api/monster-damage/dismiss', { mode: 'char', key: '71_50' }]
+			['/api/monster-damage/dismiss', { mode: 'char', key: '71_50' }],
+			['/api/monster-damage/cancel', {}]
 		]);
 	});
 
@@ -63,5 +65,14 @@ describe('monster damage requests', () => {
 			'Calculating monster damage vs character... 1,234 of 5,678 (4s)'
 		);
 		expect(progressText({ mode: 'party', done: 0, total: 9, elapsed_ms: 0 })).toContain('vs party');
+	});
+});
+
+describe('the cancelling progress line', () => {
+	it('says it is cancelling while the server stops', async () => {
+		const { progressText } = await import('./monsterdamage');
+		const r = { mode: 'char' as const, done: 4, total: 1200, elapsed_ms: 1000 };
+		expect(progressText(r)).toMatch(/^Calculating monster damage vs character\.\.\. 4 of 1,200/);
+		expect(progressText({ ...r, cancelling: true })).toBe('Cancelling the monster damage calculation... 4 of 1,200');
 	});
 });

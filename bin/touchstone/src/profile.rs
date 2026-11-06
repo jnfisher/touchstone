@@ -161,6 +161,70 @@ fn override_keys(b: &Balance) -> Vec<String> {
     keys
 }
 
+/// One stat's limits for a race.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct StatCap {
+    /// The race maximum (or its minimum, if that is higher).
+    pub race_max: i32,
+    /// Where training leaves the plain price: `race_max`, or under Quicksilver the larger of that and the soft cap
+    /// floor (R14).
+    pub soft_cap: i32,
+    /// The highest value training reaches.
+    pub train_max: i32,
+}
+
+/// What `GET /api/races/{number}/stat-caps` answers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StatCapsJson {
+    /// Whether this load prices stats with soft caps (Quicksilver). Stock does not, and `stats` is then empty:
+    /// MME's boxes take any value up to three digits.
+    pub soft_caps: bool,
+    /// Strength, Intellect, Willpower, Agility, Health, Charm, as the Char tab lists them.
+    pub stats: Vec<StatCap>,
+}
+
+/// The stat limits of `race` under `profile`.
+#[must_use]
+pub fn stat_caps(profile: Profile, race: &touchstone_model::Race) -> StatCapsJson {
+    use touchstone_rules::stats::{soft_cap, train_max};
+    let maxes = [
+        (race.m_str, race.x_str),
+        (race.m_int, race.x_int),
+        (race.m_wil, race.x_wil),
+        (race.m_agl, race.x_agl),
+        (race.m_hea, race.x_hea),
+        (race.m_chm, race.x_chm),
+    ];
+    let stats: Vec<StatCap> = maxes
+        .iter()
+        .filter_map(|&(min, max)| {
+            let race_max = max.max(min);
+            train_max(profile, race_max).map(|t| StatCap {
+                race_max,
+                soft_cap: soft_cap(profile, race_max),
+                train_max: t,
+            })
+        })
+        .collect();
+    StatCapsJson {
+        soft_caps: !stats.is_empty(),
+        stats,
+    }
+}
+
+/// `GET /api/races/{number}/stat-caps`.
+pub async fn stat_caps_route(
+    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::state::AppState>>,
+    axum::extract::Path(number): axum::extract::Path<i32>,
+) -> crate::calc::ApiResult {
+    let loaded = state.current();
+    let race = loaded
+        .world
+        .get_race(number)
+        .ok_or_else(|| crate::calc::not_found(format!("no race {number}")))?;
+    crate::calc::json(&stat_caps(loaded.profile, race))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
