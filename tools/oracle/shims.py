@@ -341,6 +341,7 @@ class ControlShim(ExtObject):
         self.items = {}
         self.decode = decode
         self.radio = None       # the sibling elements of a `$radio` option-button array (VB clears the others)
+        self.index = None       # the element's index in its control array (the map recorder names cells by it)
         for k, v in (props or {}).items():
             self.load(k, v)
 
@@ -1037,6 +1038,7 @@ class FormShim(ExtObject):
             sub = c.get(i)
             if sub is None:
                 sub = c[i] = ControlShim(decode=self.decode)
+            sub.index = i
             return sub
         return c
 
@@ -1194,6 +1196,19 @@ def msgbox_result(buttons):
     default = (b >> 8) & 3
     table = {0: (1,), 1: (1, 2), 2: (3, 4, 5), 3: (6, 7, 2), 4: (6, 7), 5: (4, 2)}.get(base, (1,))
     return V.I16(table[min(default, len(table) - 1)])
+
+
+class MapRecorder:
+    """What the map procedures drew (family map): MapDrawOnRoom calls as [cell, shape, size, QBColor] in order since
+    the last picMap.Cls, and the replaced room a cell's tooltip names ([cell, map, room], the last one per cell wins)."""
+
+    def __init__(self):
+        self.draws = []
+        self.was = []
+
+    def clear(self):
+        self.draws.clear()
+        self.was.clear()
 
 
 class TipShim(ExtObject):

@@ -235,7 +235,7 @@ fn get_multi_monster_names(world: &World, numbers: &str, hide: bool) -> String {
 }
 
 /// The `Select Case Left(ExitType, 5)` of MME's exit loops (0 when the text names no type).
-fn exit_type_code(exit_type: &str) -> i32 {
+pub(crate) fn exit_type_code(exit_type: &str) -> i32 {
     if len(exit_type) <= 2 {
         return 0;
     }
@@ -265,7 +265,7 @@ fn exit_type_code(exit_type: &str) -> i32 {
     }
 }
 
-fn exit_text(r: &Room, dir: usize) -> &str {
+pub(crate) fn exit_text(r: &Room, dir: usize) -> &str {
     match dir {
         0 => &r.n,
         1 => &r.s,

@@ -17,6 +17,10 @@ copies a local the form never stores (nEncumPCT) into a probe control. After the
 other text, e.g. an InputBox call with a read of a control; a line that is not found is an error. Only the
 first matching line is replaced; `"subs_all"` has the same shape and replaces every matching line. The
 replacement may hold several lines (joined with newlines).
+
+`{"rename": {"prefix": "X", "names": [...]}}` gives the listed procedures and variables a prefix everywhere in
+the cut code (outside string literals), so two forms that declare the same names (frmMain and frmMap both have
+MapStartMapping and CellRoom) can be cut into one interpreter; the scenario calls the prefixed names.
 """
 import re
 
@@ -76,6 +80,14 @@ def _type_lines(code, name):
     raise ValueError("type %s not found in the form" % name)
 
 
+def _rename(line, pat, prefix):
+    """Prefix the names `pat` matches in the code part of a line, leaving string literals alone."""
+    parts = line.split('"')
+    for k in range(0, len(parts), 2):
+        parts[k] = pat.sub(lambda m: prefix + m.group(0), parts[k])
+    return '"'.join(parts)
+
+
 def build_source(raw, spec):
     """spec: {"decls": [name], "enums": [name], "types": [name], "procs": [name], "cuts": {proc: {"cut": line, "append": [lines]}}, "subs": {proc: {line: new}}}"""
     _, code = _code_lines(raw)
@@ -109,4 +121,8 @@ def build_source(raw, spec):
             # the form's own name before its controls (`frmSpellBook.cmbClass`): in a module they are bare names
             body = [re.sub(r"\b%s\." % re.escape(prefix), "", l) for l in body]
         out += body
+    rn = spec.get("rename")
+    if rn:
+        pat = re.compile(r"\b(%s)\b" % "|".join(re.escape(n) for n in rn["names"]))
+        out = [_rename(l, pat, rn["prefix"]) for l in out]
     return "\n".join(out) + "\n"
