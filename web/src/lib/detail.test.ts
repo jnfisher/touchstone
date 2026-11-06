@@ -10,6 +10,7 @@ import {
 	refCells,
 	refColumns,
 	routeLine,
+	isReachCompute,
 	type RefRow
 } from './detail';
 
@@ -102,6 +103,8 @@ describe('route lines of the monster pane', () => {
 		expect(routeLine('reach_route_alt')).toEqual({ alt: true });
 		// the compute row and the room rows have their own handling
 		expect(routeLine('reach_compute')).toBeUndefined();
+		expect(isReachCompute('reach_compute')).toBe(true);
+		expect(isReachCompute('reach_route')).toBe(false);
 		expect(routeLine('room')).toBeUndefined();
 		expect(routeLine('plain')).toBeUndefined();
 	});

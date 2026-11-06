@@ -91,9 +91,13 @@ export function createOptionsStore(deps: OptionsDeps = {}) {
 		dismissNotice() {
 			notice = undefined;
 		},
-		/** Whether the damage items can run: a class and race are chosen. */
+		/** Whether the vs Char item can run: a class and race are chosen. */
 		get canCalcDamage() {
 			return canCalculate(chars.doc) && !damage.busy;
+		},
+		/** The vs Party item reads only the party boxes, so MME offers it with no character loaded. */
+		get canCalcPartyDamage() {
+			return !damage.busy;
 		},
 		/** The two checked items. */
 		get jumpToCompare() {
@@ -122,6 +126,18 @@ export function createOptionsStore(deps: OptionsDeps = {}) {
 			} finally {
 				reachBusy = false;
 			}
+		},
+		/**
+		 * A double-click on the monster pane's "(double-click to compute)" row (`reach_compute`): compute unless
+		 * something else did since the pane was drawn, then draw the pane again.
+		 */
+		async reachRow(): Promise<void> {
+			await refreshReach();
+			if (reach?.computed) {
+				boxes.bumpReach();
+				return;
+			}
+			await this.calculateReachability();
 		},
 		/** Calc. Monster Dmg vs Char / vs Party. */
 		async calcDamage(mode: 'char' | 'party'): Promise<boolean> {

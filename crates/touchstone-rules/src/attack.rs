@@ -515,6 +515,9 @@ pub struct CharacterProfile {
     pub encum_current: i32,
     pub encum_max: i32,
     pub spell_dmg_bonus: i16,
+    /// Quicksilver's Alter Energy Usage: a percentage of a normal blow's energy, applied when
+    /// positive. Not an MME field; Stock leaves it 0.
+    pub energy_pct: i32,
 }
 
 /// One equipped hand's contribution: the `nGlobalChar*(0 or 1)` arrays (0 = weapon, 1 = off-hand).
@@ -1388,6 +1391,16 @@ fn attack_steps(
                 is_backstab: false,
             })?)?
         };
+
+        // Quicksilver's Alter Energy Usage. Before Quick and Deadly: the balance tool's cells agree
+        // with the bonus following the energy a blow really costs (docs/differences.md).
+        if crate::gear::profile_has_energy_use(profile)
+            && ch.energy_pct > 0
+            && attack_type != 4
+            && attack_type != 7
+        {
+            energy = n32(i64::from(energy) * i64::from(ch.energy_pct) / 100)?;
+        }
 
         if ch.is_loaded_character
             && strength >= str_req

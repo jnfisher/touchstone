@@ -244,6 +244,8 @@ pub struct CharStats {
     pub accy_abils: i32,
     pub hit_magic_non_weapon: i32,
     pub qnd_bonus: i32,
+    /// Quicksilver's Alter Energy Usage (not an MME stat); 0 under Stock.
+    pub energy_use: i32,
 }
 
 impl Default for CharStats {
@@ -254,6 +256,7 @@ impl Default for CharStats {
             encum_max: 0.0,
             base_stat: [0.0; 6],
             class_stealth_tag: 0.0,
+            energy_use: 0,
             max_hp: 0.0,
             rest_rate: 0.0,
             meditate_regen: 0.0,
@@ -361,6 +364,8 @@ pub struct CharacterProfile {
     pub race_stealth: bool,
     pub hit_magic: i32,
     pub hit_magic_non_weapon: i32,
+    /// Quicksilver's Alter Energy Usage, a percentage of a normal blow's energy (0: none).
+    pub energy_pct: i32,
 }
 
 impl CharacterProfile {
@@ -606,6 +611,7 @@ fn populate_steps(
         t.damage_threshold = f64::from(a.heal_value);
         t.spellcasting = int16(st.spellcasting)?;
         t.spell_dmg_bonus = int16(st.stat[33])?;
+        t.energy_pct = st.energy_use;
         t.spell_overhead = a.heal_cost + st.bless_total / 6.0;
 
         if matches!(a.attack_type, AttackType::Spell | AttackType::SpellAny) && a.spell_num > 0 {

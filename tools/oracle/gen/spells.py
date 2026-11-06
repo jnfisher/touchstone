@@ -121,6 +121,82 @@ def main():
                         todo.append(m)
     F = sorted(closure)
 
+    # Invented rows probing integer handling (INT-* in the card). Stock rows stay as they are; these are appended.
+    LONG_MAX, LONG_MIN = 2147483647, -2147483648
+    syn_rows = []
+
+    def mk(num, abil, req=0, cap=0, mn=0, mx=0, dur=0, mni=0, mnl=0, mxi=0, mxl=0, dri=0, drl=0, en=0):
+        syn_rows.append({"Number": num, "ReqLevel": req, "EnergyCost": en, "MinBase": mn, "MaxBase": mx, "Dur": dur,
+                         "Cap": cap, "MaxIncLVLs": mxl, "MaxInc": mxi, "MinIncLVLs": mnl, "MinInc": mni,
+                         "DurIncLVLs": drl, "DurInc": dri, "ab": abil})
+        return num
+
+    S = {}
+    # damage at the Long edge, with growth per level (Currency sums beyond Long, Fix, bonus multiply)
+    S["big"] = mk(80001, [(1, 0)], mn=LONG_MAX, mx=LONG_MAX, dur=LONG_MAX, mni=LONG_MAX, mnl=1, mxi=LONG_MAX, mxl=1,
+                  dri=LONG_MAX, drl=1)
+    S["bigcap"] = mk(80002, [(1, 0), (19, 0)], req=1, cap=9999, mn=LONG_MAX, mx=LONG_MAX, dur=LONG_MAX, mni=LONG_MAX,
+                     mnl=1, mxi=LONG_MAX, mxl=1, dri=LONG_MAX, drl=1, en=1)
+    S["neg"] = mk(80003, [(1, 0)], req=-3, cap=-5, mn=LONG_MIN, mx=-5, dur=-10, mni=LONG_MIN, mnl=1, mxi=-7, mxl=3,
+                  dri=-1, drl=2, en=-5)
+    S["reqbig"] = mk(80004, [(1, 0)], req=40000, mn=3, mx=9, mni=1, mnl=2)
+    S["capbig"] = mk(80005, [(1, 0)], req=2, cap=40000, mn=3, mx=9, mni=1, mnl=2, dri=1, drl=3, dur=4)
+    S["req32767"] = mk(80006, [(1, 0)], req=32767, cap=32767, mn=3, mx=9, mni=1, mnl=2)
+    S["frac"] = mk(80007, [(1, 0)], req=1, mn=1, mx=2, dur=3, mni=1, mnl=3, mxi=2, mxl=7, dri=1, drl=3, en=3)
+    S["fracneg"] = mk(80008, [(1, 0)], req=1, mn=1, mx=2, dur=3, mni=-1, mnl=3, mxi=-2, mxl=7, dri=-1, drl=3, en=500)
+    S["lvlneg"] = mk(80009, [(1, 0)], req=1, mn=10, mx=20, dur=30, mni=1, mnl=-3, mxi=5, mxl=-7, dri=2, drl=-3, en=501)
+    S["nolvl"] = mk(80010, [(1, 0)], mn=7, mx=700, dur=5, en=1)
+    S["rnd"] = mk(80011, [(1, 0)], req=1, mn=0, mx=0, mni=1, mnl=2, mxi=1, mxl=2, dri=1, drl=2)    # .5 per level: CLng ties
+    # EndCast (151, no value) and Summon (12, no value) ranges at the edges of Long
+    S["end_edge"] = mk(80020, [(151, 0)], mn=LONG_MAX - 1, mx=LONG_MAX)
+    S["end_neg"] = mk(80021, [(151, 0)], mn=LONG_MIN, mx=LONG_MIN + 1)
+    S["end_eq"] = mk(80022, [(151, 0)], mn=LONG_MAX, mx=LONG_MAX)
+    S["end_grow"] = mk(80023, [(151, 0)], req=1, mn=LONG_MAX - 1, mx=LONG_MAX - 1, mni=1, mnl=1, mxi=1, mxl=1)
+    S["end_growmax"] = mk(80024, [(151, 0)], req=1, mn=LONG_MAX - 1, mx=LONG_MAX, mxi=1, mxl=1)
+    S["end_maxlow"] = mk(80025, [(151, 0)], mn=5, mx=LONG_MIN)
+    S["end_small"] = mk(80026, [(151, 0)], mn=4, mx=6)
+    S["end_half"] = mk(80027, [(151, 0)], req=1, mn=10, mx=10, mni=1, mnl=2, mxi=1, mxl=2)
+    S["sum_edge"] = mk(80030, [(12, 0)], mn=LONG_MAX - 1, mx=LONG_MAX)
+    S["sum_neg"] = mk(80031, [(12, 0)], mn=LONG_MIN, mx=LONG_MIN + 1)
+    S["sum_eq"] = mk(80032, [(12, 0)], mn=LONG_MAX, mx=LONG_MAX)
+    S["sum_grow"] = mk(80033, [(12, 0)], req=1, mn=LONG_MAX - 1, mx=LONG_MAX - 1, mni=1, mnl=1, mxi=1, mxl=1)
+    S["sum_growmax"] = mk(80034, [(12, 0)], req=1, mn=LONG_MAX - 1, mx=LONG_MAX, mxi=1, mxl=1)
+    S["sum_maxlow"] = mk(80035, [(12, 0)], mn=5, mx=LONG_MIN)
+    S["sum_small"] = mk(80036, [(12, 0)], mn=4, mx=6)
+    # DR (7) divides the Currency by 10; Case Else abilities print the strings
+    S["dr_big"] = mk(80040, [(7, 0)], req=1, mn=LONG_MAX, mx=LONG_MAX, mni=LONG_MAX, mnl=1, mxi=7, mxl=3)
+    S["dr_small"] = mk(80041, [(7, 0)], req=1, mn=-15, mx=33, mni=7, mnl=3, mxi=1, mxl=3)
+    S["dr_nolvl"] = mk(80042, [(7, 0)], mn=-15, mx=33)
+    S["other"] = mk(80043, [(23, 0), (50, 0), (140, 0), (148, 0)], req=1, mn=LONG_MAX, mx=LONG_MIN, mni=3, mnl=2)
+    # ability numbers and values outside Integer (GetAbilityStats takes Integer, error 6 inside PullSpellEQ)
+    S["abv_hi"] = mk(80050, [(1, 40000)], mn=1, mx=2)
+    S["abv_lo"] = mk(80051, [(1, -40000)], mn=1, mx=2)
+    S["abv_edge"] = mk(80052, [(1, 32767), (1, -32768)], mn=1, mx=2)
+    S["abv_164"] = mk(80053, [(164, 40000), (151, 70000)], mn=1, mx=2)
+    S["abv_164ok"] = mk(80054, [(164, 40000), (1, 5)], mn=1, mx=2)
+    S["abv_122"] = mk(80055, [(122, LONG_MAX), (122, LONG_MIN)], mn=1, mx=2)
+    S["abv_12"] = mk(80056, [(12, LONG_MAX)], mn=1, mx=2)
+    S["abv_end2"] = mk(80057, [(23, 40000)], mn=1, mx=2)
+    S["abv_148"] = mk(80058, [(148, 40000)], mn=1, mx=2)
+    S["abn_hi"] = mk(80059, [(40000, 0)], mn=1, mx=2)
+    S["abn_neg"] = mk(80060, [(-1, 0), (1, 0)], mn=1, mx=2)
+    S["abn_hi_mm"] = mk(80061, [(1, 0), (40000, 7)], mn=1, mx=2)      # only reached without min-max mode
+    S["abn_first"] = mk(80062, [(40000, 7), (1, 0)], mn=1, mx=2)      # min-max mode stops at the first slot
+    # energy costs for the "x times/round" suffix
+    for k, en in enumerate((1, 3, 143, 499, 500, 501, 0, -5, LONG_MAX)):
+        S["en%d" % en] = mk(80070 + k, [(1, 0)], mn=1, mx=2, en=en)
+    for r in syn_rows:
+        rs[r["Number"]] = {"f": [r[k] if k in r else 0 for k in FIELDS], "ab": r["ab"], "learn": 0, "lf": 0}
+        rs[r["Number"]]["f"][0] = r["Number"]
+    db_extra = []
+    for r in syn_rows:
+        row = {"Number": r["Number"], "Name": "Syn %d" % r["Number"]}
+        row.update({k: r[k] for k in FIELDS if k in r and k != "Number"})
+        for i, (a_, v_) in enumerate(r["ab"]):
+            row["Abil-%d" % i], row["AbilVal-%d" % i] = a_, v_
+        db_extra.append(row)
+    names["spells"] += [[r["Number"], "Syn %d" % r["Number"]] for r in syn_rows]
+
     cases = [{"id": "table", "fields": FIELDS + ["Learnable", "LearnedFrom", "AbilitiesFlat"],
               "spells": compact(rs), "names": names, "textblocks": tb}]
     grids = []
@@ -278,6 +354,48 @@ def main():
             c = {"id": "mn-%d" % k[1], "proc": "GetMonsterName", "args": [k[1], False]}
         cases.append(c)
 
+    # --- integer handling on the invented rows
+    syn_nums = [r["Number"] for r in syn_rows]
+    for n in syn_nums:
+        for j, (calc, lvl, bonus) in enumerate([(True, 0, 0), (True, 1, 0), (True, 255, 0), (True, 9999, 0),
+                                                (False, 0, 0), (False, 9999, 32767), (True, 255, 32767), (True, -7, 0)]):
+            one("iq-%d-%d" % (n, j), "PullSpellEQ", pull(n, calc, lvl, bonus=bonus))
+        for j, (calc, lvl, bonus) in enumerate([(True, 255, 0), (False, 0, 0), (True, 9999, 25)]):
+            one("iqm-%d-%d" % (n, j), "PullSpellEQ", pull(n, calc, lvl, mm=True, bonus=bonus))
+        if n in syn_nums[::3]:
+            one("iqf-%d" % n, "PullSpellEQ", pull(n, True, 40, mon=True))
+            one("iqn-%d" % n, "PullSpellEQ", pull(n, True, 20, nested=True, noshow=True))
+        one("iqq-%d" % n, "PullSpellEQ", pull(n, True, 255), globals={"bQuickSpell": True})
+        for j, (omin, omax) in enumerate([(LONG_MAX, LONG_MAX), (LONG_MIN, LONG_MIN), (LONG_MAX - 1, LONG_MAX), (5, 0)]):
+            one("iqo-%d-%d" % (n, j), "PullSpellEQ", pull(n, True, 255, omin=omin, omax=omax, bonus=25 * (j % 2)))
+        one("iqo-%d-m" % n, "PullSpellEQ", pull(n, True, 255, mm=True, omin=LONG_MIN, omax=LONG_MAX))
+    # max level taken from gAvgLevelMaxAllStats when no level is given (Integer assignment of a Long)
+    for n in (S["big"], S["frac"], S["rnd"], S["end_grow"], S["dr_big"], S["nolvl"]):
+        for i, v in enumerate([0, 100, 271.2, 32767.4, 32768, 40000, 2147483645, 2147483646, 3e9]):
+            one("iqg-%d-%d" % (n, i), "PullSpellEQ", pull(n, False, 0), globals={"gAvgLevelMaxAllStats": v})
+            one("iqgm-%d-%d" % (n, i), "PullSpellEQ", pull(n, False, 0, mm=True), globals={"gAvgLevelMaxAllStats": v})
+    # the global level box: Val() then an Integer assignment (banker's rounding, error 6 beyond Integer)
+    for n in (S["frac"], S["bigcap"], S["capbig"], S["nolvl"]):
+        for i, txt in enumerate(["40000", "-5", "2.5", "3.5", "32767.4", "32767.5", "-32768.5", "-32769", "1e3", "1e9",
+                                 " 12abc", "&H7FFF", "&HFFFF", "0", "256"]):
+            one("iqt-%d-%d" % (n, i), "PullSpellEQ", pull(n, True, 0),
+                forms={"frmMain": {"chkGlobalFilter": {"Value": 1},
+                                   "txtGlobalLevel": {"$array": {"0": {"Text": txt}}}}})
+    # arguments outside Integer fail at the call (error 6), before PullSpellEQ runs
+    for i, (lvl, bonus) in enumerate([(40000, 0), (-32769, 0), (32767, 0), (-32768, 0), (5, 32768), (5, -32769), (5, 32767)]):
+        for n in (S["frac"], S["big"]):
+            one("iqa-%d-%d" % (n, i), "PullSpellEQ", pull(n, True, lvl, bonus=bonus))
+    # the other level-scaled procedures at the same edges
+    for n in syn_nums[:14]:
+        for l in (0, 255, 9999):
+            one("ig-min-%d-%d" % (n, l), "GetSpellMinDamage", [n, l])
+            one("ig-max-%d-%d" % (n, l), "GetSpellMaxDamage", [n, l])
+            one("ig-dur-%d-%d" % (n, l), "GetSpellDuration", [n, l])
+        for i, (use, lvl, bonus) in enumerate([(True, 9999, 32767), (False, 0, 25)]):
+            one("ig-cur-%d-%d" % (n, i), **cur(n, use, lvl, bonus))
+    for l in (40000, -32769):
+        one("ig-min-lvl-%d" % l, "GetSpellMinDamage", [S["frac"], l])
+
     scn = {
         "family": "spells", "database": True,
         "description": "Spell damage equations (FAM-10, stock): spell lookups and flags, damage and duration at a cast level, "
@@ -290,7 +408,8 @@ def main():
             "does not depend on the calc-level flag or bQuickSpell, so those are recorded once.",
             "PullSpellEQ is always called with lv omitted (Nothing); the ListView rows it would add are UI and not ported."],
         "tolerance": {"default": 0},
-        "cases": cases, "grids": grids}
+        "cases": cases, "grids": grids,
+        "db_extra": {"Spells": db_extra}}
     with open(os.path.join(ROOT, "fixtures", "scenarios", "spells.json"), "w") as f:
         json.dump(scn, f, separators=(",", ":"))
         f.write("\n")

@@ -152,6 +152,10 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - The monster pane writes the damage it simulated on the spot into the stored arrays and the next pane or list reads it, as
   MME's global arrays behave. The start-up lair averages (`CalculateAverageLairs`) still see the uncalculated arrays, as
   MME's do (they run before anything is calculated).
+- "Calc. Monster Dmg vs Party" runs with no character loaded, as in MME (its menu item depends on the lair filter's party
+  size and the calculation reads only the party boxes). The server needs a class and race to build the lair environment,
+  so a party request without them gets the first class and race of the data; the arrays are the same whichever is used.
+  The page offers the item whatever the party size, where MME enables it only for a party of two or more.
 - The oracle family `monster_damage_calc` runs MME's calculation over a small melee-only Monsters table (all 1100+ stock
   monsters would take hours in the interpreter); spell attackers' simulations are pinned by `monster_glue_char`.
 - The damage the pane reads (`nMonsterDamageVsDefault`) stays the fixture's invented array only in tests; the server leaves
@@ -504,3 +508,65 @@ where the port stops short of the window or reads the data on purpose.
 - **Spell ranges in "what leads here".** `GetCurrentSpellMinMax` is asked without a level, so `gAvgLevelMaxAllStats` does
   not matter to it; the endpoint passes 0. A textblock spell whose range is a single number is not tested at all
   (MME assigns the number and never uses it).
+
+## Quicksilver: end-to-end cells (Q-016)
+
+Under `Profile::Quicksilver` only. `fixtures/quicksilver/cells.json` holds 45 whole characters from Quicksilver's balance
+tool (15 classes at levels 10, 30 and 60, races rotating) with the tool's melee damage a round against the band's
+reference monster. `tests/all/quicksilver_cells.rs` rebuilds each through `refresh_all` and `get_damage_output`. 39 of the
+43 cells that deal damage agree within 7% (35 before Q-017 applied Alter Energy Usage); the median ratio is 0.99. Layer 3 guards against gross error and wiring, not
+formula detail; the structural differences below are why the tolerance is not tighter.
+
+- **Steady state against a simulation.** The tool plays 200,000 rounds of a target that never dies and averages the
+  damage; touchstone gives MME's expectation (hit chance times the average blow, crits and the opportunist and weave as
+  expectations). A killing blow is not modelled by either side here (the tool tops the target up every round), so it does
+  not appear as a difference in these cells; it matters only for kills and Model D (Q-014).
+- **The energy floor of 200 and the cap of 1000.** The engine floors a blow at 200 energy; MME has no floor. With
+  both at 200 or more the swings agree to the hundredth in every cell. The engine also holds a blow to the round's 1000;
+  MME's swings fall below one for a very slow weapon (a level 10 bash at 1,100 to 1,200 energy gives 0.8 to 0.9
+  swings). Those cells (Warrior L10, Cleric L10) come out 12 to 16% low in touchstone.
+- **Alter Energy Usage (ability 87) on a standing buff.** The tool's hunting buffs include hasten-type spells that
+  cut a blow's energy to 85% (and a Mystic's buff list the same). Q-017 applies it under Quicksilver (next section), which
+  moved Warlock L30 from 0.82 to 1.00, Warlock L60 from 0.81 to 0.98, Mystic L10 from 0.83 to 1.01 and Bard L60 from 0.80
+  to 0.94. The Bard's remaining 6% is not energy: its blows and the tool's swing equally (both at the five-swing cap) and
+  the cell is a bash, a move whose accuracy and crit steps differ between the tool and MME. The cells need no allowance
+  for it now.
+- **Weapons that cast.** The tool plays every cast of a weapon's One Time Cast spells at the character's level; MME prices
+  them from the spell text with the weapon's Auto-use chance. The Cleric L60 cell is 10% low.
+- **Cannot hit.** A weapon that does not meet the monster's magic requirement does nothing in the tool (damage 0); MME
+  reports it as `-9998`. The Mage and Druid L60 cells agree in meaning, not in number.
+- **Hit points.** For a few casters touchstone's maximum hit points are 25 under the tool's (a Quicksilver bonus
+  that is not an item or spell stat in MME's tables); damage does not read them.
+- Not modelled in the comparison: the tool's per-class training ladder is taken as given (the trained stats are in the
+  cell), the kit is the tool's, and every cell is one move (the tool's best by damage).
+
+## Quicksilver: Alter Energy Usage (Q-017)
+
+Ability 87, "Alter Energy Usage", is a percentage of a blow's energy. The stock MajorMUD engine applies it to the
+energy a character's normal blow costs, so MME's omission of it as a character stat (only the item detail applies a fixed
+85% to a displayed weapon) is a difference from the game, not from Quicksilver. Under `Profile::Stock` and under
+Quicksilver's neutral balance, touchstone follows MME and ignores it (parity over correctness). Under any other
+Quicksilver balance, `refresh_all` totals it into `CharStats.energy_use` and `calculate_attack` takes that percentage of
+a normal blow's energy (when positive, and not for the fixed-1000 attacks).
+
+- **A running average, not a sum.** Each source that has the ability averages into the total: the value itself for the
+  first, then `(total + value) / 2` (truncating). The order is the engine's: bless spells, race, class, the worn items in
+  slot order, the weapon, then carried items that are neither weapons nor wearable. Two sources at 85 and 60 give 72, three
+  give a different answer in another order. A bless slot of 0 takes the spell's average cast; an item slot of 0 averages in
+  as a 0. "Negate ability" is not modelled.
+- **Before Quick and Deadly.** The crit bonus for a fast weapon is judged on the energy after the ability. The engine's
+  own check for it is built without abilities, but the balance tool's cells (Warlock L30 and L60) agree with the bonus
+  following the cost a blow really has, so that is the order used.
+- **No balance key.** The balance keys mirror the engine's, which has none for this, so the neutral balance
+  (`Balance::is_neutral`) is the setting that turns it off; a balance that is neutral except for one key still applies it.
+- **The floor stays unmodelled.** The engine floors a blow at 200; a cost below that gives the same five swings through
+  MME's cap, so swings agree, and `fixtures/quicksilver/energy.json` (255 characters, two levels each) is compared on
+  swings. The engine's cost sits within one of the percentage of the cost without the ability, from later truncating steps.
+
+## PullSpellEQ integer edges (P3-04b)
+
+- MME's `For y = nMin + 1 To nMax` over EndCast and Summon ranges keeps the limit as the Currency it is and
+  converts only the start to a Long. The port does the same (`for_to`), as the oracle's interpreter does; real
+  VB6 may convert the limit too and raise error 6 for a limit beyond Long. Stock data never reaches it.
+- A Spells value outside Integer that is passed to `GetAbilityStats` (an Integer parameter) makes `PullSpellEQ`
+  return an empty string (error 6, handled by `Resume out`), as in MME; no other path converts it.

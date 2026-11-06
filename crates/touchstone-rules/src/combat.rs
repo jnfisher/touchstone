@@ -575,6 +575,7 @@ pub fn attack_profile(t: &crate::character::CharacterProfile) -> AttackProfile {
         encum_current: t.encum_current,
         encum_max: t.encum_max,
         spell_dmg_bonus: t.spell_dmg_bonus,
+        energy_pct: t.energy_pct,
     }
 }
 

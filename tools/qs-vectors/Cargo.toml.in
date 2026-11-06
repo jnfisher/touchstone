@@ -15,3 +15,4 @@ serde_json = "1"
 silvermere-types = { path = "@QUICKSILVER_DEV@/crates/silvermere-types" }
 silvermere-rules = { path = "@QUICKSILVER_DEV@/crates/silvermere-rules" }
 silvermere-engine = { path = "@QUICKSILVER_DEV@/crates/silvermere-engine" }
+quicksilver-balance = { path = "@QUICKSILVER_DEV@/tools/balance" }
