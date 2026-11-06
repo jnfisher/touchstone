@@ -724,6 +724,7 @@ fn monster_pane(
     Ok(out)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build(
     loaded: &crate::state::Loaded,
     pane: Pane,
