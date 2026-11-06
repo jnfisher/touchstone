@@ -7,22 +7,39 @@ use axum::extract::{Path, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use serde_json::json;
 
 use crate::state::AppState;
-use crate::{calc, detail};
+use crate::{calc, character, detail};
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/info", get(info))
         .route("/api/exp", get(calc::exp_table))
+        .route("/api/calc/exp", post(calc::calc_exp))
+        .route("/api/calc/coin", post(calc::calc_coin))
+        .route("/api/calc/swing", post(calc::calc_swing))
+        .route("/api/calc/backstab", post(calc::calc_backstab))
+        .route("/api/calc/hit", post(calc::calc_hit))
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
         .route("/api/spells/{number}/effect", get(detail::spell_effect))
         .route(
             "/api/monsters/{number}/max-damage",
             get(detail::monster_max_damage),
+        )
+        .route("/api/character/evaluate", post(character::evaluate_route))
+        .route(
+            "/api/character/bless-spells",
+            get(character::bless_spells_route),
+        )
+        .route("/api/characters", get(character::list))
+        .route(
+            "/api/characters/{name}",
+            get(character::get)
+                .put(character::put)
+                .delete(character::delete),
         )
         .route("/api/{table}", get(table))
         .with_state(state)

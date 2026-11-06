@@ -372,6 +372,11 @@ class Env:
                 arr.dynamic = True
                 if a.get("bounds"):
                     arr.allocate([tuple(b) for b in a["bounds"]])
+                elif a.get("values"):
+                    # input values: a zero-based array holding these (an empty list leaves it unallocated)
+                    arr.allocate([(0, len(a["values"]) - 1)])
+                    for i, x in enumerate(a["values"]):
+                        arr.set((i,), decode(x))
                 cell = Var(arr, a["ref"].lower())
                 args.append(cell)
                 refs.append(cell)
