@@ -7,11 +7,18 @@
 		characterClient,
 		derivedStatName,
 		equippableChoices,
+		FIND_BEST_MENU,
+		findBestLabel,
 		flaggedSlots,
 		toChoices,
+		toggleExcluded,
+		type FindBestEntry,
+		type FindBestLast,
 		type EquipStateDoc
 	} from '$lib/character';
 	import type { CharacterStore } from '$lib/character.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { headingCls, labelCls } from '../calc/styles';
 	import ItemPicker from './ItemPicker.svelte';
 
@@ -25,6 +32,35 @@
 	let problem = $state<string>();
 	let use2nd = $state(false);
 	let toggleOff = $state(true);
+
+	// Find Best (MME's nInvenLastIndex and nInvenExcludedItems live here between clicks).
+	let hold = $state<boolean[]>(Array<boolean>(20).fill(false));
+	let noLimited = $state(false);
+	let excluded = $state<number[] | null>(null);
+	let last = $state<FindBestLast>({ index: 0, criterion: 0 });
+	let lastLabel = $state('');
+
+	async function findBest(entry?: FindBestEntry) {
+		try {
+			const out = await characterClient.findBest({
+				character: { ...$state.snapshot(store.doc), options: $state.snapshot(store.options) },
+				...(entry ? { criterion: entry.criterion, index: entry.index } : { next: true }),
+				hold: $state.snapshot(hold),
+				no_limited: noLimited,
+				use_2nd_wrist: use2nd,
+				excluded: $state.snapshot(excluded),
+				last: $state.snapshot(last)
+			});
+			messages = out.messages;
+			problem = out.error ? `Find Best stopped (VB error ${out.error}): run a Find Best first.` : undefined;
+			excluded = out.excluded;
+			last = out.last;
+			lastLabel = findBestLabel(out.last);
+			if (!out.error) store.edit((d) => (d.equipped = out.character.equipped));
+		} catch (e) {
+			problem = e instanceof Error ? e.message : String(e);
+		}
+	}
 
 	const anywhere = $derived(equippableChoices(items));
 	const perSlot = $derived(EQUIP_SLOTS.map((s) => toChoices(eqState?.choices[s.index] ?? [])));
@@ -92,6 +128,44 @@
 		<label class="flex items-center gap-1.5 text-xs">
 			<input type="checkbox" bind:checked={use2nd} data-testid="equip-2nd-wrist" /> New wrist items go to the second wrist
 		</label>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger data-testid="find-best-menu">
+				{#snippet child({ props })}
+					<Button {...props} variant="outline" size="sm">Find Best</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content align="start">
+				{#each FIND_BEST_MENU as g (g.label)}
+					<DropdownMenu.Sub>
+						<DropdownMenu.SubTrigger data-testid="find-best-group-{g.label}">{g.label}</DropdownMenu.SubTrigger>
+						<DropdownMenu.SubContent>
+							{#each g.entries as e (e.label)}
+								<DropdownMenu.Item data-testid="find-best-{g.label}-{e.label}" onSelect={() => void findBest(e)}>
+									{e.label}
+								</DropdownMenu.Item>
+							{/each}
+							{#if g.sub}
+								<DropdownMenu.Sub>
+									<DropdownMenu.SubTrigger data-testid="find-best-group-{g.sub.label}">{g.sub.label}</DropdownMenu.SubTrigger>
+									<DropdownMenu.SubContent>
+										{#each g.sub.entries as e (e.label)}
+											<DropdownMenu.Item data-testid="find-best-{g.sub.label}-{e.label}" onSelect={() => void findBest(e)}>
+												{e.label}
+											</DropdownMenu.Item>
+										{/each}
+									</DropdownMenu.SubContent>
+								</DropdownMenu.Sub>
+							{/if}
+						</DropdownMenu.SubContent>
+					</DropdownMenu.Sub>
+				{/each}
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+		<Button variant="outline" size="sm" onclick={() => void findBest()} data-testid="next-best">Next Best</Button>
+		<label class="flex items-center gap-1.5 text-xs">
+			<input type="checkbox" bind:checked={noLimited} data-testid="find-best-no-unique" /> Skip unique items
+		</label>
+		{#if lastLabel}<span class="text-muted-foreground text-xs" data-testid="find-best-last">Last: {lastLabel}</span>{/if}
 		<button
 			type="button"
 			class="border-input ml-auto h-7 rounded-md border px-2 text-xs"
@@ -119,6 +193,7 @@
 			</div>
 			<div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
 				{#each EQUIP_SLOTS as s (s.index)}
+					<div>
 					<ItemPicker
 						choices={perSlot[s.index]}
 						value={store.doc.equipped[s.index]}
@@ -127,6 +202,21 @@
 						testid="char-equip-{s.index}"
 						onpick={(n) => void act(n, { slot: s.index })}
 					/>
+					<div class="-mt-1 flex gap-3 text-xs">
+						<label class="flex items-center gap-1"
+							><input type="checkbox" bind:checked={hold[s.index]} data-testid="equip-hold-{s.index}" /> Hold</label
+						>
+						<label class="flex items-center gap-1" title="Next Best skips excluded items"
+							><input
+								type="checkbox"
+								disabled={!store.doc.equipped[s.index]}
+								checked={!!excluded?.includes(store.doc.equipped[s.index])}
+								onchange={() => (excluded = toggleExcluded(excluded, store.doc.equipped[s.index]))}
+								data-testid="equip-exclude-{s.index}"
+							/> Exclude</label
+						>
+					</div>
+					</div>
 				{/each}
 			</div>
 			{#if flagged.length}

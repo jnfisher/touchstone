@@ -440,6 +440,166 @@ export interface EquipRequest {
   use_2nd_wrist?: boolean;
 }
 
+// ---------- find best ----------
+
+/** `enmFindBest`. */
+export type FindBestCriterion = 0 | 1 | 2 | 3 | 4 | 5;
+
+export interface FindBestLast {
+  index: number;
+  criterion: number;
+}
+
+export interface FindBestRequest {
+  character: CharacterDoc & { options?: EvalOptions };
+  criterion?: number;
+  index?: number;
+  /** Next Best: repeat `last` one step down. */
+  next?: boolean;
+  hold?: boolean[];
+  no_limited?: boolean;
+  use_2nd_wrist?: boolean;
+  /** `null` before the first Find Best. */
+  excluded: number[] | null;
+  last: FindBestLast;
+}
+
+export interface FindBestResponse {
+  character: CharacterDoc;
+  messages: string[];
+  winners: {
+    slot: number;
+    number: number;
+    value: number;
+    list_index: number;
+  }[];
+  slot_values: number[];
+  excluded: number[] | null;
+  last: FindBestLast;
+  ran: boolean;
+  found: boolean;
+  error: number | null;
+  flags: boolean[];
+}
+
+export interface FindBestEntry {
+  label: string;
+  criterion: FindBestCriterion;
+  index: number;
+}
+
+export interface FindBestGroup {
+  label: string;
+  entries: FindBestEntry[];
+  /** The nested "Mystic Attacks" menu under Attacking. */
+  sub?: { label: string; entries: FindBestEntry[] };
+}
+
+const fbEntries = (
+  criterion: FindBestCriterion,
+  labels: string[],
+): FindBestEntry[] =>
+  labels.map((label, index) => ({ label, criterion, index }));
+
+/**
+ * MME's Find Best menu (frmMain's `mnuFindBest*`): captions, order and the `Index` each entry sends.
+ * VileWard (armour 6) is GreaterMUD and Paramud only, so it is not listed on the stock engine.
+ */
+export const FIND_BEST_MENU: readonly FindBestGroup[] = [
+  {
+    label: "Armour",
+    entries: fbEntries(0, [
+      "AC/DR Combo",
+      "AC",
+      "DR",
+      "Dodge",
+      "Prot. from Evil",
+      "Prot. from Good",
+    ]),
+  },
+  {
+    label: "Attacking",
+    entries: fbEntries(1, [
+      "Accuracy",
+      "BS Accuracy",
+      "BS Min",
+      "BS Max",
+      "Crits",
+      "DamageShield",
+      "Max Damage",
+    ]),
+    sub: {
+      label: "Mystic Attacks",
+      entries: fbEntries(4, [
+        "JumpKick ACY",
+        "JumpKick DMG",
+        "Kick ACY",
+        "Kick DMG",
+        "Punch ACY",
+        "Punch DMG",
+      ]),
+    },
+  },
+  {
+    label: "Attributes",
+    entries: fbEntries(5, [
+      "Agility",
+      "Charm",
+      "Health",
+      "Intellect",
+      "Strength",
+      "Wisdom",
+    ]),
+  },
+  {
+    label: "Resistances",
+    entries: fbEntries(2, [
+      "All Elemental",
+      "All Magic (MR)",
+      "Cold",
+      "Fire",
+      "Lightning",
+      "Stone",
+      "Water",
+    ]),
+  },
+  {
+    label: "Stats",
+    entries: fbEntries(3, [
+      "Encumbrance",
+      "HP",
+      "HP Regen",
+      "Illumination",
+      "Mana",
+      "Mana Regen",
+      "Perception",
+      "Picklocks",
+      "Spellcasting",
+      "Stealth",
+      "Thievery",
+      "Traps",
+    ]),
+  },
+];
+
+/** The caption of the menu entry a `last` points at, e.g. "Armour: AC". */
+export function findBestLabel(last: FindBestLast): string {
+  for (const g of FIND_BEST_MENU) {
+    for (const e of [...g.entries, ...(g.sub?.entries ?? [])]) {
+      if (e.criterion === last.criterion && e.index === last.index) {
+        return `${g.sub?.entries.includes(e) ? g.sub.label : g.label}: ${e.label}`;
+      }
+    }
+  }
+  return "";
+}
+
+/** Adds the item to the exclusion list, or removes it when it is there (the list starts empty). */
+export function toggleExcluded(list: number[] | null, item: number): number[] {
+  const cur = list ?? [];
+  return cur.includes(item) ? cur.filter((n) => n !== item) : [...cur, item];
+}
+
 // ---------- pickers ----------
 
 export interface ItemChoice {
@@ -560,6 +720,8 @@ export function createCharacterClient(
     },
     equip: (body: EquipRequest) =>
       call<EquipResponse>("/api/character/equip", json("POST", body)),
+    findBest: (body: FindBestRequest) =>
+      call<FindBestResponse>("/api/character/find-best", json("POST", body)),
     equipState: (body: CharacterDoc & { options?: EvalOptions }) =>
       call<EquipStateDoc>("/api/character/equip-state", json("POST", body)),
     list: () => call<CharacterSummary[]>("/api/characters"),
