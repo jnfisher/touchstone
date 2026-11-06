@@ -55,6 +55,9 @@ def rnd(x, n):
     return float(Decimal(repr(x)).quantize(q, rounding=ROUND_HALF_EVEN))
 
 
+EXTRA_SPELLS = (18, 12, 1042, 435)      # an undead-only, a living-only and two costly attack spells for the caster cases
+
+
 def main():
     dbs = sorted(glob.glob(os.path.expanduser("~/.cache/touchstone/mdb/*.sqlite")))
     db = sys.argv[1] if len(sys.argv) > 1 else dbs[0]
@@ -113,7 +116,28 @@ def main():
                     return True
         return False
 
+    def lair_mobs_of(m):
+        return [mons[x] for g, _ in entries(m) for x in mobs_of(g)]
+
+    def mixed(n, ab_num):
+        mb = lair_mobs_of(mons[n])
+        has = [ab_num in abil(x) for x in mb]
+        return bool(has) and any(has) and not all(has)
+
+    def invalid_area(m):
+        for i in range(5):
+            if m["AttType-%d" % i] == 2:
+                sp = spells.get(m["AttAcc-%d" % i])
+                if sp and sp["Targets"] == 12 and any(sp["Abil-%d" % k] == 1 for k in range(10)) \
+                        and not any(sp["Abil-%d" % k] == 17 for k in range(10)):
+                    return True
+        return False
+
     S = {
+        "runic": [n for n in named if mons[n]["R"] > 0],
+        "invalidarea": [n for n in named if invalid_area(mons[n])],
+        "mixedliving": [n for n in named if "(lair)" in sb(mons[n]) and mixed(n, 109)],
+        "mixedantimagic": [n for n in named if "(lair)" in sb(mons[n]) and mixed(n, 51)],
         "plain": [n for n in named if not sb(mons[n]) and mons[n]["RegenTime"] == 0],
         "regen": [n for n in named if mons[n]["RegenTime"] > 0 and "(lair)" not in sb(mons[n]) and "Room" not in sb(mons[n])],
         "room": [n for n in named if "Room" in sb(mons[n]) and "(lair)" not in sb(mons[n])],
@@ -162,21 +186,22 @@ def main():
 
     # the monsters every mode shows: the strata first (two of each, three of the big ones), then a hash-ordered fill
     subj = set(skipped[:2])
-    quota = {"lair1": 6, "lair2": 5, "lair3": 5, "lair6": 3, "lair_regen": 4, "plain": 4, "regen": 4, "room": 4, "room_regen": 4,
-             "exp0": 3, "undead": 3, "guard": 3, "spellatk": 5, "areaspell": 3, "hitspell": 3, "midspell": 4, "drops": 3, "weapon": 3,
-             "greet": 2, "bsdef": 3, "dodge": 3, "antimagic": 3, "magic": 4}
+    quota = {"lair1": 2, "lair2": 2, "lair3": 2, "lair6": 1, "lair_regen": 2, "plain": 1, "regen": 1, "room": 2, "room_regen": 1,
+             "exp0": 1, "undead": 1, "guard": 1, "spellatk": 2, "areaspell": 1, "hitspell": 1, "midspell": 1, "drops": 1,
+             "weapon": 1, "greet": 1, "bsdef": 1, "dodge": 1, "antimagic": 1, "magic": 1, "runic": 1, "invalidarea": 1,
+             "mixedliving": 1, "mixedantimagic": 1}
     for k, n in quota.items():
         subj.update(take(k, n))
     for k in S:
         if k not in quota:
-            subj.update(take(k, 2))
+            subj.update(take(k, 1))
     rest = sorted((n for n in named if n in short and n not in subj), key=lambda x: H("fill", x))
     nochar = sorted(subj)
     for n in rest:
         if len(nochar) >= N_NOCHAR:
             break
         nochar.append(n)
-    nochar = sorted(nochar)[:N_NOCHAR + 2]
+    nochar = sorted(nochar)
 
     def pick(seq, n, salt):
         return sorted(sorted(seq, key=lambda x: H(salt, x))[:n])
@@ -240,6 +265,7 @@ def main():
         if m["GreetTXT"] > 0:
             tb_nums.add(m["GreetTXT"])
     sp_nums |= need["spell"]
+    sp_nums |= set(EXTRA_SPELLS)
     for pc in PIPE["cases"]:           # the characters' attack and heal spells (their names are in the panes)
         g = pc.get("globals", {})
         for k in ("nGlobalAttackSpellNum", "nGlobalAttackHealSpellNum"):
@@ -429,6 +455,16 @@ def main():
     case("smash", "warrior", [panes("rows", small[:2])], glob_={"nGlobalAttackTypeMME": 7})
     case("rogue-ma", "rogue", [panes("rows", small)], glob_={"nGlobalAttackTypeMME": 4, "nGlobalAttackMA": 2})
     case("rogue-ma-punch", "rogue", [panes("rows", small[:5])], glob_={"nGlobalAttackTypeMME": 4, "nGlobalAttackMA": 1})
+    # attack spells that restrict the target, and costly ones (OOM text, heals and bless in the OOM line)
+    cand = pick(nochar, 8, "ms")
+    for sp_n, tag in ((18, "undead"), (12, "living"), (1042, "costly"), (435, "banish")):
+        case("mage-spell-" + tag, "mage", [panes("rows", cand)],
+             glob_={"nGlobalAttackTypeMME": 3, "nGlobalAttackSpellNum": sp_n, "nGlobalAttackSpellLVL": 45})
+    case("mage-costly-heal", "mage", [panes("rows", cand[:5])],
+         glob_={"nGlobalAttackTypeMME": 3, "nGlobalAttackSpellNum": 1042, "nGlobalAttackSpellLVL": 45,
+                "nGlobalAttackHealType": 2, "nGlobalAttackHealSpellNum": 1059, "nGlobalAttackHealSpellLVL": 30})
+    case("mage-spell-lair", "mage", [panes("rows", pick(lairy, 6, "msl"))], forms=lair_forms(1),
+         glob_={"nGlobalAttackTypeMME": 3, "nGlobalAttackSpellNum": 18, "nGlobalAttackSpellLVL": 45})
     case("mage-nospell", "mage", [panes("rows", small[:5])], glob_={"nGlobalAttackSpellNum": 0})
     case("rogue-weapon-zero", "rogue", [panes("rows", small[:5])], glob_={"nGlobalAttackBackstabWeapon": 0})
 
@@ -472,7 +508,7 @@ def main():
 
     zeros = [0.0] * (top + 1)
     for ver, tag in ((1.82, "v182"), (1.7, "v170")):
-        g = {"nNMRVer": ver, "nMonsterPossy": possy_for(ver), "nMonsterSpawnChance": zeros}
+        g = {"nNMRVer": ver, "nMonsterPossy": possy_for(ver), "nMonsterSpawnChance": chance if ver >= 1.82 else zeros}
         if ver < 1.8:
             g["nMonsterDamageVsDefault"] = [(round(mons[n]["AvgDmg"] * 0.9, 1) if n in mons else -1) for n in range(top + 1)]
         pick_n = small + pick(nochar, 3, "old" + tag)
