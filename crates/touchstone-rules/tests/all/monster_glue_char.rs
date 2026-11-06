@@ -474,6 +474,43 @@ fn all_is_the_per_monster_function_in_table_order() {
     }
 }
 
+// The progress variant (P4-30) is the same walk: same values, and one call per monster in table order with the running
+// count and the table size (where MME advances its progress bar).
+#[test]
+fn all_with_progress_reports_each_monster_and_changes_nothing() {
+    use touchstone_rules::monster_glue::calculate_monster_damage_vs_char_all_with;
+    let scn = scenario();
+    let world = world_from("monster_glue_char");
+    let env = GlueEnv {
+        profile: Profile::Stock,
+        nmr_ver: 1.83,
+    };
+    let chr = inputs_from_controls(&scn["controls"]["caster"]);
+    let party = PartyFilter::default();
+    let (mut sim, mut rnd) = fresh();
+    let plain = calculate_monster_damage_vs_char_all(
+        &world, &env, false, 100, &chr, &party, &mut sim, &mut rnd,
+    )
+    .unwrap();
+    let (mut sim, mut rnd) = fresh();
+    let mut seen = Vec::new();
+    let with = calculate_monster_damage_vs_char_all_with(
+        &world,
+        &env,
+        false,
+        100,
+        &chr,
+        &party,
+        &mut sim,
+        &mut rnd,
+        &mut |done, total| seen.push((done, total)),
+    )
+    .unwrap();
+    assert_eq!(plain, with);
+    let n = world.monsters.len();
+    assert_eq!(seen, (1..=n).map(|k| (k, n)).collect::<Vec<_>>());
+}
+
 // Hand-derived from CalculateMonsterDamageVsChar and GetMonsterAvgDmgFromDB: monster 0 and below
 // do nothing, store nothing and roll nothing.
 #[test]

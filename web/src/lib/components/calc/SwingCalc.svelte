@@ -2,6 +2,7 @@
 	// frmSwingCalc: energy per swing, swings in each of ten rounds and the average round damage.
 	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
+	import { calcPrefill } from '$lib/handoff.svelte';
 	import {
 		afterLabel,
 		calcClient,
@@ -37,6 +38,12 @@
 				choices = weaponChoices(items);
 				// frmSwingCalc selects the first weapon in the list on load.
 				if (form.weapon === null) form.weapon = choices[0]?.number ?? null;
+				// a weapon menu's "Calculate Swings": GotoWeapon, then the bashing box
+				const want = calcPrefill.take('swing');
+				if (want?.weapon && choices.some((c) => c.number === want.weapon)) {
+					form.weapon = want.weapon;
+					form.bashing = !!want.bashing;
+				}
 			})
 			.catch((e: unknown) => (loadError = e instanceof Error ? e.message : String(e)));
 		return () => (alive = false);

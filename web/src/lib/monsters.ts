@@ -73,6 +73,8 @@ export interface MonsterControls {
 	magic_value: string;
 	party: PartyBoxes;
 	extras: ExtraFilters;
+	/** Request only (never stored): let the list ask whether to calculate the monster damage first. */
+	ask_damage?: boolean;
 }
 
 export const NO_LIMIT = 9999;

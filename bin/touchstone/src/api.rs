@@ -12,8 +12,8 @@ use serde_json::json;
 
 use crate::state::AppState;
 use crate::{
-    calc, character, class_race_builder, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_sim, panes, paste, reach, settings,
+    calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
+    item_manager, monster_damage, monster_sim, panes, paste, reach, rooms, settings,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -47,6 +47,22 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/class-race-builder/spellbook",
             post(class_race_builder::spellbook_route),
+        )
+        .route(
+            "/api/monster-damage/calculate",
+            post(monster_damage::calculate_route),
+        )
+        .route(
+            "/api/monster-damage/clear",
+            post(monster_damage::clear_route),
+        )
+        .route(
+            "/api/monster-damage/dismiss",
+            post(monster_damage::dismiss_route),
+        )
+        .route(
+            "/api/monster-damage/status",
+            get(monster_damage::status_route),
         )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
@@ -84,6 +100,14 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/paste/party/continue",
             post(paste::party_continue_route),
         )
+        .route("/api/rooms/find-text", get(rooms::find_text_route))
+        .route("/api/rooms/find-exits", post(rooms::find_exits_route))
+        .route("/api/rooms/cmd-rooms", post(rooms::cmd_rooms_route))
+        .route("/api/rooms/{map}/{room}", get(rooms::room_route))
+        .route("/api/clipboard/character", post(clipboard::character_route))
+        .route("/api/clipboard/monster", post(clipboard::monster_route))
+        .route("/api/clipboard/shop", post(clipboard::shop_route))
+        .route("/api/clipboard/lines", post(clipboard::lines_route))
         .route("/api/compare/classify", post(compare::classify_route))
         .route("/api/evaluate/{tab}", post(evaluate::evaluate_route))
         .route("/api/characters", get(character::list))

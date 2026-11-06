@@ -29,9 +29,9 @@ use touchstone_rules::character::{
 use touchstone_rules::exp_per_hour::ExpPerHourSettings;
 use touchstone_rules::filters::{
     AbilityFilter, AllReachable, Answer, ArmourFilter, DamagePrompts, FilterEnv, MonsterAdd,
-    MonsterExtras, MonsterFilter, MonsterFilterInputs, ProfileRequest, SpellFilter, SpellFilterEnv,
-    WeaponEntry, WeaponFilter, filter_armour, filter_monsters, filter_spells, filter_sundry,
-    filter_weapons,
+    MonsterDialog, MonsterExtras, MonsterFilter, MonsterFilterInputs, ProfileRequest, SpellFilter,
+    SpellFilterEnv, WeaponEntry, WeaponFilter, filter_armour, filter_monsters, filter_spells,
+    filter_sundry, filter_weapons,
 };
 use touchstone_rules::gear::Character as GlobalChar;
 use touchstone_rules::lairs::{
@@ -55,6 +55,7 @@ use touchstone_vb6::{Currency, Rnd};
 use crate::calc::{ApiResult, Body, bad, not_found};
 use crate::character::CharacterDto;
 use crate::detail::nmr_ver;
+use crate::monster_damage::{Mode, Snapshot, char_defense_description, party_key};
 use crate::settings::CharacterBlock;
 use crate::state::AppState;
 
@@ -180,6 +181,9 @@ pub struct MonsterControls {
     /// `txtMonsterLairFilter(0..9)` and `txtMonsterDamageOUT(0..1)`.
     pub party: PartyBoxes,
     pub extras: ExtrasBody,
+    /// Ask "calculate the monster damage first?" in lair mode, as MME does. Off, no question is asked and the list is
+    /// made from the damage as it stands.
+    pub ask_damage: bool,
 }
 
 /// The lair/party frame: `txtMonsterLairFilter(0..9)` and the two damage-output boxes.
@@ -249,6 +253,7 @@ impl Default for MonsterControls {
             magic_value: BoxText(d.magic_text),
             party: PartyBoxes::default(),
             extras: ExtrasBody::default(),
+            ask_damage: false,
         }
     }
 }
@@ -452,6 +457,61 @@ pub struct Table {
     /// Monsters: some record was filtered out, so MME's caption reads "*Monsters*".
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub filtered: bool,
+    /// Monsters in lair mode with `ask_damage`: MME would ask whether to calculate the monster damage first and
+    /// stopped there, so the list is empty. The page asks, acts on the answer and asks for the list again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<DamagePromptJson>,
+}
+
+/// One of `FilterMonsters`' yes/no/cancel questions.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct DamagePromptJson {
+    /// `calc_char`, `recalc_char`, `calc_party` or `recalc_party`.
+    pub dialog: &'static str,
+    pub title: &'static str,
+    pub message: &'static str,
+    /// Which array a Yes calculates.
+    pub mode: crate::monster_damage::Mode,
+    /// What `POST /api/monster-damage/dismiss` takes for a No.
+    pub key: String,
+}
+
+impl DamagePromptJson {
+    fn new(d: MonsterDialog, key: String) -> Self {
+        let (dialog, title, message, mode) = match d {
+            MonsterDialog::RecalcChar => (
+                "recalc_char",
+                "Calculate Damage vs Char?",
+                "RE-Calculate Monster Damage vs Character Defenses first?",
+                Mode::Char,
+            ),
+            MonsterDialog::CalcChar => (
+                "calc_char",
+                "Calculate Damage vs Char?",
+                "Calculate Monster Damage vs Character Defenses first?",
+                Mode::Char,
+            ),
+            MonsterDialog::RecalcParty => (
+                "recalc_party",
+                "RE-Calculate Damage vs Party?",
+                "RE-Calculate Monster Damage vs Party Defenses first?",
+                Mode::Party,
+            ),
+            MonsterDialog::CalcParty => (
+                "calc_party",
+                "Calculate Damage vs Party?",
+                "Calculate Monster Damage vs Party Defenses first?",
+                Mode::Party,
+            ),
+        };
+        Self {
+            dialog,
+            title,
+            message,
+            mode,
+            key,
+        }
+    }
 }
 
 fn sort_number(n: f64) -> SortKey {
@@ -603,6 +663,7 @@ struct Built {
     nmr: f64,
     /// Some monster was filtered out: MME's "*Monsters*" caption.
     filtered: bool,
+    prompt: Option<DamagePromptJson>,
 }
 
 /// The Monsters list's `ColumnHeaders.Add` texts by data version. Most cells carry the number MME sorts by in their tag.
@@ -705,6 +766,7 @@ fn to_table(tab: Tab, built: Built) -> Table {
         columns: columns_json,
         rows,
         filtered: built.filtered,
+        prompt: built.prompt,
     }
 }
 
@@ -855,6 +917,7 @@ fn weapons(ctx: &Ctx, opts: &Options) -> Built {
         ability_numeric: list.numeric_ability_sort,
         nmr: 0.0,
         filtered: false,
+        prompt: None,
     }
 }
 
@@ -884,6 +947,7 @@ fn armour(ctx: &Ctx, opts: &Options) -> Built {
         ability_numeric: false,
         nmr: 0.0,
         filtered: false,
+        prompt: None,
     }
 }
 
@@ -972,11 +1036,12 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
         ability_numeric: false,
         nmr: 0.0,
         filtered: false,
+        prompt: None,
     }
 }
 
 /// `Dim`med text of a cast; the damage numbers never need it.
-struct NoCastText;
+pub(crate) struct NoCastText;
 
 impl touchstone_rules::attack::CastText for NoCastText {
     fn spell_name(&self, _: i32) -> String {
@@ -988,7 +1053,7 @@ impl touchstone_rules::attack::CastText for NoCastText {
 }
 
 /// The monster damage arrays (`nMonsterDamageVsChar` and friends) as MME starts: nothing calculated.
-fn uncalculated(world: &World) -> Vec<Currency> {
+pub(crate) fn uncalculated(world: &World) -> Vec<Currency> {
     let top = world.monsters.iter().map(|m| m.number).max().unwrap_or(0);
     vec![Currency::from_scaled(-10_000); usize::try_from(top).unwrap_or(0) + 1]
 }
@@ -1016,6 +1081,7 @@ pub(crate) fn with_monster_env<R>(
     controls: &MonsterControls,
     settings: &ExpPerHourSettings,
     sim_rounds: i32,
+    damage: &Snapshot,
     cast: &dyn touchstone_rules::attack::CastText,
     f: impl FnOnce(&mut CharLairEnv<'_>, &MonsterSetup<'_>) -> R,
 ) -> Result<R, ApiError> {
@@ -1070,10 +1136,13 @@ pub(crate) fn with_monster_env<R>(
         0,
         false,
     );
+    // the start-up pass below sees the arrays as MME starts, the list and pane the
+    // ones a calculation left.
+    let (start_party, start_char) = (uncalculated(world), uncalculated(world));
     let (vs_party, vs_char, vs_default) = (
-        uncalculated(world),
-        uncalculated(world),
-        uncalculated(world),
+        damage.vs_party.clone(),
+        damage.vs_char.clone(),
+        damage.vs_default.clone(),
     );
     let slots = vs_char.len();
     let (mut possy, mut spawn_chance) = (
@@ -1098,8 +1167,8 @@ pub(crate) fn with_monster_env<R>(
             callouts: CharCallouts {
                 world,
                 damage: cenv.damage_env(world, &cctx, &state.character, cast),
-                vs_party: &vs_party,
-                vs_char: &vs_char,
+                vs_party: &start_party,
+                vs_char: &start_char,
                 vs_default: &vs_default,
                 sim_rounds,
                 sim: &mut sim,
@@ -1146,12 +1215,14 @@ pub(crate) fn with_monster_env<R>(
 }
 
 /// FilterMonsters with the tab's controls, `AddMonster2LV` for every monster it lists. No question is asked (the
-/// default prompt state); a Yes would be the right answer anyway, as the damage arrays here are never calculated.
+/// default prompt state) unless the request says `ask_damage`: then the first question MME would ask stops the list and
+/// goes back as `prompt`.
 fn monsters(
     ctx: &Ctx,
     controls: &MonsterControls,
     settings: &ExpPerHourSettings,
     sim_rounds: i32,
+    damage: &Snapshot,
     numbers: Option<&[i32]>,
 ) -> Result<Built, ApiError> {
     let filter = controls.filter();
@@ -1160,6 +1231,7 @@ fn monsters(
         controls,
         settings,
         sim_rounds,
+        damage,
         &NoCastText,
         |env, s| {
             if let Some(numbers) = numbers {
@@ -1186,6 +1258,7 @@ fn monsters(
                     ability_numeric: false,
                     nmr: ctx.nmr,
                     filtered: false,
+                    prompt: None,
                 };
             }
             let computed = if filter.extras.reachable_only {
@@ -1193,6 +1266,8 @@ fn monsters(
             } else {
                 None
             };
+            let desc = char_defense_description(s.cctx, s.state).unwrap_or_default();
+            let party = controls.party();
             let filter_inputs = MonsterFilterInputs {
                 only_in_game: true,
                 use_exp_multi: true,
@@ -1203,7 +1278,11 @@ fn monsters(
                     Some(r) => &**r,
                     None => &AllReachable,
                 },
-                prompts: DamagePrompts::default(),
+                prompts: if controls.ask_damage {
+                    damage.prompts(&desc, &party)
+                } else {
+                    DamagePrompts::default()
+                },
             };
             let row_inputs = MonsterRowInputs {
                 use_exp_multi: true,
@@ -1214,6 +1293,7 @@ fn monsters(
                 backstab_attack: backstab_attack(s.state.attack_config()),
             };
             let mut rows: Vec<Row> = Vec::new();
+            let mut asked: Option<MonsterDialog> = None;
             let mut add = |env: &mut CharLairEnv<'_>, a: &MonsterAdd| {
                 let mut t = s.t_char.clone();
                 t.hp = a.hp;
@@ -1226,9 +1306,23 @@ fn monsters(
                 &filter,
                 &s.t_char,
                 false,
-                &mut |_| Answer::Yes,
+                &mut |d| {
+                    if controls.ask_damage {
+                        asked = Some(d);
+                        Answer::Cancel
+                    } else {
+                        Answer::Yes
+                    }
+                },
                 &mut add,
             );
+            let prompt = asked.map(|d| {
+                let key = match d {
+                    MonsterDialog::RecalcChar | MonsterDialog::CalcChar => desc.clone(),
+                    MonsterDialog::RecalcParty | MonsterDialog::CalcParty => party_key(&party),
+                };
+                DamagePromptJson::new(d, key)
+            });
             // FilterMonsters renames columns 11 and 12 (1-based) for the data version and mode
             let headers = list
                 .headers
@@ -1239,6 +1333,7 @@ fn monsters(
                 ability_numeric: false,
                 nmr: ctx.nmr,
                 filtered: list.filtered && !list.cancelled,
+                prompt,
             }
         },
     )
@@ -1261,6 +1356,7 @@ fn plain(rows: Vec<Row>) -> Built {
         ability_numeric: false,
         nmr: 0.0,
         filtered: false,
+        prompt: None,
     }
 }
 
@@ -1391,19 +1487,29 @@ pub fn evaluate_with(
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
 ) -> Result<Table, ApiError> {
-    evaluate_with_reach(world, tab, req, exp, sim_rounds, None)
+    evaluate_with_damage(
+        world,
+        tab,
+        req,
+        exp,
+        sim_rounds,
+        &Snapshot::uncalculated(world),
+        None,
+    )
 }
 
-/// [`evaluate_with`] with the load's reachability slot, which "Reachable only" fills on first use.
+/// [`evaluate_with`] over the monster damage a calculation left (`damage`) and the load's reachability slot, which
+/// "Reachable only" fills on first use; only the Monsters list reads them.
 ///
 /// # Errors
 /// As [`prepare`].
-pub fn evaluate_with_reach(
+pub fn evaluate_with_damage(
     world: &World,
     tab: Tab,
     req: &EvaluateBody,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
+    damage: &Snapshot,
     reach: Option<&crate::reach::ReachSlot>,
 ) -> Result<Table, ApiError> {
     let mut ctx = prepare(world, req)?;
@@ -1417,6 +1523,7 @@ pub fn evaluate_with_reach(
             &req.options.monsters,
             exp,
             sim_rounds,
+            damage,
             req.options.numbers.as_deref(),
         )?,
         Tab::Items => sundry(&ctx, &req.options),
@@ -1486,18 +1593,28 @@ pub async fn evaluate_route(
     let loaded = state.current();
     // serde_json keeps object keys sorted, so equal requests give equal keys
     let (exp, rounds) = run_settings(&state, req.character.as_ref());
-    let key = format!("{tab_name}|{raw}|{exp:?}|{rounds}");
     let load = loaded.info.load_count;
+    // the calculated monster damage changes the Monsters list (and nothing else), so its counter is part of the key
+    let damage = state.monster_damage().snapshot(load, &loaded.world);
+    let key = format!("{tab_name}|{raw}|{exp:?}|{rounds}|{}", damage.generation);
     let body = if let Some(hit) = state.evaluate_cache_get(&key, load) {
         hit
     } else {
         let job = tokio::task::spawn_blocking(move || {
-            evaluate_with_reach(&loaded.world, tab, &req, &exp, rounds, Some(&loaded.reach))
-                .and_then(|t| {
-                    serde_json::to_vec(&t)
-                        .map(Bytes::from)
-                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-                })
+            evaluate_with_damage(
+                &loaded.world,
+                tab,
+                &req,
+                &exp,
+                rounds,
+                &damage,
+                Some(&loaded.reach),
+            )
+            .and_then(|t| {
+                serde_json::to_vec(&t)
+                    .map(Bytes::from)
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+            })
         });
         let bytes = job
             .await

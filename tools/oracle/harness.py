@@ -191,6 +191,7 @@ class Env:
         shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra, db_only) if database else None
         self.rec = shims.Recorder()
+        self.tip = None
         self.msgbox_answers = []
         self.stubbed = []       # scenario stubs that replace a procedure of a loaded module (ExpandCombo)
         it = self.it = Interpreter()
@@ -259,6 +260,16 @@ class Env:
                     self.it.bind(name, shims.ControlProxy(self, name))
         specs = spec if isinstance(spec, list) else [spec]
         self.it.bind("objToolTip", shims.NoopShim())
+        if any(one.get("tooltip_recorder") for one in specs):
+            # the map cell tooltip text is what the room family reads back ("%tip"); ScaleMode constants of ConvertScale's arguments
+            self.tip = shims.TipShim()
+            self.it.bind("objToolTip", self.tip)
+            for n, v in (("vbTwips", 1), ("vbPixels", 3), ("vbModeless", 0), ("vbModal", 1)):
+                self.it.bind(n, V.I32(v))
+        for n in [n for one in specs for n in one.get("record_procs", [])]:
+            # a procedure the code under test calls for its effect on the screen: the call and its arguments are the output
+            self.it.bind_proc(n, lambda it_, *a, n=n: self.rec.add("call", name=n, args=[
+                V.c_str(x) if isinstance(x, str) else V.int_value(x) for x in a if x is not V.MISSING]) and None)
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         self.it.bind_proc("RGB", lambda it_, r, g, b: V.mk_i32(V.int_value(r) + 256 * V.int_value(g) + 65536 * V.int_value(b)))
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
@@ -338,9 +349,18 @@ class Env:
         def false(it_, *a):
             return False
 
-        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors",
+        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "RefreshLearnedSpellColors",
                   "LV_AssignRowSeqIfMissing", "Load", "EnsureAppForeground"):
             it.bind_proc(n, noop)
+
+        def set_clipboard_text(it_, text=""):
+            # modMain SetClipboardText: the text replaces the clipboard's (a later Clipboard.GetText sees it)
+            text = V.c_str(text)
+            if len(text.strip(" ")) < 1:
+                return False            # the real procedure leaves a blank text alone
+            it_.externals["clipboard"].text = text
+            return True
+        it.bind_proc("SetClipboardText", set_clipboard_text)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
         it.bind_proc("HandleError", handle_error)
@@ -377,7 +397,6 @@ class Env:
         it.procs.pop("regexpfindv2", None)
         for n, v in (("dbOpenSnapshot", 4), ("dbForwardOnly", 8), ("vbModeless", 0)):     # DAO / form constants (modReachability)
             it.bind(n, V.I32(v))
-        it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         it.bind_proc("EnsureDatabaseConnection", false)
         it.procs.pop("ensuredatabaseconnection", None)
 
@@ -453,6 +472,8 @@ class Env:
         it.depth = 0
         it.rnd.state = 0x50000 if rnd is None else rnd & 0xFFFFFF
         self.rec.events.clear()
+        if self.tip is not None:
+            self.tip.text = None
         self.saved = {}
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
@@ -576,6 +597,12 @@ class Env:
                 args.append(d)
             elif isinstance(a, dict) and "control" in a:
                 args.append(self.it.externals["frmmain"].vb_get(a["control"], []))  # a frmMain control, by reference
+            elif isinstance(a, dict) and "cliplv" in a:
+                args.append(shims.ClipListViewShim(a["cliplv"], decode))     # a ListView for the clipboard builders
+            elif isinstance(a, dict) and "textbox" in a:
+                args.append(shims.ControlShim({"Text": a["textbox"]}, decode))
+            elif isinstance(a, dict) and "missing" in a:
+                args.append(V.MISSING)                                       # an Optional argument left out, in the middle of a list
             elif isinstance(a, dict) and "obj" in a:
                 args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:
@@ -772,6 +799,12 @@ class Env:
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
+        if expr.startswith("%flv."):
+            # the recording ListView of another form: "%flv.frmResults.lvResults"
+            _, fname, cname = expr.split(".")
+            return self.it.externals[fname.lower()].vb_get(cname, []).dump(encode)
+        if expr == "%tip":
+            return self.tip.text if self.tip is not None else None
         if expr.startswith("%lvn."):
             # a frmMain recording ListView reduced to Text and Tag per row (the record number and the attack kind)
             # as "number" or "number:tag" strings, to keep the fixtures small

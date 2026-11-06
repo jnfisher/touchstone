@@ -123,13 +123,39 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 
 ## Monsters explorer (P4-08)
 
-- The server has no "calculate monster damage" action, so the Monsters list and pane run with MME's start-up damage
-  arrays (nothing calculated). Panes of monsters MME had calculated beforehand read differently there, and the party
-  wording "vs party defenses" (which needs `bMonsterDamageVsPartyCalculated`) never appears.
+- The Monsters list and pane start with MME's start-up damage arrays (nothing calculated) until the Options menu's
+  calculation fills them (see "Monster damage actions (P4-30)").
 - The Monsters list and pane use `settings.json`'s simulation rounds (500 by default) where the oracle ran 1000, and
   run `CalculateAverageLairs` first as MME does while starting, so a damage limit that falls between simulated values
   can list a monster the oracle did not.
 - "Reachable only" is accepted but changes nothing until the reachability module is ported.
+
+## Monster damage actions (P4-30)
+
+- The server keeps the arrays, the stored defense description and the party flag in one store tagged with the load number
+  of the data, so a reload starts from "nothing calculated" (MME clears them when it reloads its database). The page asks
+  the server to clear them when a character is loaded, pasted, started new, imported or deleted, as MME's `LoadCharacter`
+  and paste do; an edit keeps them and the pane's "sims may be stale" note and the lair-mode question compare the stored
+  description with the current one, as in MME.
+- Every calculation starts the simulation generator at its initial state (MME's one `Rnd` runs on for the whole session),
+  so the same request gives the same numbers, and a second calculation in a session differs from MME's second run. The
+  fixtures pin the first calculation of a session.
+- A calculation uses the saved settings' simulation rounds (MME's `nGlobalMonsterSimRounds`, clamped to 100..10000) and has
+  no Cancel (MME's progress form sets `bMapCancelFind`); its progress is the number of monsters done.
+- `bDontPromptCalcCharMonsterDamage` and `bDontPromptCalcPartyMonsterDamage` are stored as the defense description / the
+  party boxes (AC, DR, MR, dodge, anti-magic) at the moment of the answer, and the question is not asked while they are
+  unchanged. MME resets the flags on every change, so a value changed and changed back asks again there and not here.
+- The defense description uses the refreshed MR (what `RefreshMagicRes` writes into `txtCharMR`), not the saved
+  character's `mr_text`, which only holds what the file stored.
+- The party calculation reads only the party boxes, but the request still carries a complete character (a class and a
+  race), because the lair environment it runs in is built from one.
+- The monster pane writes the damage it simulated on the spot into the stored arrays and the next pane or list reads it, as
+  MME's global arrays behave. The start-up lair averages (`CalculateAverageLairs`) still see the uncalculated arrays, as
+  MME's do (they run before anything is calculated).
+- The oracle family `monster_damage_calc` runs MME's calculation over a small melee-only Monsters table (all 1100+ stock
+  monsters would take hours in the interpreter); spell attackers' simulations are pinned by `monster_glue_char`.
+- The damage the pane reads (`nMonsterDamageVsDefault`) stays the fixture's invented array only in tests; the server leaves
+  it uncalculated, which the table's own average answers identically.
 
 ## Find Best (P4-18)
 
@@ -158,3 +184,16 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - The fixture runs on a slice of the stock database (about 5,000 rooms; the whole map is too large to commit). The
   port was also compared with the oracle on the full stock map (26,694 rooms, 87,147 edges): every edge column, the
   level breakpoints and every monster's level bands matched.
+
+## Rooms tab (P4-13)
+
+- The graphical map (frmMap, the cell grid, its drawing and the map buttons) is not built; the Rooms tab shows the text MME
+  produces for the centre room: the title, the reference list (`MapGetRoomLoc`) and the cell tooltip text (`MapMapExits`).
+  "Route to room" needs the reachability module and is not offered.
+- Find (`cmdMapFindText_Click`) jumps to one hit at a time in MME. The server lists every hit up to a limit (default 100,
+  at most 1000) by running the same scan; the limit is not MME's.
+- The tooltip's lair numbers come from the lair cache as loaded and its damage lines from each monster's stored average
+  damage ("(default)"), because nothing calculates monster damage here. MME caches its last `GetLairInfo` answer between
+  rooms; the port asks afresh, which gives the same text.
+- MapGetRoomLoc compares each existing row's Tag with the teleport's `map/room` text; a numeric Tag (NPC, shop, placed item,
+  room spell) makes that a type mismatch that ends the procedure, so such rooms lose their command rows. Reproduced.

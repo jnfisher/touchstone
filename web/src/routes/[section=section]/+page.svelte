@@ -3,6 +3,7 @@
 	import CharacterTab from '$lib/components/character/CharacterTab.svelte';
 	import CompareTab from '$lib/components/CompareTab.svelte';
 	import ExplorerView from '$lib/components/ExplorerView.svelte';
+	import RoomsTab from '$lib/components/RoomsTab.svelte';
 	import { explorerFor } from '$lib/explorers';
 	import { SECTIONS } from '$lib/sections';
 
@@ -13,6 +14,8 @@
 
 {#if slug === 'character'}
 	<CharacterTab />
+{:else if slug === 'rooms'}
+	<RoomsTab />
 {:else if slug === 'compare'}
 	<CompareTab />
 {:else if explorer}

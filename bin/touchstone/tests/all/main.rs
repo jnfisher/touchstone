@@ -2,6 +2,7 @@ mod api;
 mod calc;
 mod character;
 mod class_race_builder;
+mod clipboard;
 mod combat_setup;
 mod common;
 mod detail;
@@ -9,11 +10,13 @@ mod equip;
 mod evaluate;
 mod find_best;
 mod item_manager;
+mod monster_damage;
 mod monster_sim;
 mod monsters;
 mod panes;
 mod paste;
 mod reachability;
+mod rooms;
 mod settings;
 
 mod health {
