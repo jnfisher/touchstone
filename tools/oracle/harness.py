@@ -171,6 +171,7 @@ class Env:
         shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra) if database else None
         self.rec = shims.Recorder()
+        self.msgbox_answers = []
         it = self.it = Interpreter()
         for f in (modules or MODULES):
             it.load_file(os.path.join(mme, f))
@@ -217,6 +218,8 @@ class Env:
         text = V.c_str(a[0]) if a else ""
         buttons = int(a[1]) if len(a) > 1 and V.is_num(a[1]) else 0
         self.rec.add("msgbox", text=text)
+        if self.msgbox_answers:       # a case's "msgbox": the answers to the boxes MME shows, in order
+            return V.I16(self.msgbox_answers.pop(0))
         return shims.msgbox_result(buttons)
 
     def _bind_procs(self):
@@ -239,7 +242,8 @@ class Env:
         def false(it_, *a):
             return False
 
-        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors"):
+        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors",
+                  "LV_AssignRowSeqIfMissing"):
             it.bind_proc(n, noop)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
@@ -443,6 +447,7 @@ class Env:
 
     def run_case(self, case, setup):
         self.reset(case.get("rnd"))
+        self.msgbox_answers = list(case.get("msgbox", []))
         # a case's controls replace the family-wide setup's controls of the same name, form by form
         forms = {}
         for src in (setup.get("forms"), case.get("forms")):

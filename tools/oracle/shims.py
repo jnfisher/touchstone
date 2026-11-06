@@ -231,6 +231,9 @@ class Recordset(ExtObject):
         if n == "close":
             self.closed = True
             return None
+        if n == "clone":
+            # an independent cursor over the same rows, in table (insertion) order
+            return Recordset(self.db, self.tname)
         raise VBError(438)
 
     def vb_set(self, name, args, value):

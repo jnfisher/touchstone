@@ -33,6 +33,7 @@ fn err_description(e: &RulesError) -> String {
         RulesError::Vb6(6) => "Overflow".into(),
         RulesError::Vb6(13) => "Type mismatch".into(),
         RulesError::Vb6(11) => "Division by zero".into(),
+        RulesError::Vb6(9) => "Subscript out of range".into(),
         RulesError::Vb6(5) => "Invalid procedure call or argument".into(),
         other => other.to_string(),
     }
@@ -706,6 +707,7 @@ fn add_section_items_inner(
         return Ok(());
     }
     let charm = env.charm()?;
+    let mut best_h = 0_usize;
     for raw in items {
         let (base_name, qty) = if kind == Section::Equipped {
             (normalize_equipped_name(raw), 1)
@@ -720,7 +722,9 @@ fn add_section_items_inner(
         if hits.is_empty() {
             continue;
         }
-        // the single best row for this name, skipping what cannot be got
+        // the single best row for this name, skipping what cannot be got. MME's `Or` does not
+        // short-circuit, so `hits(bestH)` is read even when nothing is best yet; `bestH` keeps its
+        // value from the previous name, which can be past the end of this name's hits (error 9).
         let mut best: Option<(usize, f64)> = None;
         for (h, hit) in hits.iter().enumerate() {
             if hit.gettable == 0 {
@@ -728,14 +732,16 @@ fn add_section_items_inner(
             }
             let sort_val = evaluate_best_price_for_hit(env, hit, charm)?.sort_value;
             if sort_val >= 0.0 {
+                let Some(stale) = hits.get(best_h) else {
+                    return Err(RulesError::Vb6(9));
+                };
                 let better = match best {
                     None => true,
-                    Some((bh, bs)) => {
-                        sort_val < bs || (sort_val == bs && hit.number < hits[bh].number)
-                    }
+                    Some((_, bs)) => sort_val < bs || (sort_val == bs && hit.number < stale.number),
                 };
                 if better {
                     best = Some((h, sort_val));
+                    best_h = h;
                 }
             }
         }
