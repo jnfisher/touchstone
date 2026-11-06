@@ -68,3 +68,12 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - The form fixes the combat log at 100 rounds; the endpoint takes `log_rounds` (0 to 1000, default 100).
 - Vile ward is GreaterMUD-only. The endpoint accepts and ignores it, as the form hides the box off GreaterMUD.
 - The party defenses (lair filter party of two or more) are not offered; the window runs for one character.
+
+## Item detail (P3-35)
+
+- The ListView rows `GetAbilityStats` and `PullSpellEQ` add (spell, summon, textblock and teleport rows) are walked in
+  `detail/item.rs` for rows only. The fixture exercises spell, summon and textblock rows; the
+  teleport branch (spells with both a room and a map ability) is ported from the same MME code but no stock item casts
+  such a spell, so it is not exercised by the fixture.
+- ListView sorting is not run: the row counts of each `SortListView` / `LV_RefreshSort` request are returned.
+- GreaterMUD and Paramud branches (aura-item AC/DR line, cast-on-kill percent, Ganghouse value) are not ported.
