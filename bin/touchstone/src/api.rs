@@ -13,14 +13,18 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_damage, monster_sim, panes, paste, reach, rooms, route, settings,
-    spell_tools,
+    item_manager, monster_damage, monster_sim, panes, paste, profile, reach, rooms, route,
+    settings, spell_tools,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/info", get(info))
         .route("/api/settings", get(settings::get).put(settings::put))
+        .route(
+            "/api/races/{number}/stat-caps",
+            get(profile::stat_caps_route),
+        )
         .route("/api/exp", get(calc::exp_table))
         .route("/api/calc/exp", post(calc::calc_exp))
         .route("/api/calc/coin", post(calc::calc_coin))
