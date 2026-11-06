@@ -20,16 +20,19 @@ use serde_json::Value;
 use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::character::{PartyFilter, set_char_defense_description};
+use touchstone_rules::detail::monster::DamageCaches;
 use touchstone_rules::filters::DamagePrompts;
-use touchstone_rules::monster_glue::{GlueEnv, calculate_monster_damage_vs_char_all_with};
+use touchstone_rules::monster_glue::{
+    CharSimInputs, GlueEnv, calculate_monster_damage_vs_char_all_with,
+};
 use touchstone_rules::monster_sim::MonsterSimInput;
 use touchstone_vb6::{Currency, Rnd};
 
 use crate::calc::{ApiResult, Body, json};
 use crate::character::CharacterDto;
 use crate::evaluate::{
-    EvaluateBody, GlobalFilterBody, MonsterControls, Options, PartyBoxes, prepare, run_settings,
-    uncalculated, with_monster_env,
+    Ctx, EvaluateBody, GlobalFilterBody, MonsterControls, Options, PartyBoxes, prepare,
+    run_settings, uncalculated, with_monster_env,
 };
 use crate::state::{AppState, Loaded};
 
@@ -51,12 +54,24 @@ pub fn party_key(p: &PartyFilter) -> String {
         .join("\u{1f}")
 }
 
+/// [`party_key`] of the boxes as a request carries them.
+pub fn party_boxes_key(p: &PartyBoxes) -> String {
+    let controls = MonsterControls {
+        party: p.clone(),
+        ..MonsterControls::default()
+    };
+    party_key(&controls.party())
+}
+
 /// The module globals, as one request sees them.
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     /// `nMonsterDamageVsChar` and `nMonsterDamageVsParty`, indexed by monster number; -1 is "not calculated".
     pub vs_char: Vec<Currency>,
     pub vs_party: Vec<Currency>,
+    /// `nMonsterDamageVsDefault`. MME fills it lazily with the Monsters table's average (`GetMonsterAvgDmgFromDB`),
+    /// which is also the fallback when it is not filled, so the server never writes it.
+    pub vs_default: Vec<Currency>,
     /// `sMonsterDamageVsCharDefenseConfig`.
     pub char_config: String,
     /// The defense description at the moment `bDontPromptCalcCharMonsterDamage` was set.
@@ -75,6 +90,7 @@ impl Snapshot {
         Self {
             vs_char: uncalculated(world),
             vs_party: uncalculated(world),
+            vs_default: uncalculated(world),
             char_config: String::new(),
             char_asked: None,
             party_calculated: false,
@@ -130,15 +146,15 @@ impl MonsterDamage {
         self.stored
             .lock()
             .ok()
-            .and_then(|g| g.as_ref().filter(|(l, _)| *l == load).map(|(_, s)| s.generation))
+            .and_then(|g| {
+                g.as_ref()
+                    .filter(|(l, _)| *l == load)
+                    .map(|(_, s)| s.generation)
+            })
             .unwrap_or(0)
     }
 
-    fn fresh<'a>(
-        g: &'a mut Option<(u64, Snapshot)>,
-        load: u64,
-        world: &World,
-    ) -> &'a mut Snapshot {
+    fn fresh<'a>(g: &'a mut Option<(u64, Snapshot)>, load: u64, world: &World) -> &'a mut Snapshot {
         if g.as_ref().is_none_or(|(l, _)| *l != load) {
             *g = Some((load, Snapshot::uncalculated(world)));
         }
@@ -156,12 +172,43 @@ impl MonsterDamage {
         s.generation += 1;
     }
 
-    /// `ClearMonsterDamageVsCharALL` for both arrays, as the Options menu's Clear does.
-    pub fn clear(&self, load: u64, world: &World) {
+    /// Keeps what a monster pane wrote into the arrays (a monster it simulated on the spot): MME's arrays are global, so
+    /// the next pane and list read those values. Only entries that changed are taken, so a pane that wrote nothing
+    /// leaves the counter alone.
+    pub fn keep_written(&self, load: u64, world: &World, w: &DamageCaches) {
+        let mut g = self
+            .stored
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let s = Self::fresh(&mut g, load, world);
+        let mut changed = false;
+        for (to, from) in [(&mut s.vs_char, &w.vs_char), (&mut s.vs_party, &w.vs_party)] {
+            for (slot, v) in to.iter_mut().zip(from) {
+                if slot != v {
+                    *slot = *v;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            s.generation += 1;
+        }
+    }
+
+    /// `ClearMonsterDamageVsCharALL`: for one array, or (the Options menu's Clear) for both.
+    pub fn clear(&self, load: u64, world: &World, mode: Option<Mode>) {
         self.update(load, world, |s| {
-            let generation = s.generation;
-            *s = Snapshot::uncalculated(world);
-            s.generation = generation;
+            let fresh = Snapshot::uncalculated(world);
+            if mode != Some(Mode::Party) {
+                s.vs_char = fresh.vs_char;
+                s.char_config = fresh.char_config;
+                s.char_asked = None;
+            }
+            if mode != Some(Mode::Char) {
+                s.vs_party = fresh.vs_party;
+                s.party_calculated = false;
+                s.party_asked = None;
+            }
         });
     }
 
@@ -267,35 +314,7 @@ pub fn calculate(
         party: body.party.clone(),
         ..MonsterControls::default()
     };
-    let req = EvaluateBody {
-        character: Some(body.character.clone()),
-        global_filter: Some(GlobalFilterBody {
-            use_character: true,
-            ..GlobalFilterBody::default()
-        }),
-        options: Options {
-            monsters: controls.clone(),
-            ..Options::default()
-        },
-    };
-    let ctx = prepare(world, &req)?;
-    let exp = run_settings(state, Some(&body.character)).0;
-    let snap = Snapshot::uncalculated(world);
-    let (chr, desc) = with_monster_env(
-        &ctx,
-        &controls,
-        &exp,
-        sim_rounds,
-        &snap,
-        &crate::evaluate::NoCastText,
-        |_, s| {
-            (
-                s.state.sim_inputs(),
-                set_char_defense_description(s.cctx, &s.state.character, "")
-                    .map(|d| d.description),
-            )
-        },
-    )?;
+    let (ctx, chr, desc) = character_side(world, &body.character, &controls, state, sim_rounds)?;
     let party = controls.party();
     let env = GlueEnv {
         profile: Profile::Stock,
@@ -331,7 +350,8 @@ pub fn calculate(
             Mode::Party => &mut s.vs_party,
         };
         for (n, v) in &results {
-            if let (Some(v), Some(slot)) = (v, usize::try_from(*n).ok().and_then(|i| a.get_mut(i))) {
+            if let (Some(v), Some(slot)) = (v, usize::try_from(*n).ok().and_then(|i| a.get_mut(i)))
+            {
                 *slot = *v;
             }
         }
@@ -356,6 +376,59 @@ pub fn calculate(
     })
 }
 
+/// `SetCharDefenseDescription` for a refreshed character. MME reads the MR box, which `RefreshMagicRes` fills in, where
+/// the saved character's own `mr_text` is only what the file held, so the refreshed value goes in.
+pub(crate) fn char_defense_description(
+    cctx: &touchstone_rules::character::Context<'_>,
+    state: &touchstone_rules::pipeline::CharacterState,
+) -> Option<String> {
+    let mut ch = state.character.clone();
+    ch.mr_text = state
+        .magic_res
+        .map_or_else(|_| String::new(), |m| m.to_string());
+    set_char_defense_description(cctx, &ch, "").map(|d| d.description)
+}
+
+/// The character as the sim and the stale check read it: the prepared request, `CharSimInputs` and
+/// `SetCharDefenseDescription`'s text (`None` where MME exits without one: no class).
+fn character_side<'a>(
+    world: &'a World,
+    character: &CharacterDto,
+    controls: &MonsterControls,
+    state: &AppState,
+    sim_rounds: i32,
+) -> Result<(Ctx<'a>, CharSimInputs, Option<String>), (StatusCode, String)> {
+    let req = EvaluateBody {
+        character: Some(character.clone()),
+        global_filter: Some(GlobalFilterBody {
+            use_character: true,
+            ..GlobalFilterBody::default()
+        }),
+        options: Options {
+            monsters: controls.clone(),
+            ..Options::default()
+        },
+    };
+    let ctx = prepare(world, &req)?;
+    let exp = run_settings(state, Some(character)).0;
+    let snap = Snapshot::uncalculated(world);
+    let (chr, desc) = with_monster_env(
+        &ctx,
+        controls,
+        &exp,
+        sim_rounds,
+        &snap,
+        &crate::evaluate::NoCastText,
+        |_, s| {
+            (
+                s.state.sim_inputs(),
+                char_defense_description(s.cctx, s.state),
+            )
+        },
+    )?;
+    Ok((ctx, chr, desc))
+}
+
 // ---------- routes ----------
 
 pub async fn calculate_route(
@@ -371,7 +444,17 @@ pub async fn calculate_route(
     json(&out)
 }
 
-pub async fn clear_route(State(state): State<Arc<AppState>>) -> ApiResult {
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClearBody {
+    /// One array only; both when absent, as the menu does.
+    pub mode: Option<Mode>,
+}
+
+pub async fn clear_route(
+    State(state): State<Arc<AppState>>,
+    Body(body): Body<ClearBody>,
+) -> ApiResult {
     let loaded = state.current();
     if state.monster_damage().is_running() {
         return Err((
@@ -381,7 +464,7 @@ pub async fn clear_route(State(state): State<Arc<AppState>>) -> ApiResult {
     }
     state
         .monster_damage()
-        .clear(loaded.info.load_count, &loaded.world);
+        .clear(loaded.info.load_count, &loaded.world, body.mode);
     json(&status_json(&state, &loaded))
 }
 
@@ -390,12 +473,9 @@ pub async fn dismiss_route(
     Body(body): Body<DismissBody>,
 ) -> ApiResult {
     let loaded = state.current();
-    state.monster_damage().dismiss(
-        loaded.info.load_count,
-        &loaded.world,
-        body.mode,
-        body.key,
-    );
+    state
+        .monster_damage()
+        .dismiss(loaded.info.load_count, &loaded.world, body.mode, body.key);
     json(&status_json(&state, &loaded))
 }
 
@@ -425,7 +505,7 @@ pub fn status_json(state: &AppState, loaded: &Loaded) -> Value {
         })
         .unwrap_or(Value::Null);
     serde_json::json!({
-        "char": { "calculated": !s.char_config.is_empty() || s.vs_char.iter().any(|c| c.scaled() >= 0) },
+        "char": { "calculated": !s.char_config.is_empty() },
         "party": { "calculated": s.party_calculated },
         "running": running,
         "generation": s.generation,

@@ -24,14 +24,14 @@ use touchstone_rules::Profile;
 use touchstone_rules::attack::EquippedGlobals;
 use touchstone_rules::character::{
     AttackTypeMud, Character as MmeCharacter, CharacterProfile, PartyFilter,
-    populate_character_profile, set_char_defense_description, set_current_attack_type_config,
+    populate_character_profile, set_current_attack_type_config,
 };
 use touchstone_rules::exp_per_hour::ExpPerHourSettings;
 use touchstone_rules::filters::{
-    AbilityFilter, AllReachable, Answer, ArmourFilter, DamagePrompts, FilterEnv, MonsterAdd, MonsterDialog,
-    MonsterExtras, MonsterFilter, MonsterFilterInputs, ProfileRequest, SpellFilter, SpellFilterEnv,
-    WeaponEntry, WeaponFilter, filter_armour, filter_monsters, filter_spells, filter_sundry,
-    filter_weapons,
+    AbilityFilter, AllReachable, Answer, ArmourFilter, DamagePrompts, FilterEnv, MonsterAdd,
+    MonsterDialog, MonsterExtras, MonsterFilter, MonsterFilterInputs, ProfileRequest, SpellFilter,
+    SpellFilterEnv, WeaponEntry, WeaponFilter, filter_armour, filter_monsters, filter_spells,
+    filter_sundry, filter_weapons,
 };
 use touchstone_rules::gear::Character as GlobalChar;
 use touchstone_rules::lairs::{
@@ -55,8 +55,8 @@ use touchstone_vb6::{Currency, Rnd};
 use crate::calc::{ApiResult, Body, bad, not_found};
 use crate::character::CharacterDto;
 use crate::detail::nmr_ver;
+use crate::monster_damage::{Mode, Snapshot, char_defense_description, party_key};
 use crate::settings::CharacterBlock;
-use crate::monster_damage::{Mode, Snapshot, party_key};
 use crate::state::AppState;
 
 /// The tabs this endpoint lists.
@@ -1134,14 +1134,14 @@ pub(crate) fn with_monster_env<R>(
         0,
         false,
     );
-    // `vs_default` stays uncalculated; the start-up pass below sees the arrays as MME starts, the list and pane the
+    // the start-up pass below sees the arrays as MME starts, the list and pane the
     // ones a calculation left.
-    let (start_party, start_char, vs_default) = (
-        uncalculated(world),
-        uncalculated(world),
-        uncalculated(world),
+    let (start_party, start_char) = (uncalculated(world), uncalculated(world));
+    let (vs_party, vs_char, vs_default) = (
+        damage.vs_party.clone(),
+        damage.vs_char.clone(),
+        damage.vs_default.clone(),
     );
-    let (vs_party, vs_char) = (damage.vs_party.clone(), damage.vs_char.clone());
     let slots = vs_char.len();
     let (mut possy, mut spawn_chance) = (
         vec![Currency::from_scaled(0); slots],
@@ -1259,8 +1259,7 @@ fn monsters(
                     prompt: None,
                 };
             }
-            let desc = set_char_defense_description(s.cctx, &s.state.character, "")
-                .map_or_else(String::new, |d| d.description);
+            let desc = char_defense_description(s.cctx, s.state).unwrap_or_default();
             let party = controls.party();
             let filter_inputs = MonsterFilterInputs {
                 only_in_game: true,
@@ -1582,10 +1581,7 @@ pub async fn evaluate_route(
     let load = loaded.info.load_count;
     // the calculated monster damage changes the Monsters list (and nothing else), so its counter is part of the key
     let damage = state.monster_damage().snapshot(load, &loaded.world);
-    let key = format!(
-        "{tab_name}|{raw}|{exp:?}|{rounds}|{}",
-        damage.generation
-    );
+    let key = format!("{tab_name}|{raw}|{exp:?}|{rounds}|{}", damage.generation);
     let body = if let Some(hit) = state.evaluate_cache_get(&key, load) {
         hit
     } else {

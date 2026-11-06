@@ -151,7 +151,7 @@ def main():
             "db_only: the Monsters table is the 'table' key's monsters; the damage arrays are dimensioned to the highest number "
             "in the table, -1 as ClearMonsterDamageVsCharALL leaves them.",
             "frmProgressBar is a FormShim; the calculation's DoEvents, Load/Unload and focus calls are recorded no-ops.",
-            "table (top-level key, ignored by the oracle): monsters [Number, Align, Energy, Weapon, [5 x [AttName, AttType, AttAcc, "
+            "data.table (copied into the fixture header): monsters [Number, Align, Energy, Weapon, [5 x [AttName, AttType, AttAcc, "
             "Att%, AttTrue%, AttMin, AttMax, AttEnergy, AttHitSpell]], AvgDmg, HP, ArmourClass, DamageResist, MagicRes, Name].",
         ],
         "database": True,
@@ -162,7 +162,7 @@ def main():
                     "nMonsterDamageVsChar": [-1] * (top + 1), "nMonsterDamageVsParty": [-1] * (top + 1),
                     "nMonsterDamageVsDefault": [-1] * (top + 1)},
         "forms": dict(SETUP_FORMS, frmMain=dict(SETUP_FORMS["frmMain"]), frmProgressBar={}),
-        "table": {"monsters": rows, "top": top},
+        "data": {"table": {"monsters": rows, "top": top}},
         "cases": cases,
     }
     with open(OUT, "w", newline="\n") as f:

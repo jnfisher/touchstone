@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::ability_text::AbilityEnv;
-use touchstone_rules::character::set_char_defense_description;
 use touchstone_rules::detail::class_race::{pull_class_detail, pull_race_detail};
 use touchstone_rules::detail::item::{
     DetailKind as ItemKind, ItemDetailEnv, ItemDetailOptions, pull_item_detail,
@@ -37,7 +36,7 @@ use crate::detail::WorldNames;
 use crate::evaluate::{
     Ctx, EvaluateBody, GlobalFilterBody, Options, prepare, run_settings, with_monster_env,
 };
-use crate::monster_damage::Snapshot;
+use crate::monster_damage::{Snapshot, char_defense_description};
 use crate::state::AppState;
 
 /// The panes this endpoint serves.
@@ -385,6 +384,8 @@ struct Shared<'a> {
     attack_type_mme: i32,
     /// The monster damage a calculation left (nothing calculated until one runs).
     damage: &'a Snapshot,
+    /// The arrays after the monster pane ran: it fills in monsters it simulated on the spot, and MME keeps those.
+    written: std::cell::RefCell<Option<DamageCaches>>,
 }
 
 impl Shared<'_> {
@@ -655,8 +656,7 @@ fn monster_pane(
         ab.global_level_text = Some(&ctx.level_text);
     }
     let rows = with_monster_env(ctx, controls, exp, sim_rounds, sh.damage, &ab, |env, s| {
-        let defense_desc = set_char_defense_description(s.cctx, &s.state.character, "")
-            .map_or_else(String::new, |d| d.description);
+        let defense_desc = char_defense_description(s.cctx, s.state).unwrap_or_default();
         let sim_chr = s.state.sim_inputs();
         let charm = touchstone_vb6::cstr(s.state.stats.stat_with_bonus[5]);
         let inputs = MonsterDetailInputs {
@@ -687,7 +687,9 @@ fn monster_pane(
             .lookup_limit
             .and_then(|l| i16::try_from(l).ok())
             .unwrap_or(100);
-        pull_monster_detail(env, &ab, &inputs, &mut caches, number, limit)
+        let rows = pull_monster_detail(env, &ab, &inputs, &mut caches, number, limit);
+        *sh.written.borrow_mut() = Some(caches);
+        rows
     })?;
     let mut out = empty("monsters", number);
     out.lines = rows.iter().map(|r| line_json(world, r)).collect();
@@ -702,7 +704,7 @@ fn build(
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
     damage: &Snapshot,
-) -> Result<PaneJson, (StatusCode, String)> {
+) -> Result<(PaneJson, Option<DamageCaches>), (StatusCode, String)> {
     let world = &loaded.world;
     let eval = EvaluateBody {
         character: body.character.clone(),
@@ -726,10 +728,11 @@ fn build(
         strength_tag,
         attack_type_mme,
         damage,
+        written: std::cell::RefCell::new(None),
     };
     let mut lairs = StoredLairs(loaded.lair_cache());
     let missing = |what: &str| not_found(format!("no {what} {number}"));
-    Ok(match pane {
+    let out = match pane {
         Pane::Items => {
             world.get_item(number).ok_or_else(|| missing("item"))?;
             item_pane(world, &mut lairs, &sh, number)
@@ -756,7 +759,8 @@ fn build(
                 .ok_or_else(|| missing("monster"))?;
             monster_pane(world, &sh, number, exp, sim_rounds)?
         }
-    })
+    };
+    Ok((out, sh.written.take()))
 }
 
 async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) -> ApiResult {
@@ -769,10 +773,17 @@ async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) 
         .monster_damage()
         .snapshot(loaded.info.load_count, &loaded.world);
     // The lair cache is built on first use and the item pane can be long: keep it off the reactor.
-    let out =
-        tokio::task::spawn_blocking(move || build(&loaded, pane, number, body, &exp, sim_rounds, &damage))
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    let held = loaded.clone();
+    let (out, written) = tokio::task::spawn_blocking(move || {
+        build(&held, pane, number, body, &exp, sim_rounds, &damage)
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    if let Some(w) = written {
+        state
+            .monster_damage()
+            .keep_written(loaded.info.load_count, &loaded.world, &w);
+    }
     json(&out)
 }
 

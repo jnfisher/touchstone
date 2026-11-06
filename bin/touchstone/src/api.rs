@@ -52,12 +52,18 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/monster-damage/calculate",
             post(monster_damage::calculate_route),
         )
-        .route("/api/monster-damage/clear", post(monster_damage::clear_route))
+        .route(
+            "/api/monster-damage/clear",
+            post(monster_damage::clear_route),
+        )
         .route(
             "/api/monster-damage/dismiss",
             post(monster_damage::dismiss_route),
         )
-        .route("/api/monster-damage/status", get(monster_damage::status_route))
+        .route(
+            "/api/monster-damage/status",
+            get(monster_damage::status_route),
+        )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
         .route("/api/spells/{number}/effect", get(detail::spell_effect))
