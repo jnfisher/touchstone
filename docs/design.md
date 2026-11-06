@@ -75,9 +75,21 @@ character. MME `.mmec` files (INI format) can be imported and exported.
   GreaterMUD) branches exactly, including VB6 rounding and integer behaviour (`touchstone-vb6`).
   Where MME disagrees with the real game, parity wins and the difference goes in
   `docs/differences.md`.
-- `Quicksilver`: later. Stock plus the Quicksilver balance changes. The inventory of those changes,
-  how the server picks the profile, how it is tested and the cards are in
+- `Quicksilver(&Balance)`: stock plus the Quicksilver balance changes, each rule arriving with its
+  own card. The inventory of those changes, how it is tested and the cards are in
   `docs/quicksilver-profile.md`.
+
+The server chooses the profile once per load (`bin/touchstone/src/profile.rs`) and every computed
+endpoint reads `Loaded::profile`, so a live reload can change it and a request never mixes two. The
+choice comes from `Info.content_version`, Quicksilver's structured content version, never from the
+`dat_file_version` display caption: no content version (an `.mdb`, a stock silvermere) is `Stock`,
+`1.20.N` is `Quicksilver` with the 1.20.0 balance, and any other value refuses to start (a reload
+that meets one keeps the previous world and logs why). `touchstone.toml` can set `[rules] profile`
+to `auto` (default), `stock` (ignore Quicksilver's rules, for comparisons; needs no known version) or
+`quicksilver` (the 1.20 rules whatever the data says), and `[rules.quicksilver_balance]` overrides
+individual balance keys under Quicksilver's own key names. The override is validated at startup,
+leaked once per process, and `/api/info` lists the keys that differ from 1.20.0 under
+`profile.balance_overrides`.
 
 MME's GreaterMUD and Paramud branches are not ported unless a card asks for them; keep the
 branching visible (a `match` on profile) so they can be added.
