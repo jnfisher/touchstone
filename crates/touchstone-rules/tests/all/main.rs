@@ -23,6 +23,7 @@ mod monster_glue_char;
 mod monster_sim;
 mod paste_party;
 mod pipeline;
+mod rows;
 mod spell_cast;
 mod spells;
 mod stats;
