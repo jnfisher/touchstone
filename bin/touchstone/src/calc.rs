@@ -1435,7 +1435,6 @@ pub async fn calc_hit(State(app): State<Arc<AppState>>, Body(req): Body<hit::Hit
         attack_martial_art: martial_art,
         attack_backstab: ch.bs_weapon.is_some(),
         attack_backstab_weapon: ch.bs_weapon.unwrap_or(0),
-        ..HitCalcCharacter::default()
     };
 
     let mut form = HitCalcForm {
