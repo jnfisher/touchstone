@@ -102,3 +102,16 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - The weapon list's per-row attack type (the row tag MME passes as `nAttackTypeMUD`) is not on the evaluate wire;
   the item pane takes it as `attack_type` and the page leaves it unset (normal attack).
 - A character used through the global filter bar always counts as `chkGlobalFilter` on, whatever flag it was saved with.
+
+## Find Best (P4-18)
+
+- MME's equipment combos are `Sorted`, and a tie in Find Best (same score, same encumbrance ratio) goes to the
+  first entry in that order. The server orders each slot's list by the lower-cased text "Name (number)", which
+  approximates the Windows sort (it differs on punctuation and accents); the oracle's combos keep table order,
+  so the fixture pins "first in the given list wins" rather than the Windows ordering.
+- MME's Find Best never marks the character as changed (it runs with `bDontRefresh` on); the port does the same,
+  so the web client does not flag an unsaved change differently from other equipment edits.
+- VileWard (armour entry 6) is GreaterMUD and Paramud only; on the stock profile the entry is not offered and a
+  replay of it does nothing but record the criterion for Next Best.
+- The "last find best" values of each slot are not kept between clicks in MME either: Next Best recomputes them
+  from the worn items. Only the last menu entry and the exclusion list persist.

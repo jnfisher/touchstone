@@ -202,7 +202,7 @@
 						testid="char-equip-{s.index}"
 						onpick={(n) => void act(n, { slot: s.index })}
 					/>
-					<div class="-mt-1 flex gap-3 text-xs">
+					<div class="mt-1 flex gap-3 text-xs">
 						<label class="flex items-center gap-1"
 							><input type="checkbox" bind:checked={hold[s.index]} data-testid="equip-hold-{s.index}" /> Hold</label
 						>
