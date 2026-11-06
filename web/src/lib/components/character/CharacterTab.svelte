@@ -28,13 +28,38 @@
 				items = i;
 			})
 			.catch((e: unknown) => (loadError = e instanceof Error ? e.message : String(e)));
-		void store.refreshList();
+		void openLast();
 		// Unsent edits are written when the tab closes.
 		return () => {
 			alive = false;
 			void store.flush();
 		};
 	});
+
+	const LAST_KEY = 'touchstone.character.last';
+	const remember = (name: string | undefined) => {
+		try {
+			if (name) localStorage.setItem(LAST_KEY, name);
+		} catch {
+			// private window or blocked storage: the tab still works, it just starts empty
+		}
+	};
+	async function openLast() {
+		await store.refreshList();
+		let last: string | null = null;
+		try {
+			last = localStorage.getItem(LAST_KEY);
+		} catch {
+			// see remember()
+		}
+		const names = store.saved.map((s) => s.name);
+		const name = last && names.includes(last) ? last : names[0];
+		if (name && store.doc.name === '' && !store.storedName) {
+			picked = name;
+			await store.load(name);
+		}
+	}
+	$effect(() => remember(store.storedName));
 
 	const statusText = $derived(
 		store.nameProblem && store.doc.name !== ''
