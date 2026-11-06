@@ -136,12 +136,18 @@ fn expected_of(r: &Value) -> ExpPerHourInfo {
         s_rtc_text: s("srtctext"),
         s_move_text: s("smovetext"),
         s_exp_all: s("sexpall"),
+        s_notice: String::new(),
     }
 }
 
 // Expected values come from fixtures/rules/exphr_d.json (oracle run of ceph_ModelD).
 #[test]
 fn model_d_matches_oracle() {
+    check_model_d(Profile::Stock);
+}
+
+/// The whole fixture under `profile` (the identity harness runs it under the neutral Quicksilver balance).
+pub(crate) fn check_model_d(profile: Profile) {
     let cases = load_exact("exphr_d");
     assert!(
         cases.len() >= 500,
@@ -153,7 +159,7 @@ fn model_d_matches_oracle() {
         let inputs = &case["inputs"];
         let input = input_of(inputs["args"].as_array().unwrap());
         let knobs = knobs_of(&inputs["globals"]);
-        let got = model_d(&input, &knobs, Profile::Stock);
+        let got = model_d(&input, &knobs, profile);
         if let Some(err) = case.get("error") {
             let want = RulesError::Vb6(i(&err["number"]));
             if got != Err(want.clone()) {
@@ -196,6 +202,11 @@ fn input_of_checked(args: &[Value]) -> Option<ExpPerHourInput> {
 // Expected values come from fixtures/rules/exphr_c.json (oracle run of ceph_ModelC).
 #[test]
 fn model_c_matches_oracle() {
+    check_model_c(Profile::Stock);
+}
+
+/// The whole fixture under `profile` (the identity harness runs it under the neutral Quicksilver balance).
+pub(crate) fn check_model_c(profile: Profile) {
     let cases = load_exact("exphr_c");
     assert!(
         cases.len() >= 500,
@@ -208,7 +219,7 @@ fn model_c_matches_oracle() {
         let args = inputs["args"].as_array().unwrap();
         let knobs = knobs_of(&inputs["globals"]);
         let got = match input_of_checked(args) {
-            Some(input) => model_c(&input, &knobs, Profile::Stock),
+            Some(input) => model_c(&input, &knobs, profile),
             None => Err(RulesError::Vb6(6)),
         };
         if let Some(err) = case.get("error") {
@@ -276,6 +287,11 @@ fn input_of_a(args: &[Value]) -> ExpPerHourInput {
 // swallows its own VB6 errors, so an error case is an empty record, which the fixture also holds.
 #[test]
 fn model_a_matches_oracle() {
+    check_model_a(Profile::Stock);
+}
+
+/// The whole fixture under `profile` (the identity harness runs it under the neutral Quicksilver balance).
+pub(crate) fn check_model_a(profile: Profile) {
     let cases = load_exact("exphr_a");
     assert!(
         cases.len() >= 500,
@@ -288,7 +304,7 @@ fn model_a_matches_oracle() {
         assert!(case.get("error").is_none(), "{id}: error escaped Model A");
         let input = input_of_a(inputs["args"].as_array().unwrap());
         let knobs = knobs_of(&inputs["globals"]);
-        let got = model_a(&input, &knobs, Profile::Stock);
+        let got = model_a(&input, &knobs, profile);
         let want = expected_of(&case["outputs"]["result"]);
         match got {
             Ok(g) if g == want => {}
@@ -328,6 +344,11 @@ fn input_of_b(args: &[Value]) -> Option<ExpPerHourInput> {
 // Expected values come from fixtures/rules/exphr_b.json (oracle run of ceph_ModelB).
 #[test]
 fn model_b_matches_oracle() {
+    check_model_b(Profile::Stock);
+}
+
+/// The whole fixture under `profile` (the identity harness runs it under the neutral Quicksilver balance).
+pub(crate) fn check_model_b(profile: Profile) {
     let cases = load_exact("exphr_b");
     assert!(
         cases.len() >= 500,
@@ -340,7 +361,7 @@ fn model_b_matches_oracle() {
         let args = inputs["args"].as_array().unwrap();
         let knobs = knobs_of(&inputs["globals"]);
         let got = match input_of_b(args) {
-            Some(input) => model_b(&input, &knobs, Profile::Stock),
+            Some(input) => model_b(&input, &knobs, profile),
             None => Err(RulesError::Vb6(6)),
         };
         if let Some(err) = case.get("error") {
@@ -394,6 +415,11 @@ fn settings_of(globals: &Value) -> ExpPerHourSettings {
 // Expected values come from fixtures/rules/exp_dispatch.json (oracle run of CalcExpPerHour).
 #[test]
 fn calc_exp_per_hour_matches_oracle() {
+    check_dispatch(Profile::Stock);
+}
+
+/// The whole fixture under `profile` (the identity harness runs it under the neutral Quicksilver balance).
+pub(crate) fn check_dispatch(profile: Profile) {
     let cases = load_exact("exp_dispatch");
     assert!(
         cases.len() >= 400,
@@ -407,7 +433,7 @@ fn calc_exp_per_hour_matches_oracle() {
         let settings = settings_of(&inputs["globals"]);
         // Integer arguments (nSpellCost, nSurpriseChance) are converted at the call: error 6.
         let got = match input_of_checked(args) {
-            Some(input) => calc_exp_per_hour(&input, &settings, Profile::Stock),
+            Some(input) => calc_exp_per_hour(&input, &settings, profile),
             None => Err(RulesError::Vb6(6)),
         };
         if let Some(err) = case.get("error") {

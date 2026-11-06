@@ -18,7 +18,8 @@ use touchstone_vb6::{Currency, round, round_half_even};
 use super::helpers::{
     SEC_PER_REST_TICK, SEC_PER_ROUND, ceph_b_smooth_step, clamp_dbl, max_dbl, min_dbl, safe_div,
 };
-use super::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, vb};
+use super::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, UNSUPPORTED_UNDER_QUICKSILVER, vb};
+use crate::stats::regen_on;
 use crate::{Profile, RulesError};
 use travel::{
     SlackParams, SlackState, apply_slack_window, band_weight, calc_density, calc_overkill,
@@ -56,15 +57,16 @@ fn flag(cond: bool) -> f64 {
 /// the exp/hr. `nCharMana` is an `Integer` here, so a value outside its range is error 6.
 ///
 /// # Errors
-/// [`RulesError::Vb6`] 6 when `n_char_mana` does not fit an `Integer`.
+/// [`RulesError::Unsupported`] under Quicksilver's rest and meditate rules; [`RulesError::Vb6`] 6 when
+/// `n_char_mana` does not fit an `Integer`.
 #[allow(clippy::too_many_lines)]
 pub fn model_b(
     input: &ExpPerHourInput,
     knobs: &ExpPerHourKnobs,
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
-    match profile {
-        Profile::Stock | Profile::Quicksilver(_) => {}
+    if regen_on(profile).is_some() {
+        return Err(RulesError::Unsupported(UNSUPPORTED_UNDER_QUICKSILVER));
     }
     let n_char_mana = i16::try_from(input.n_char_mana).map_err(|_| RulesError::Vb6(6))?;
     let _ = vb; // formatting errors cannot happen: Model B builds no text.

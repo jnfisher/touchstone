@@ -6,7 +6,11 @@ use super::{
     ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, model_a, model_b, model_c, model_d, vb,
 };
 use crate::combat::is_mob_killable;
+use crate::stats::regen_on;
 use crate::{Profile, RulesError};
+
+/// What the reader sees when Quicksilver's rules left only Model D to run.
+pub const QS_MODEL_NOTICE: &str = "Quicksilver rules: only Model D is used (Models A to C assume a character rests or meditates, never both).";
 
 /// The exp/hr settings MME keeps in globals (`bGlobal_cephModelA..D`, `bGlobal_cephRecoveryOnly`,
 /// `bGlobal_cephShowAll` and the four `nGlobal_ceph*_Knob`), read by `CalcExpPerHour`.
@@ -108,7 +112,8 @@ fn short_exp(x: f64) -> Result<String, RulesError> {
     })
 }
 
-/// Port of modExpPerHour `CalcExpPerHour` (stock path).
+/// Port of modExpPerHour `CalcExpPerHour`. Under Quicksilver's rest and meditate rules (R10) only Model D runs,
+/// and `s_notice` says so when the settings asked for Models A to C.
 ///
 /// Runs the models `settings` turns on, adds up their records (`nRTC` twice, as MME does) and,
 /// with more than one model, divides by the count and rounds. Text fields are built here.
@@ -126,9 +131,6 @@ pub fn calc_exp_per_hour(
     settings: &ExpPerHourSettings,
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
-    match profile {
-        Profile::Stock | Profile::Quicksilver(_) => {}
-    }
     let mut ret = ExpPerHourInfo::default();
     if input.n_exp.scaled() == 0 {
         return Ok(ret);
@@ -159,12 +161,23 @@ pub fn calc_exp_per_hour(
     let mut movement_limited = false;
     let mut surprise_less = false;
     let mut results: [Option<ExpPerHourInfo>; 4] = [None, None, None, None];
-    let on = [
+    let mut on = [
         settings.model_a,
         settings.model_b,
         settings.model_c,
         settings.model_d,
     ];
+    // Quicksilver restores HP and mana together (R10), which Models A to C cannot express: Model D runs
+    // alone, and the reader is told in plain text rather than given an error.
+    let mut notice = String::new();
+    if regen_on(profile).is_some() {
+        if on.iter().any(|&m| m) {
+            if on[..3].iter().any(|&m| m) {
+                notice = QS_MODEL_NOTICE.to_string();
+            }
+            on = [false, false, false, true];
+        }
+    }
     for (x, slot) in results.iter_mut().enumerate() {
         if !on[x] {
             continue;
@@ -319,5 +332,6 @@ pub fn calc_exp_per_hour(
     if surprise_less {
         ret.s_rtc_text = auto_append(&ret.s_rtc_text, "[backstab is worse than attack]", " ");
     }
+    ret.s_notice = notice;
     Ok(ret)
 }

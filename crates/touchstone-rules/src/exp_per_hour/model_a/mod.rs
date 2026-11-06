@@ -14,7 +14,8 @@ use touchstone_vb6::{Vb6Error, add_i32, div, fix, round_half_even};
 use super::helpers::{
     SEC_PER_MEDI_TICK, SEC_PER_REGEN_TICK, SEC_PER_REST_TICK, SEC_PER_ROUND, max_dbl, safe_div,
 };
-use super::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs};
+use super::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourKnobs, UNSUPPORTED_UNDER_QUICKSILVER};
+use crate::stats::regen_on;
 use crate::{Profile, RulesError};
 
 mod helpers;
@@ -42,14 +43,14 @@ const MED_EFF_FACTOR: f64 = 0.5;
 /// the sign of `n_attack_time` a longer-than-normal surprise opener, as `CalcExpPerHour` expects.
 ///
 /// # Errors
-/// None for the stock profile; the `Result` is the family's common signature.
+/// [`RulesError::Unsupported`] under a Quicksilver balance whose rest and meditate multiples are on.
 pub fn model_a(
     input: &ExpPerHourInput,
     knobs: &ExpPerHourKnobs,
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
-    match profile {
-        Profile::Stock | Profile::Quicksilver(_) => {}
+    if regen_on(profile).is_some() {
+        return Err(RulesError::Unsupported(UNSUPPORTED_UNDER_QUICKSILVER));
     }
     Ok(run(input, knobs).unwrap_or_default())
 }

@@ -94,3 +94,15 @@ fn spell_cast_fixtures_identical_under_neutral() {
 fn character_fixtures_identical_under_neutral() {
     crate::character::check_fixture(neutral());
 }
+
+/// R10 is structural, but a balance whose rest and meditate multiples are 1 reads as off (see
+/// docs/differences.md, Q-008): the exp/hr models then run as stock. Models A to D and the dispatch
+/// give the oracle's answers over their whole fixtures.
+#[test]
+fn exp_per_hour_fixtures_identical_under_neutral() {
+    crate::exp_per_hour::check_model_a(neutral());
+    crate::exp_per_hour::check_model_b(neutral());
+    crate::exp_per_hour::check_model_c(neutral());
+    crate::exp_per_hour::check_model_d(neutral());
+    crate::exp_per_hour::check_dispatch(neutral());
+}
