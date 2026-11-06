@@ -37,6 +37,7 @@ use crate::detail::WorldNames;
 use crate::evaluate::{
     Ctx, EvaluateBody, GlobalFilterBody, Options, prepare, run_settings, with_monster_env,
 };
+use crate::monster_damage::Snapshot;
 use crate::state::AppState;
 
 /// The panes this endpoint serves.
@@ -382,6 +383,8 @@ struct Shared<'a> {
     charm_tag: String,
     strength_tag: String,
     attack_type_mme: i32,
+    /// The monster damage a calculation left (nothing calculated until one runs).
+    damage: &'a Snapshot,
 }
 
 impl Shared<'_> {
@@ -634,9 +637,8 @@ fn line_json(world: &World, r: &MonsterRow) -> LineJson {
     }
 }
 
-/// `PullMonsterDetail` for the current character and the lair/party boxes. The damage arrays are the ones MME
-/// starts with (nothing calculated), rebuilt per request: no endpoint calculates monster damage, so nothing could
-/// have written them.
+/// `PullMonsterDetail` for the current character and the lair/party boxes, over the damage arrays and flags in `sh.damage`
+/// (what a calculation left, or MME's start-up values).
 fn monster_pane(
     world: &World,
     sh: &Shared,
@@ -652,7 +654,7 @@ fn monster_pane(
     if ctx.state.is_some() {
         ab.global_level_text = Some(&ctx.level_text);
     }
-    let rows = with_monster_env(ctx, controls, exp, sim_rounds, &ab, |env, s| {
+    let rows = with_monster_env(ctx, controls, exp, sim_rounds, sh.damage, &ab, |env, s| {
         let defense_desc = set_char_defense_description(s.cctx, &s.state.character, "")
             .map_or_else(String::new, |d| d.description);
         let sim_chr = s.state.sim_inputs();
@@ -667,10 +669,10 @@ fn monster_pane(
             settings: s.settings,
             possy: &s.possy,
             spawn_chance: &s.spawn_chance,
-            vs_char_defense_config: "",
+            vs_char_defense_config: &sh.damage.char_config,
             char_defense_description: &defense_desc,
-            party_damage_calculated: false,
-            dont_prompt_calc_party: false,
+            party_damage_calculated: sh.damage.party_calculated,
+            dont_prompt_calc_party: sh.damage.dont_prompt_party(&controls.party()),
             bless_caption: s.state.bless_mana.unwrap_or(0.0),
             charm_tag: &charm,
             sim_chr: &sim_chr,
@@ -699,6 +701,7 @@ fn build(
     body: DetailBody,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
+    damage: &Snapshot,
 ) -> Result<PaneJson, (StatusCode, String)> {
     let world = &loaded.world;
     let eval = EvaluateBody {
@@ -722,6 +725,7 @@ fn build(
         charm_tag,
         strength_tag,
         attack_type_mme,
+        damage,
     };
     let mut lairs = StoredLairs(loaded.lair_cache());
     let missing = |what: &str| not_found(format!("no {what} {number}"));
@@ -761,9 +765,12 @@ async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) 
     };
     let loaded = state.current();
     let (exp, sim_rounds) = run_settings(&state, body.character.as_ref());
+    let damage = state
+        .monster_damage()
+        .snapshot(loaded.info.load_count, &loaded.world);
     // The lair cache is built on first use and the item pane can be long: keep it off the reactor.
     let out =
-        tokio::task::spawn_blocking(move || build(&loaded, pane, number, body, &exp, sim_rounds))
+        tokio::task::spawn_blocking(move || build(&loaded, pane, number, body, &exp, sim_rounds, &damage))
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
     json(&out)

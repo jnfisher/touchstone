@@ -11,6 +11,7 @@ mod detail;
 pub mod equip;
 pub mod evaluate;
 pub mod item_manager;
+pub mod monster_damage;
 pub mod monster_sim;
 pub mod panes;
 pub mod paste;
