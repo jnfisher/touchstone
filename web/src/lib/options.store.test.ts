@@ -80,6 +80,23 @@ describe('Options menu actions', () => {
 		expect(x.opts.pasteOpen).toBe(true);
 	});
 
+	it('the pane\'s uncomputed Reachable row computes, and only redraws when something else computed meanwhile', async () => {
+		const x = setup();
+		const before = x.boxes.reachRev;
+		await x.opts.reachRow();
+		// lvMonsterDetail_DblClick reach_compute: ReachRecompute, then the pane is pulled again
+		expect(x.reachability.computeReachability).toHaveBeenCalledOnce();
+		expect(x.boxes.reachRev).toBe(before + 1);
+		x.reachability.reachabilityStatus.mockResolvedValueOnce(reached(true));
+		await x.opts.reachRow();
+		expect(x.reachability.computeReachability).toHaveBeenCalledOnce();
+		expect(x.boxes.reachRev).toBe(before + 2);
+		x.failReach();
+		x.reachability.reachabilityStatus.mockResolvedValueOnce(reached(false));
+		await x.opts.reachRow();
+		expect(x.opts.notice).toBe('Reachability could not be computed for this database.');
+	});
+
 	it('Calculate Reachability computes, tells the Monsters list to ask again, and says when it could not', async () => {
 		const x = setup();
 		const before = x.boxes.reachRev;
@@ -105,6 +122,10 @@ describe('Options menu actions', () => {
 		expect(x.damage.version).toBe(v + 1);
 		x.chars.edit((d) => (d.race = null));
 		expect(x.opts.canCalcDamage).toBe(false);
+		// mnuOptionsItems(3) depends on the lair party size and not on a character
+		expect(x.opts.canCalcPartyDamage).toBe(true);
+		expect(await x.opts.calcDamage('party')).toBe(true);
+		expect(await x.opts.calcDamage('char')).toBe(false);
 	});
 
 	it('Clear Learned Spells asks first (default No) and empties the learned spells', async () => {

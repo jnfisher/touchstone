@@ -1,19 +1,13 @@
 <script lang="ts">
 	// The header badge: which rules the loaded database follows (`/api/info` `profile`).
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { api, type Info } from '$lib/api';
 	import { isQuicksilver, profileBadge, profileBadgeTitle } from '$lib/info';
+	import { getInfoStore } from '$lib/info.svelte';
 	import { onMount } from 'svelte';
 
-	let info = $state<Info>();
-	onMount(() => {
-		let alive = true;
-		api
-			.info()
-			.then((i) => alive && (info = i))
-			.catch(() => {});
-		return () => (alive = false);
-	});
+	const store = getInfoStore();
+	const info = $derived(store.current);
+	onMount(() => store.use());
 </script>
 
 {#if info}

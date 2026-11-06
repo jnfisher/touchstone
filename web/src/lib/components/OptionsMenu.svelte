@@ -32,7 +32,7 @@
 		<DropdownMenu.Item data-testid="opt-damage-char" disabled={!opts.canCalcDamage} onSelect={() => void opts.calcDamage('char')}>
 			Calc. Monster Dmg vs Char
 		</DropdownMenu.Item>
-		<DropdownMenu.Item data-testid="opt-damage-party" disabled={!opts.canCalcDamage} onSelect={() => void opts.calcDamage('party')}>
+		<DropdownMenu.Item data-testid="opt-damage-party" disabled={!opts.canCalcPartyDamage} onSelect={() => void opts.calcDamage('party')}>
 			Calc. Monster Dmg vs Party
 		</DropdownMenu.Item>
 		<DropdownMenu.Item data-testid="opt-damage-clear" disabled={!!damage.busy} onSelect={() => void opts.clearDamage()}>

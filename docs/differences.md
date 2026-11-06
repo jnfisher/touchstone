@@ -152,6 +152,10 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - The monster pane writes the damage it simulated on the spot into the stored arrays and the next pane or list reads it, as
   MME's global arrays behave. The start-up lair averages (`CalculateAverageLairs`) still see the uncalculated arrays, as
   MME's do (they run before anything is calculated).
+- "Calc. Monster Dmg vs Party" runs with no character loaded, as in MME (its menu item depends on the lair filter's party
+  size and the calculation reads only the party boxes). The server needs a class and race to build the lair environment,
+  so a party request without them gets the first class and race of the data; the arrays are the same whichever is used.
+  The page offers the item whatever the party size, where MME enables it only for a party of two or more.
 - The oracle family `monster_damage_calc` runs MME's calculation over a small melee-only Monsters table (all 1100+ stock
   monsters would take hours in the interpreter); spell attackers' simulations are pinned by `monster_glue_char`.
 - The damage the pane reads (`nMonsterDamageVsDefault`) stays the fixture's invented array only in tests; the server leaves

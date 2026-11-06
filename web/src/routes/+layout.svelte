@@ -114,8 +114,9 @@
 				<Tabs.Root value={current} onValueChange={(v) => void goto(`/${v}`)}>
 					<Tabs.List class="w-max">
 						{#each SECTIONS as s, i (s.slug)}
-							<Tabs.Trigger value={s.slug}>
-								{s.label} <span class="text-muted-foreground text-xs">F{i + 1}</span>
+							<!-- the F-key hints need the room only wide screens have; the info popover lists every key -->
+							<Tabs.Trigger value={s.slug} title="{s.label} (F{i + 1})">
+								{s.label} <span class="text-muted-foreground hidden text-xs 2xl:inline" data-testid="tab-key">F{i + 1}</span>
 							</Tabs.Trigger>
 						{/each}
 					</Tabs.List>

@@ -101,9 +101,19 @@ describe('monster damage store', () => {
 		const { client, raw } = fake();
 		const store = createDamageStore(client);
 		expect(await store.calculate(undefined, 'char', DEFAULT_PARTY)).toBe(false);
-		expect(await store.calculate(newCharacter('x'), 'party', DEFAULT_PARTY)).toBe(false);
+		expect(await store.calculate(newCharacter('x'), 'char', DEFAULT_PARTY)).toBe(false);
 		expect(raw.calculate).not.toHaveBeenCalled();
 		expect(store.version).toBe(0);
+	});
+
+	it('calculates for the party with no class and race, as MME does with no character loaded', async () => {
+		const { client, raw, finish } = fake();
+		const store = createDamageStore(client);
+		const run = store.calculate(newCharacter('x'), 'party', DEFAULT_PARTY);
+		finish();
+		expect(await run).toBe(true);
+		expect(raw.calculate).toHaveBeenCalledOnce();
+		expect(store.version).toBe(1);
 	});
 
 	it('keeps the server text when a calculation fails and still refreshes the list', async () => {

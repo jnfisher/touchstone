@@ -58,10 +58,12 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 		refresh,
 		/**
 		 * `CalculateMonsterDamageVsCharALL` for the open character or the party boxes. False when nothing ran: a
-		 * calculation is already going, or there is no complete character.
+		 * calculation is already going, or a character calculation has no class and race.
 		 */
 		async calculate(doc: CharacterDoc | undefined, mode: DamageMode, party: PartyBoxes): Promise<boolean> {
-			if (busy || !doc || !canCalculate(doc)) return false;
+			if (busy || !doc) return false;
+			// the party calculation reads only the party boxes (MME runs it with no character loaded); the server fills in a class and race
+			if (mode === 'char' && !canCalculate(doc)) return false;
 			busy = mode;
 			error = undefined;
 			note = undefined;

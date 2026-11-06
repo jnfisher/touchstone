@@ -35,10 +35,10 @@ export function isQuicksilver(info: Info | undefined): boolean {
 	return info?.profile?.name === 'quicksilver';
 }
 
-/** The header badge: "Quicksilver 1.20.0", or "Stock" with the content version when the database has one. */
+/** The header badge, kept short for the header: "QS 1.20.0", or "Stock" with the content version when there is one. */
 export function profileBadge(info: Info): string {
 	const p = info.profile;
-	const name = p?.name === 'quicksilver' ? 'Quicksilver' : 'Stock';
+	const name = p?.name === 'quicksilver' ? 'QS' : 'Stock';
 	return p?.content_version ? `${name} ${p.content_version}` : name;
 }
 
@@ -46,10 +46,11 @@ export function profileBadge(info: Info): string {
 export function profileBadgeTitle(info: Info): string {
 	const p = info.profile;
 	if (p?.name !== 'quicksilver') return 'Stock MajorMUD rules';
+	const name = p.content_version ? `Quicksilver ${p.content_version}` : 'Quicksilver';
 	const o = p.balance_overrides;
 	return o.length
-		? `Quicksilver rules. Balance overrides from touchstone.toml: ${o.join(', ')}`
-		: 'Quicksilver rules, balance as shipped';
+		? `${name} rules. Balance overrides from touchstone.toml: ${o.join(', ')}`
+		: `${name} rules, balance as shipped`;
 }
 
 /** The popover's "Rules profile" rows. */
