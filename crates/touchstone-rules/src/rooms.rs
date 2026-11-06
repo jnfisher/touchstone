@@ -312,6 +312,91 @@ pub fn room_title(world: &World, map: i32, room: i32) -> Option<String> {
         .map(|r| format!("Rooms -- {} ({map}/{room})  ", room_name_of(r)))
 }
 
+// ---- exits (presentation) ---------------------------------------------------------------------
+
+/// One non-empty exit column of a room, decoded the way MME's exit loops read it. Not an MME
+/// procedure: the page lists a room's exits with this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExitView {
+    pub dir: &'static str,
+    /// The column text as stored.
+    pub text: String,
+    /// `normal`, `map change`, `action` or the exit type's word (`door`, `key`, `hidden`, ...).
+    pub kind: &'static str,
+    /// The destination (`ExtractMapRoom`); 0/0 for an action text without one.
+    pub map: i32,
+    pub room: i32,
+    /// The part after the destination, such as `(Door)`.
+    pub exit_type: String,
+}
+
+fn exit_kind_name(code: i32) -> &'static str {
+    match code {
+        2 => "key",
+        3 => "item",
+        4 => "toll",
+        6 => "hidden",
+        7 => "door",
+        8 => "map change",
+        9 => "trap",
+        10 => "text",
+        11 => "gate",
+        12 => "action",
+        13 => "class",
+        14 => "race",
+        15 => "level",
+        16 => "timed",
+        17 => "ticket",
+        18 => "max",
+        19 => "blocked",
+        20 => "alignment",
+        21 => "delay",
+        22 => "cast",
+        23 => "ability",
+        24 => "spell trap",
+        _ => "normal",
+    }
+}
+
+/// The room's exits, in direction order.
+#[must_use]
+pub fn room_exits(r: &Room) -> Vec<ExitView> {
+    let mut out = Vec::new();
+    for (dir, label) in DIRECTIONS.iter().enumerate() {
+        let text = exit_text(r, dir);
+        if left(text, 6).unwrap_or_default() == "Action" {
+            let e = extract_map_room(text);
+            out.push(ExitView {
+                dir: label,
+                text: text.to_string(),
+                kind: "action",
+                map: e.map,
+                room: e.room,
+                exit_type: String::new(),
+            });
+        } else if val(text) != 0.0 {
+            let e = extract_map_room(text);
+            let mut code = exit_type_code(&e.exit_type);
+            if e.map != r.map_number {
+                code = 8;
+            }
+            out.push(ExitView {
+                dir: label,
+                text: text.to_string(),
+                kind: exit_kind_name(code),
+                map: e.map,
+                room: e.room,
+                exit_type: if e.exit_type == "0" {
+                    String::new()
+                } else {
+                    e.exit_type
+                },
+            });
+        }
+    }
+    out
+}
+
 // ---- references ---------------------------------------------------------------------------------
 
 /// Port of frmMain `MapGetRoomLoc`: the references of a room (NPC, shop, placed items, room spell,
@@ -1020,6 +1105,32 @@ pub fn find_text_step(
     }
     st.last = None;
     vec![FindTextEvent::Message("Name not found.".into())]
+}
+
+/// Every room Find and Find Next would visit for `query`, in order, after the room `after` when
+/// given, up to `limit` (more than `limit` sets the second result). The same scan as
+/// [`find_text_step`], in one pass over the sorted rooms. MME has no such list or limit.
+#[must_use]
+pub fn find_text_matches(
+    world: &World,
+    query: &str,
+    after: Option<(i32, i32)>,
+    limit: usize,
+) -> (Vec<(i32, i32)>, bool) {
+    let needle = lcase(query);
+    let mut out = Vec::new();
+    for r in ordered_rooms(world) {
+        if after.is_some_and(|a| (r.map_number, r.room_number) <= a) {
+            continue;
+        }
+        if instr(1, &lcase(&room_name_of(r)), &needle) > 0 {
+            if out.len() >= limit {
+                return (out, true);
+            }
+            out.push((r.map_number, r.room_number));
+        }
+    }
+    (out, false)
 }
 
 // ---- exits finder -------------------------------------------------------------------------------

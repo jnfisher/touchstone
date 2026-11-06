@@ -9,8 +9,8 @@ use touchstone_model::{World, WorldParts};
 use touchstone_rules::lairs::LairInfo;
 use touchstone_rules::locations::LocationLairs;
 use touchstone_rules::rooms::{
-    FindTextEvent, FindTextState, RoomEnv, RoomOptions, find_exits, find_text_step,
-    room_cmd_room_list, room_refs, room_tooltip,
+    FindTextEvent, FindTextState, RoomEnv, RoomOptions, find_exits, find_text_matches,
+    find_text_step, room_cmd_room_list, room_refs, room_tooltip,
 };
 use touchstone_vb6::{Currency, clng, val};
 
@@ -443,4 +443,32 @@ fn rooms_match_the_oracle() {
         checked,
         bad.iter().take(6).cloned().collect::<Vec<_>>().join("\n")
     );
+}
+
+// find_text_matches is the same scan as Find and Find Next; the chain itself is pinned to the oracle above.
+#[test]
+fn the_match_list_is_the_find_next_chain() {
+    let fx = load("rooms");
+    let w = world(&fx.header["data"]);
+    for q in ["tomb", "a", "dirt", "xyzzy", "test annex"] {
+        let mut st = FindTextState::default();
+        let mut chain = Vec::new();
+        let mut index = 0;
+        loop {
+            let ev = find_text_step(&w, &mut st, index, q);
+            index = 1;
+            match ev.first() {
+                Some(FindTextEvent::Hit(m, r)) => chain.push((*m, *r)),
+                _ => break,
+            }
+        }
+        let (all, truncated) = find_text_matches(&w, q, None, usize::MAX);
+        assert_eq!(all, chain, "query {q}");
+        assert!(!truncated);
+        if chain.len() > 2 {
+            let (some, cut) = find_text_matches(&w, q, Some(chain[0]), 2);
+            assert_eq!(some, chain[1..3], "query {q} after the first hit");
+            assert!(cut || chain.len() == 3);
+        }
+    }
 }

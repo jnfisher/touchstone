@@ -12,6 +12,7 @@ pub mod item_manager;
 pub mod monster_sim;
 pub mod panes;
 pub mod paste;
+pub mod rooms;
 pub mod settings;
 pub mod source;
 pub mod state;
