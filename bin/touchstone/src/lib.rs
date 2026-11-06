@@ -17,6 +17,7 @@ pub mod panes;
 pub mod paste;
 pub mod settings;
 pub mod source;
+pub mod spell_tools;
 pub mod state;
 mod web;
 

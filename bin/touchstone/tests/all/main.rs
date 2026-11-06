@@ -15,6 +15,7 @@ mod monsters;
 mod panes;
 mod paste;
 mod settings;
+mod spell_tools;
 
 mod health {
     use axum::body::Body;
