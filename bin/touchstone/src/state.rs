@@ -148,6 +148,8 @@ pub struct AppState {
     settings: Mutex<Result<Settings, String>>,
     /// Finished `/api/evaluate` lists, each tagged with the load it was built from.
     evaluate_cache: Mutex<HashMap<String, (u64, Bytes)>>,
+    /// The calculated monster damage (P4-30), reset by the load number it is tagged with.
+    monster_damage: crate::monster_damage::MonsterDamage,
 }
 
 /// Lists kept for instant tab switches; the world is small, so a few dozen is plenty.
@@ -166,6 +168,7 @@ impl AppState {
             data_dir,
             settings,
             evaluate_cache: Mutex::new(HashMap::new()),
+            monster_damage: crate::monster_damage::MonsterDamage::default(),
         })
     }
 
@@ -191,6 +194,10 @@ impl AppState {
         settings::store(&self.data_dir, &next, guard.is_err()).map_err(|e| e.to_string())?;
         *guard = Ok(next);
         Ok(next)
+    }
+
+    pub fn monster_damage(&self) -> &crate::monster_damage::MonsterDamage {
+        &self.monster_damage
     }
 
     pub fn current(&self) -> Arc<Loaded> {

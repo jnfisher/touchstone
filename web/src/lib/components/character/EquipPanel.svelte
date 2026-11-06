@@ -17,6 +17,7 @@
 		type EquipStateDoc
 	} from '$lib/character';
 	import type { CharacterStore } from '$lib/character.svelte';
+	import { getCompareStore } from '$lib/compare.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { headingCls, labelCls } from '../calc/styles';
@@ -169,6 +170,13 @@
 		<button
 			type="button"
 			class="border-input ml-auto h-7 rounded-md border px-2 text-xs"
+			title="Put the equipped weapon and armour on the Compare lists (equipped items already there come off)"
+			onclick={() => void getCompareStore().addEquipped()}
+			data-testid="equip-add-compare">Add all to compare</button
+		>
+		<button
+			type="button"
+			class="border-input h-7 rounded-md border px-2 text-xs"
 			onclick={() => store.edit((d) => (d.equipped = Array<number>(20).fill(0)))}
 			data-testid="equip-clear">Empty all slots</button
 		>

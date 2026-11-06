@@ -724,3 +724,69 @@ async fn mmec_import_names_and_bad_files() {
         "{disp}"
     );
 }
+
+#[tokio::test]
+async fn compare_lists_ride_with_the_character_through_save_import_and_export() {
+    // fixtures/data/mmec/warrior.mmec: an MME-written [Compare] section (SaveCharacter's comma-terminated lists)
+    let e = env();
+    let (status, _, body) = raw(
+        &e.app,
+        "POST",
+        "/api/characters/import",
+        sample("warrior.mmec"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let mut dto: Value = serde_json::from_slice(&body).unwrap();
+    let name = dto["name"].as_str().unwrap().to_owned();
+    let entry = |dto: &Value, key: &str| {
+        dto["extra"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|x| x["section"] == "Compare" && x["key"] == key)
+            .map(|x| x["value"].as_str().unwrap().to_owned())
+    };
+    assert_eq!(entry(&dto, "WeaponCompare").as_deref(), Some("310,311,"));
+    assert_eq!(entry(&dto, "ArmourCompare").as_deref(), Some("101,205,"));
+
+    // the page edits the lists (the Compare tab writes these entries) and autosaves the character
+    for x in dto["extra"].as_array_mut().unwrap() {
+        if x["section"] == "Compare" && x["key"] == "WeaponCompare" {
+            x["value"] = json!("311,48,310,");
+        }
+        if x["section"] == "Compare" && x["key"] == "MonsterCompare" {
+            x["value"] = json!("7,3,");
+        }
+    }
+    let (status, _) = call(
+        &e.app,
+        "PUT",
+        &format!("/api/characters/{name}"),
+        Some(&dto),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, again) = call(&e.app, "GET", &format!("/api/characters/{name}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        entry(&again, "WeaponCompare").as_deref(),
+        Some("311,48,310,")
+    );
+
+    let (status, _, bytes) = raw(
+        &e.app,
+        "GET",
+        &format!("/api/characters/{name}/export.mmec"),
+        vec![],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let text = String::from_utf8(bytes).unwrap();
+    assert!(
+        text.contains(
+            "[Compare]\r\nWeaponCompare=311,48,310,\r\nArmourCompare=101,205,\r\nSpellCompare=\r\nMonsterCompare=7,3,\r\n"
+        ),
+        "{text}"
+    );
+}

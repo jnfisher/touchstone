@@ -14,15 +14,15 @@ use touchstone_model::{
 };
 use tower::ServiceExt;
 
-fn i(v: &Value) -> i32 {
+pub(crate) fn i(v: &Value) -> i32 {
     v.as_i64().unwrap_or_else(|| panic!("not an integer: {v}")) as i32
 }
 
-fn f(v: &Value) -> f64 {
+pub(crate) fn f(v: &Value) -> f64 {
     v.as_f64().unwrap_or_else(|| panic!("not a number: {v}"))
 }
 
-fn s(v: &Value) -> String {
+pub(crate) fn s(v: &Value) -> String {
     v.as_str().unwrap_or("").to_string()
 }
 
@@ -38,7 +38,7 @@ fn pairs<const N: usize>(v: &Value) -> [AbilitySlot; N] {
 }
 
 /// The loaded character of a case, as the wire character.
-fn character(fx: &Value, c: &Value) -> Value {
+pub(crate) fn character(fx: &Value, c: &Value) -> Value {
     let setup = &fx["header"]["setup"]["forms"]["frmMain"];
     let forms = &c["inputs"]["forms"]["frmMain"];
     let g = &c["inputs"]["globals"];
@@ -90,13 +90,13 @@ fn character(fx: &Value, c: &Value) -> Value {
     })
 }
 
-fn fixture(name: &str) -> Value {
+pub(crate) fn fixture(name: &str) -> Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(format!("../../fixtures/rules/{name}.json"));
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
-fn case<'a>(fx: &'a Value, id: &str) -> &'a Value {
+pub(crate) fn case<'a>(fx: &'a Value, id: &str) -> &'a Value {
     fx["cases"]
         .as_array()
         .unwrap()
@@ -108,14 +108,14 @@ fn case<'a>(fx: &'a Value, id: &str) -> &'a Value {
 // ---------------------------------------------------------------------------------------------- worlds
 
 /// The pipeline fixture's classes, races, items and spells (the rows the characters use).
-struct Base {
-    items: Vec<Item>,
-    spells: Vec<Spell>,
-    classes: Vec<Class>,
-    races: Vec<Race>,
+pub(crate) struct Base {
+    pub(crate) items: Vec<Item>,
+    pub(crate) spells: Vec<Spell>,
+    pub(crate) classes: Vec<Class>,
+    pub(crate) races: Vec<Race>,
 }
 
-fn base() -> Base {
+pub(crate) fn base() -> Base {
     let fx = fixture("pipeline");
     let data = &fx["header"]["data"];
     let rows = |k: &str| data[k].as_array().unwrap().clone();
@@ -257,7 +257,7 @@ fn blank_item(number: i32, name: String, set: impl FnOnce(&mut Item)) -> Item {
     it
 }
 
-fn info() -> Info {
+pub(crate) fn info() -> Info {
     Info {
         nmr_version: "v1.8.3".to_owned(),
         dat_file_version: "v1.11p".to_owned(),
@@ -270,7 +270,7 @@ fn info() -> Info {
     }
 }
 
-fn blank_attack() -> MonsterAttack {
+pub(crate) fn blank_attack() -> MonsterAttack {
     MonsterAttack {
         name: String::new(),
         att_type: 0,
@@ -284,7 +284,7 @@ fn blank_attack() -> MonsterAttack {
     }
 }
 
-fn none_if_empty(s: String) -> Option<String> {
+pub(crate) fn none_if_empty(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
@@ -710,7 +710,16 @@ fn detail_world(multiplier_off: bool) -> World {
 
 /// The app over a world, with the settings the oracle ran with: 1000 simulation rounds (`nGlobalMonsterSimRounds`),
 /// where the server's default is MME's 500.
-fn router(world: World) -> axum::Router {
+pub(crate) fn router(world: World) -> axum::Router {
+    router_state(world).0
+}
+
+pub(crate) fn router_state(world: World) -> (axum::Router, std::sync::Arc<AppState>) {
+    router_rounds(world, 1000)
+}
+
+/// [`router`] with `rounds` simulation rounds in the settings.
+pub(crate) fn router_rounds(world: World, rounds: i64) -> (axum::Router, std::sync::Arc<AppState>) {
     let info = SourceInfo {
         kind: "mdb",
         path: "test".into(),
@@ -719,13 +728,18 @@ fn router(world: World) -> axum::Router {
     let dir = tempfile::TempDir::new().unwrap().keep();
     std::fs::write(
         dir.join("settings.json"),
-        json!({"monster_sim_rounds": 1000}).to_string(),
+        json!({"monster_sim_rounds": rounds}).to_string(),
     )
     .unwrap();
-    app(AppState::with_data_dir(loaded, dir))
+    let state = AppState::with_data_dir(loaded, dir);
+    (app(state.clone()), state)
 }
 
-async fn call(app: &axum::Router, uri: &str, body: Option<&Value>) -> (StatusCode, Value) {
+pub(crate) async fn call(
+    app: &axum::Router,
+    uri: &str,
+    body: Option<&Value>,
+) -> (StatusCode, Value) {
     let req = match body {
         Some(b) => Request::builder()
             .method("POST")
@@ -1045,9 +1059,67 @@ async fn monster_panes_match_the_oracle_without_a_character() {
     );
 }
 
+/// What the case's globals say MME had calculated before the pane was built: the two damage arrays, the stored defense
+/// description (the oracle's RefreshAll leaves its own in `sGlobalCharDefenseDescription`, so the stale note shows in both)
+/// and the party flags, put in the store a calculation fills.
+fn seed_damage(fx: &Value, c: &Value, state: &AppState, body: &Value) {
+    use touchstone::evaluate::PartyBoxes;
+    use touchstone::monster_damage::party_boxes_key;
+    use touchstone_vb6::Currency;
+    let g = |name: &str| {
+        let v = &c["inputs"]["globals"][name];
+        if v.is_null() {
+            fx["header"]["setup"]["globals"][name].clone()
+        } else {
+            v.clone()
+        }
+    };
+    let array = |name: &str| -> Vec<Currency> {
+        g(name)
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| Currency::from_f64(x.as_f64().unwrap()).unwrap())
+            .collect()
+    };
+    let loaded = state.current();
+    let party: PartyBoxes =
+        serde_json::from_value(body["options"]["monsters"]["party"].clone()).unwrap();
+    let config = g("sMonsterDamageVsCharDefenseConfig")
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (vs_char, vs_party, vs_default) = (
+        array("nMonsterDamageVsChar"),
+        array("nMonsterDamageVsParty"),
+        array("nMonsterDamageVsDefault"),
+    );
+    let key = party_boxes_key(&party);
+    state
+        .monster_damage()
+        .update(loaded.info.load_count, &loaded.world, |s| {
+            for (to, from) in [
+                (&mut s.vs_char, &vs_char),
+                (&mut s.vs_party, &vs_party),
+                (&mut s.vs_default, &vs_default),
+            ] {
+                for (slot, v) in to.iter_mut().zip(from) {
+                    *slot = *v;
+                }
+            }
+            s.char_config = config;
+            s.party_calculated = g("bMonsterDamageVsPartyCalculated") == true;
+            if g("bDontPromptCalcPartyMonsterDamage") == true {
+                s.party_asked = Some(key);
+            }
+        });
+}
+
 async fn character_case(id: &str) {
     let fx = fixture("monster_detail");
-    let app = router(detail_world(true));
+    let world = detail_world(true);
+    // the case ran with nGlobalMonsterSimRounds 500
+    let (app, state) = router_rounds(world, 500);
     let c = case(&fx, id);
     let step = c["inputs"]["steps"]
         .as_array()
@@ -1103,25 +1175,11 @@ async fn character_case(id: &str) {
             },
         }},
     });
+    seed_damage(&fx, c, &state, &body);
     let want = c["outputs"]["rows"].as_array().unwrap();
     let mut bad = Vec::new();
     for (key, want) in step["rows"]["keys"].as_array().unwrap().iter().zip(want) {
         let n = key.as_i64().unwrap();
-        // the server has no way to calculate monster damage, so a monster the case calculated beforehand
-        // (nMonsterDamageVsChar >= 0) reads differently there
-        let arrays = &c["inputs"]["globals"]["nMonsterDamageVsChar"];
-        let arrays = if arrays.is_null() {
-            &fx["header"]["setup"]["globals"]["nMonsterDamageVsChar"]
-        } else {
-            arrays
-        };
-        let calculated = arrays
-            .get(n as usize)
-            .and_then(Value::as_f64)
-            .is_some_and(|d| d >= 0.0);
-        if calculated {
-            continue;
-        }
         let (st, got) = call(&app, &format!("/api/detail/monsters/{n}"), Some(&body)).await;
         assert_eq!(st, StatusCode::OK, "monster {n}: {got}");
         let got: Vec<Value> = got["lines"]
@@ -1150,10 +1208,10 @@ async fn character_case(id: &str) {
     );
 }
 
-// Expected: fixtures/rules/monster_detail.json cases warrior-notcalc, mage, rogue, mystic, warrior-lair-first,
-// mage-lair and nochar-lair (PullMonsterDetail with the global filter on or off, solo and by lair, before any monster
-// damage was calculated). The party cases (warrior-party2, nochar-party3) set bMonsterDamageVsPartyCalculated, which
-// only the "Calculate" action sets in MME, so their "vs party defenses" wording is out of reach here.
+// Expected: fixtures/rules/monster_detail.json cases warrior-notcalc, warrior-stale, mage, rogue, mystic, warrior-lair-first,
+// mage-lair, nochar-lair and the party cases (PullMonsterDetail with the global filter on or off, solo and by lair). The
+// cases set the damage arrays and flags MME had calculated beforehand; the test puts them in the store a calculation fills
+// (`seed_damage`), so the "vs party defenses" wording and the monsters with calculated damage are covered too.
 #[tokio::test]
 async fn monster_panes_match_the_oracle_with_a_character() {
     for id in [
@@ -1164,6 +1222,15 @@ async fn monster_panes_match_the_oracle_with_a_character() {
         "warrior-lair-first",
         "mage-lair",
         "nochar-lair",
+        "warrior-stale",
+        "warrior-party2",
+        "warrior-party4",
+        "warrior-party6",
+        "mage-party3",
+        "nochar-party3",
+        "warrior-party-first",
+        "warrior-party-incomplete",
+        "warrior-party-complete",
     ] {
         character_case(id).await;
     }

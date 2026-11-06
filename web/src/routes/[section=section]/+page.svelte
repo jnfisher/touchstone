@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import CharacterTab from '$lib/components/character/CharacterTab.svelte';
+	import CompareTab from '$lib/components/CompareTab.svelte';
 	import ExplorerView from '$lib/components/ExplorerView.svelte';
 	import RoomsTab from '$lib/components/RoomsTab.svelte';
 	import { explorerFor } from '$lib/explorers';
@@ -15,6 +16,8 @@
 	<CharacterTab />
 {:else if slug === 'rooms'}
 	<RoomsTab />
+{:else if slug === 'compare'}
+	<CompareTab />
 {:else if explorer}
 	<!-- Keyed by tab so each tab gets its own grid, search text and scroll position. -->
 	{#key slug}
