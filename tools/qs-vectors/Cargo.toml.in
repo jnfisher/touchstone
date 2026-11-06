@@ -1,0 +1,17 @@
+# Engine vector generator (card Q-005). run.sh copies this and src/ to a build directory under
+# QS_VECTORS_TARGET, replacing @QUICKSILVER_DEV@ with the checkout path (cargo path dependencies
+# cannot read the environment). It is its own workspace root, so the touchstone workspace,
+# `cargo deny` and PR CI never see it.
+[package]
+name = "qs-vectors"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde_json = "1"
+silvermere-types = { path = "@QUICKSILVER_DEV@/crates/silvermere-types" }
+silvermere-rules = { path = "@QUICKSILVER_DEV@/crates/silvermere-rules" }
+silvermere-engine = { path = "@QUICKSILVER_DEV@/crates/silvermere-engine" }
