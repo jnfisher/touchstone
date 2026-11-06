@@ -6,6 +6,7 @@ mod abilities;
 mod ability_text;
 mod accuracy;
 mod attack;
+mod calculators;
 mod exp;
 mod exp_per_hour;
 mod game_text;
