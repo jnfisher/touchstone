@@ -227,3 +227,13 @@ export function createPaneClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
 }
 
 export const paneClient = createPaneClient();
+
+/**
+ * The monster pane lines MME opens a route from on a double-click (`lvMonsterDetail_DblClick`, tags `reach_route` and
+ * `reach_route_alt`): the "Reachable" line, and the alternate-route line under the route rows.
+ */
+export function routeLine(kind: string): { alt: boolean } | undefined {
+	if (kind === 'reach_route') return { alt: false };
+	if (kind === 'reach_route_alt') return { alt: true };
+	return undefined;
+}

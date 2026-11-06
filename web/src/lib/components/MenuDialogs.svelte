@@ -3,6 +3,7 @@
 	// copy for us, and a Yes/No question (MME's MsgBox).
 	import { dialogs } from '$lib/dialogs.svelte';
 	import ResultsDialog from './ResultsDialog.svelte';
+	import RouteDialog from './RouteDialog.svelte';
 
 	let area = $state<HTMLTextAreaElement>();
 	$effect(() => {
@@ -51,6 +52,7 @@
 {/if}
 
 <ResultsDialog />
+<RouteDialog />
 
 {#if dialogs.prompt}
 	{@const q = dialogs.prompt}

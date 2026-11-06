@@ -7,6 +7,7 @@
 	import { getOptionsStore } from '$lib/options.svelte';
 	import { canCalculate, progressText } from '$lib/monsterdamage';
 	import { onMount } from 'svelte';
+	import { Button } from '$lib/components/ui/button';
 
 	const damage = getDamageStore();
 	const character = getCharacterStore();
@@ -41,6 +42,17 @@
 <div class="flex flex-wrap items-center gap-2" data-testid="monster-status">
 	{#if label}
 		<span class="text-sm tabular-nums" role="status" aria-live="polite" data-testid="damage-progress">{label}</span>
+		{#if damage.busy && damage.busy !== 'clear'}
+			<Button
+				size="sm"
+				variant="outline"
+				disabled={running?.cancelling}
+				onclick={() => void damage.cancel()}
+				data-testid="damage-cancel">Cancel</Button
+			>
+		{/if}
+	{:else if damage.note}
+		<span class="text-muted-foreground text-sm" data-testid="damage-note">{damage.note}</span>
 	{:else if damage.error}
 		<span class="text-destructive text-sm" role="alert" data-testid="damage-error">{damage.error}</span>
 	{/if}

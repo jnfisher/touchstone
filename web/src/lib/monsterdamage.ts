@@ -11,7 +11,7 @@ export interface DamageStatus {
 	char: { calculated: boolean };
 	party: { calculated: boolean };
 	/** A calculation in progress. */
-	running: { mode: DamageMode; done: number; total: number; elapsed_ms: number } | null;
+	running: { mode: DamageMode; done: number; total: number; elapsed_ms: number; cancelling?: boolean } | null;
 	/** Counts every change of the stored arrays. */
 	generation: number;
 }
@@ -22,6 +22,8 @@ export interface DamageDone {
 	monsters: number;
 	skipped: number;
 	elapsed_ms: number;
+	/** A Cancel stopped the run: nothing was stored, the previous values stand. */
+	cancelled?: boolean;
 }
 
 /** One of `FilterMonsters`' "calculate the monster damage first?" questions, as the list reports it. */
@@ -60,6 +62,7 @@ export const MODE_LABEL: Record<DamageMode, string> = { char: 'vs character', pa
 
 /** MME's progress form caption, with the monsters done and the time so far. */
 export function progressText(r: NonNullable<DamageStatus['running']>): string {
+	if (r.cancelling) return `Cancelling the monster damage calculation... ${r.done.toLocaleString('en-US')} of ${r.total.toLocaleString('en-US')}`;
 	const secs = Math.floor(r.elapsed_ms / 1000);
 	return `Calculating monster damage ${MODE_LABEL[r.mode]}... ${r.done.toLocaleString('en-US')} of ${r.total.toLocaleString('en-US')} (${secs}s)`;
 }
@@ -93,6 +96,8 @@ export function createDamageClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
 	return {
 		status: () => send<DamageStatus>('/api/monster-damage/status', { cache: 'no-store' }),
 		calculate: (body: CalcRequest) => send<DamageDone>('/api/monster-damage/calculate', post(body)),
+		/** Stop the running calculation after the monster it is on; the status answers. */
+		cancel: () => send<DamageStatus>('/api/monster-damage/cancel', post({})),
 		/** Both arrays, as the menu does; `mode` clears just one. */
 		clear: (mode?: DamageMode) => send<DamageStatus>('/api/monster-damage/clear', post(mode ? { mode } : {})),
 		dismiss: (p: Pick<DamagePrompt, 'mode' | 'key'>) =>

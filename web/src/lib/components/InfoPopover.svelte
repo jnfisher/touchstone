@@ -4,6 +4,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { api, type Info } from '$lib/api';
 	import { infoLines } from '$lib/info';
+	import { keyLines } from '$lib/sections';
 	import InfoIcon from '@lucide/svelte/icons/info';
 
 	let info = $state<Info>();
@@ -18,6 +19,7 @@
 		}
 	}
 	const lines = $derived(info ? infoLines(info) : []);
+	const keys = keyLines();
 </script>
 
 <DropdownMenu.Root onOpenChange={load}>
@@ -40,5 +42,14 @@
 				{/each}
 			</dl>
 		{/if}
+		<h2 class="mt-3 mb-1 text-sm font-semibold">Keys</h2>
+		<p class="text-muted-foreground mb-1 text-xs">The tabs follow a different order from MME's F1 to F12; MME's key is on the right.</p>
+		<dl class="grid grid-cols-[auto_1fr_auto] gap-x-3 gap-y-0.5 text-sm" data-testid="key-map">
+			{#each keys as k (k.key)}
+				<dt class="font-medium tabular-nums">{k.key}</dt>
+				<dd>{k.label}</dd>
+				<dd class="text-muted-foreground text-right tabular-nums">MME {k.mme}</dd>
+			{/each}
+		</dl>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

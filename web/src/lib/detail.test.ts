@@ -9,6 +9,7 @@ import {
 	paneKind,
 	refCells,
 	refColumns,
+	routeLine,
 	type RefRow
 } from './detail';
 
@@ -92,5 +93,16 @@ describe('detail panes', () => {
 		expect(seen?.url).toBe('/api/detail/spells/3');
 		const bad = createPaneClient((async () => new Response('no spell 9', { status: 404 })) as never);
 		await expect(bad.pane('spells', 9, paneBody(undefined, DEFAULT_FILTER))).rejects.toThrow('no spell 9');
+	});
+});
+
+describe('route lines of the monster pane', () => {
+	it('opens a route from the Reachable line and the alternate line, and from nothing else', () => {
+		expect(routeLine('reach_route')).toEqual({ alt: false });
+		expect(routeLine('reach_route_alt')).toEqual({ alt: true });
+		// the compute row and the room rows have their own handling
+		expect(routeLine('reach_compute')).toBeUndefined();
+		expect(routeLine('room')).toBeUndefined();
+		expect(routeLine('plain')).toBeUndefined();
 	});
 });
