@@ -410,6 +410,7 @@ pub(crate) fn check_fixture(prof: Profile) {
             }
             "CalcBSDamage" => {
                 let v = calc_bs_damage(
+                    prof,
                     int(&args[0]) as i16,
                     int(&args[1]) as i16,
                     int(&args[2]) as i16,

@@ -312,3 +312,18 @@ Under `Profile::Quicksilver` only; the stock rules are untouched.
   damage slot's share. Such a spell is not expected in the data.
 - The divided kinds split the roll between targets in the game; MME's calculator shows one target's full share and
   the profile keeps that.
+
+## Quicksilver: backstab damage and crit (Q-009)
+
+- A Quicksilver stab (R1) reads the level held to `scalecap` in both level terms, divides stealth by
+  `backstab_stealth_div` and multiplies by `100 + L * backstab_level_pct / 100` percent, the percent truncated to
+  a whole number as the server does. The 75% cut for race-only stealth and MME's 16-bit steps stay. The backstab
+  calculator, `CalculateAttack` type 4 and the detail lines that call it all follow.
+- A stab can crit (R3) at the character's crit chance after the knee, with MME's cap of 99 and no Quick and Deadly
+  bonus. A critical stab rolls from the stab's maximum to `backstab_crit_max_pct` percent of it (the maximum if
+  that is lower); the average crit is MME's rounded midpoint minus the target's damage reduction, as for other
+  crits. Swings, energy and accuracy of a stab are unchanged until Q-010.
+- The neutral balance has no `scalecap` (MME's stab has none) and `backstab_crit_max_pct` 0. touchstone reads a
+  crit maximum of 0 as "a stab never crits", which is MME's answer; the engine would read it as a crit that
+  always deals the stab's maximum. No real configuration sets 0, so this costs nothing and keeps the identity
+  harness exact on the stabs in the attack and party fixtures.

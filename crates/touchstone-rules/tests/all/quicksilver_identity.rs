@@ -25,10 +25,19 @@ fn accuracy_fixtures_identical_under_neutral() {
     crate::accuracy::check_fixture(neutral());
 }
 
-/// R1, R5, R11: attack fixtures (backstab, class melee share, crit knee).
+/// R1, R5, R11: attack fixtures (backstab, class melee share, crit knee). R3 (a stab can crit)
+/// has no neutral setting, so fixture stabs with a crit chance are the vectors' business, not this
+/// harness's.
 #[test]
 fn attack_fixtures_identical_under_neutral() {
     crate::attack::check_fixture(neutral());
+}
+
+/// R1 (CalcBSDamage in the backstab calculator, and the swing calculator over CalculateAttack):
+/// calculators fixtures. The stab's level cap is out of reach in the neutral balance.
+#[test]
+fn calculators_fixtures_identical_under_neutral() {
+    crate::calculators::check_fixture(neutral());
 }
 
 /// R12 and R13 in the aggregation: the second half of CalcCharacterStats (magic resistance and

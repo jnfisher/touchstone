@@ -348,7 +348,7 @@ fn subtract_note(caption: &mut String, n: i32) -> Res<()> {
 /// already wears swapped out when the global filter is on. Errors are caught by MME's handler,
 /// which leaves the procedure; `error` holds the number and the output what had been written.
 #[must_use]
-pub fn calc_bs(input: &BsInput, items: &[Item]) -> BsOutput {
+pub fn calc_bs(profile: Profile, input: &BsInput, items: &[Item]) -> BsOutput {
     let mut out = BsOutput {
         bs_min_text: input.bs_min_text.to_string(),
         bs_max_text: input.bs_max_text.to_string(),
@@ -357,14 +357,14 @@ pub fn calc_bs(input: &BsInput, items: &[Item]) -> BsOutput {
         max_dmg_text: input.max_dmg_text.to_string(),
         ..BsOutput::default()
     };
-    if let Err(e) = bs_steps(input, items, &mut out) {
+    if let Err(e) = bs_steps(profile, input, items, &mut out) {
         out.error = Some(e.code());
     }
     out
 }
 
 #[allow(clippy::too_many_lines)]
-fn bs_steps(input: &BsInput, items: &[Item], out: &mut BsOutput) -> Res<()> {
+fn bs_steps(profile: Profile, input: &BsInput, items: &[Item], out: &mut BsOutput) -> Res<()> {
     let Some(weapon) = input.weapon else {
         return Ok(());
     };
@@ -472,6 +472,7 @@ fn bs_steps(input: &BsInput, items: &[Item], out: &mut BsOutput) -> Res<()> {
 
     let level = vb::cint(vb::val(&out.level_text))?;
     min_dmg = attack::calc_bs_damage(
+        profile,
         level,
         stealth,
         to_i16(i64::from(min_dmg))?,
@@ -479,6 +480,7 @@ fn bs_steps(input: &BsInput, items: &[Item], out: &mut BsOutput) -> Res<()> {
         input.class_stealth,
     );
     max_dmg = attack::calc_bs_damage(
+        profile,
         level,
         stealth,
         to_i16(i64::from(max_dmg))?,
