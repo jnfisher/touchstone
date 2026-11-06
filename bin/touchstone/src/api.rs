@@ -37,6 +37,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/evaluate/{tab}", post(evaluate::evaluate_route))
         .route("/api/characters", get(character::list))
+        .route("/api/characters/import", post(character::import))
+        .route("/api/characters/{name}/export.mmec", get(character::export))
         .route(
             "/api/characters/{name}",
             get(character::get)
