@@ -212,7 +212,7 @@ class Env:
         def false(it_, *a):
             return False
 
-        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText"):
+        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors"):
             it.bind_proc(n, noop)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
@@ -313,7 +313,11 @@ class Env:
                 args.append(cell)
                 refs.append(cell)
             elif isinstance(a, dict) and "udt" in a:
-                args.append(self.make_udt(a))
+                u = self.make_udt(a)
+                if a.get("out"):   # a Type argument the callee fills (ByRef): its final fields land in "<as>.refs"
+                    u = Var(u, a["udt"].lower())
+                    refs.append(u)
+                args.append(u)
             else:
                 args.append(decode(a))
         if "." in target:

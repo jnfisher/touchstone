@@ -312,6 +312,9 @@ class ControlShim(ExtObject):
         if args:
             tbl = self.items.get(n)
             i = V.int_value(args[0])
+            if i < 0 and n == "itemdata" and self.props.get("strictitemdata"):
+                # opt-in (scenario sets StrictItemData): VB6 raises 381 for ItemData(-1), nothing selected
+                raise VBError(381, "Invalid property array index")
             if tbl is None or i not in tbl:
                 if n in ("itemdata", "list"):
                     return V.I32(0) if n == "itemdata" else ""
