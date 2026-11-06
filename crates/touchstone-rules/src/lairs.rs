@@ -1079,6 +1079,76 @@ impl LairCache {
         cache
     }
 
+    /// [`Self::get_lair_info`] as it answers while `bStartup` is set, without touching the cache:
+    /// the stored lair as it is, with the max regen and the one-round figures MME stamps on it.
+    /// The damage figures are whatever the cache holds (zero until a monster calculation stored
+    /// them), which is what a reference list built before any calculation shows. A group MME has
+    /// no slot for answers like the empty slot it would append.
+    #[must_use]
+    pub fn get_lair_info_startup(&self, group_index: &str, max_regen: i16) -> LairInfo {
+        let mut out = LairInfo::default();
+        if group_index.chars().count() < 5 {
+            return out;
+        }
+        let mut regen = max_regen;
+        if regen == 0 {
+            let parts: Vec<&str> = group_index.split('-').collect();
+            if parts.len() < 4 {
+                return out;
+            }
+            match vb::cint(vb::val(parts[3])) {
+                Ok(r) => regen = r,
+                Err(_) => return out,
+            }
+        }
+        match self.stored(group_index) {
+            Some(c) => {
+                out.group_index.clone_from(&c.group_index);
+                out.mob_list.clone_from(&c.mob_list);
+                out.mobs = c.mobs;
+                out.avg_exp = c.avg_exp;
+                out.avg_dmg = c.avg_dmg;
+                out.avg_hp = c.avg_hp;
+                out.avg_ac = c.avg_ac;
+                out.avg_dr = c.avg_dr;
+                out.avg_mr = c.avg_mr;
+                out.avg_dodge = c.avg_dodge;
+                out.damage_out = c.damage_out;
+                out.first_round_damage_out = c.first_round_damage_out;
+                out.min_round_damage_out = c.min_round_damage_out;
+                out.surprise_damage_out = c.surprise_damage_out;
+                out.surprise_min_damage_out = c.surprise_min_damage_out;
+                out.surprise_chance = c.surprise_chance;
+                out.global_attack_config.clone_from(&c.global_attack_config);
+                out.avg_delay = c.avg_delay;
+                out.avg_walk = c.avg_walk;
+                out.total_lairs = c.total_lairs;
+                out.magic_lvl = c.magic_lvl;
+                out.max_magic_lvl = c.max_magic_lvl;
+                out.spell_immu_lvl = c.spell_immu_lvl;
+                out.max_spell_immu_lvl = c.max_spell_immu_lvl;
+                out.num_undeads = c.num_undeads;
+                out.num_anti_magic = c.num_anti_magic;
+                out.num_animals = c.num_animals;
+                out.num_living = c.num_living;
+                out.avg_bs_defense = c.avg_bs_defense;
+                out.avg_rcol = c.avg_rcol;
+                out.avg_rfir = c.avg_rfir;
+                out.avg_rsto = c.avg_rsto;
+                out.avg_rlit = c.avg_rlit;
+                out.avg_rwat = c.avg_rwat;
+                out.accy_majority = c.accy_majority;
+                out.accy_max = c.accy_max;
+            }
+            None => out.group_index = group_index.to_string(),
+        }
+        out.max_regen = cur_long(i32::from(regen));
+        out.rtk = 1.0;
+        out.rtc = f64::from(regen);
+        out.damage_mitigated = 0;
+        out
+    }
+
     /// Port of modMMudDatabase `GetLairInfo`: the cached lair of `group_index` for a given max regen,
     /// with what the loaded character (or the lair-mode party) does to it and it to them: damage per
     /// round, rounds to kill (`rtk`) and to clear (`rtc`), damage taken. `max_regen` 0 (the

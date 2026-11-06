@@ -12,8 +12,8 @@ use serde_json::json;
 
 use crate::state::AppState;
 use crate::{
-    calc, character, combat_setup, detail, equip, evaluate, item_manager, monster_sim, paste,
-    settings,
+    calc, character, combat_setup, detail, equip, evaluate, item_manager, monster_sim, panes,
+    paste, settings,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -31,6 +31,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/calc/monster-sim/defender",
             post(monster_sim::defender_route),
+        )
+        .route(
+            "/api/detail/{kind}/{number}",
+            get(panes::get_route).post(panes::post_route),
         )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))

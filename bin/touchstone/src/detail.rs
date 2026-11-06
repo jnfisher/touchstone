@@ -25,7 +25,7 @@ use crate::state::AppState;
 
 /// MME's database name lookups, answered from the loaded tables. A NULL name is the empty string
 /// MME's Access column would hold.
-struct WorldNames<'a>(&'a World);
+pub(crate) struct WorldNames<'a>(pub(crate) &'a World);
 
 impl NameLookup for WorldNames<'_> {
     fn spell_name(&self, n: i32) -> Option<String> {
