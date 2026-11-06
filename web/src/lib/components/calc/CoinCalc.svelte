@@ -1,16 +1,20 @@
 <script lang="ts">
 	// frmCoinConvert: two boxes that convert into each other, each with its own coin.
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import {
 		calcClient,
 		COIN_DEFAULTS,
 		COINS,
+		coinCharm,
 		coinButtonRequest,
 		coinIndex,
 		coinTypedRequest,
+		type CharmButton,
 		type CoinForm
 	} from '$lib/calc';
 	import CalcFrame from './CalcFrame.svelte';
+	import { useCurrentCharacter } from './current.svelte';
+	import UseCharacter from './UseCharacter.svelte';
 	import { headingCls, inputCls } from './styles';
 
 	let form = $state<CoinForm>({ text: [...COIN_DEFAULTS.text], coin: [...COIN_DEFAULTS.coin] });
@@ -19,7 +23,14 @@
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let ticket = 0;
 
+	// cmdCharm: the character's Charm (while its global filter is on) makes a markup or discount.
+	const current = useCurrentCharacter();
+	const charm = $derived(current.active ? coinCharm(current.character) : undefined);
+	let charmButton = $state<CharmButton>({ enabled: false, caption: 'No Charm Effect', percent: null });
+
 	const other = (box: 0 | 1): 0 | 1 => (box === 0 ? 1 : 0);
+
+	const charmField = () => (charm === undefined ? {} : { charm });
 
 	function fail(e: unknown) {
 		error = e instanceof Error ? e.message : String(e);
@@ -29,7 +40,7 @@
 	function typed(box: 0 | 1) {
 		clearTimeout(timer);
 		const mine = ++ticket;
-		const body = coinTypedRequest(form, box);
+		const body = { ...coinTypedRequest(form, box), ...charmField() };
 		timer = setTimeout(() => {
 			calcClient
 				.coin(body)
@@ -37,6 +48,7 @@
 					if (mine !== ticket) return;
 					form.text[other(box)] = r.destination_text;
 					weights = r.weights;
+					charmButton = r.charm;
 					error = undefined;
 				})
 				.catch(fail);
@@ -50,20 +62,45 @@
 		form.coin[box] = coin;
 		const mine = ++ticket;
 		calcClient
-			.coin(coinButtonRequest(form, box, previous))
+			.coin({ ...coinButtonRequest(form, box, previous), ...charmField() })
 			.then((r) => {
 				if (mine !== ticket) return;
 				form.text[box] = r.destination_text;
 				form.coin[box] = coinIndex(r.current_coin);
 				weights[box] = r.weights[box];
+				charmButton = r.charm;
 				error = undefined;
 			})
 			.catch(fail);
 	}
 
-	onMount(() => {
-		typed(0);
-		return () => clearTimeout(timer);
+	// Apply the discount or markup to the bottom amount.
+	function applyCharm() {
+		const mine = ++ticket;
+		calcClient
+			.coin({
+				source: 1,
+				text: form.text[1],
+				top: form.coin[0],
+				bottom: form.coin[1],
+				apply_charm: true,
+				...charmField()
+			})
+			.then((r) => {
+				if (mine !== ticket) return;
+				form.text[1] = r.destination_text;
+				weights[1] = r.weights[1];
+				charmButton = r.charm;
+				error = undefined;
+			})
+			.catch(fail);
+	}
+
+	onMount(() => () => clearTimeout(timer));
+	// Load, and whenever the character (so its Charm) changes, ask again so the button is current.
+	$effect(() => {
+		charm;
+		untrack(() => typed(0));
 	});
 
 	const rows = [
@@ -75,6 +112,7 @@
 <CalcFrame title="Coin Converter" testid="calc-coin">
 	{#snippet inputs()}
 		<div class="flex flex-col gap-4">
+			<UseCharacter {current} />
 			{#each rows as row, i (row.box)}
 				<fieldset class="flex flex-col gap-2">
 					<legend class="sr-only">{row.name} amount</legend>
@@ -114,6 +152,15 @@
 					</p>
 				{/if}
 			{/each}
+			<button
+				type="button"
+				class="bg-secondary text-secondary-foreground min-h-9 rounded-md px-3 py-1 text-sm whitespace-pre-line disabled:opacity-50"
+				disabled={!charmButton.enabled || charm === undefined}
+				onclick={applyCharm}
+				data-testid="coin-charm"
+			>
+				{charm === undefined ? 'No Charm Effect' : charmButton.caption.replace(/\r\n/g, '\n')}
+			</button>
 			{#if error}<p class="text-destructive text-sm" role="alert">{error}</p>{/if}
 		</div>
 	{/snippet}
