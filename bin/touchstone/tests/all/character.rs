@@ -73,7 +73,7 @@ fn world(data: &Value) -> World {
         .iter()
         .map(|r| Spell {
             number: i(&r[0]),
-            name: Some(format!("Spell {}", i(&r[0]))),
+            name: None,
             short: Some(format!("sp{}", i(&r[0]))),
             req_level: i(&r[1]),
             energy_cost: i(&r[2]),
