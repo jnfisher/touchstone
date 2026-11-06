@@ -11,7 +11,7 @@ use axum::routing::{get, post};
 use serde_json::json;
 
 use crate::state::AppState;
-use crate::{calc, character, detail};
+use crate::{calc, character, detail, evaluate};
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -35,6 +35,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/character/bless-spells",
             get(character::bless_spells_route),
         )
+        .route("/api/evaluate/{tab}", post(evaluate::evaluate_route))
         .route("/api/characters", get(character::list))
         .route(
             "/api/characters/{name}",

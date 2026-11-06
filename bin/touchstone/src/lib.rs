@@ -5,6 +5,7 @@ pub mod calc;
 pub mod character;
 pub mod config;
 mod detail;
+pub mod evaluate;
 pub mod source;
 pub mod state;
 mod web;
