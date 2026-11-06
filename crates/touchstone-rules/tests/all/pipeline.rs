@@ -29,7 +29,7 @@ fn pairs<const N: usize>(v: &Value) -> [AbilitySlot; N] {
 }
 
 /// The rows the cases use, from the fixture header's `data` (field lists, see the generator).
-fn world(data: &Value) -> World {
+pub(crate) fn world(data: &Value) -> World {
     let rows = |k: &str| data[k].as_array().unwrap().clone();
     let items = rows("items")
         .iter()
