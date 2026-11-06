@@ -8,6 +8,7 @@ from .objects import Var, ElemRef, FieldRef, VBArray, UDTInstance, ClsInstance, 
 from .builtins import BUILTINS, CONSTANTS, f_like
 from .interp import (OMIT, EXIT, REFTYPES, ConstEntry, EnumType, ModuleRef, _RefCell)
 
+_INTS = (V.U8, V.I16, V.I32)
 BIN_ARITH = {"+": V.add, "-": V.sub, "*": V.mul, "/": V.div, "\\": V.int_div, "mod": V.mod, "^": V.power,
              "&": V.concat}
 LOGIC = ("and", "or", "xor", "eqv", "imp")
@@ -215,12 +216,27 @@ class Compiler:
             def fast(fr):
                 x = a(fr)
                 y = b(fr)
-                if type(x) is float and type(y) is float:
-                    z = pyop(x, y)
+                tx = type(x)
+                ty = type(y)
+                if (tx is float and (ty is float or ty in _INTS)) or (ty is float and tx in _INTS):
+                    z = pyop(x, y)          # Double with a Double or an integer type: a Double operation
                     if z - z == 0.0:        # finite; NaN/Infinity go the slow way to raise Overflow
                         return z
                 return fn(x, y)
             return fast
+        if op == "/":
+            def fdiv(fr):
+                x = a(fr)
+                y = b(fr)
+                tx = type(x)
+                ty = type(y)
+                if (tx is float and (ty is float or ty in _INTS)) or (ty is float and tx in _INTS):
+                    if y != 0:
+                        z = x / y
+                        if z - z == 0.0:
+                            return z
+                return V.div(x, y)
+            return fdiv
         if op in BIN_ARITH:
             fn = BIN_ARITH[op]
             return lambda fr: fn(a(fr), b(fr))
