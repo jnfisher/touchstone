@@ -9,12 +9,14 @@ touches:
   - crates/touchstone-rules/src/filters/
   - crates/touchstone-rules/tests/all/filters_sm.rs
   - crates/touchstone-rules/tests/all/main.rs
+  - crates/touchstone-rules/tests/all/monster_rows.rs
   - fixtures/scenarios/filters_sm.json
   - fixtures/rules/filters_sm.json
   - fixtures/known_gaps.json
   - tools/oracle/gen/filters_sm.py
   - tools/oracle/harness.py
   - tools/oracle/shims.py
+  - tools/oracle/tests/test_shims.py
   - tools/oracle/README.md
   - bin/touchstone/src/evaluate.rs
   - bin/touchstone/tests/all/evaluate.rs

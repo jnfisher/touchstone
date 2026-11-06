@@ -22,13 +22,23 @@ use serde_json::Value;
 use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::attack::EquippedGlobals;
-use touchstone_rules::character::AttackTypeMud;
+use touchstone_rules::character::{
+    AttackTypeMud, Character as MmeCharacter, CharacterProfile, PartyFilter,
+    populate_character_profile, set_current_attack_type_config,
+};
+use touchstone_rules::exp_per_hour::ExpPerHourSettings;
 use touchstone_rules::filters::{
-    AbilityFilter, Answer, ArmourFilter, FilterEnv, ProfileRequest, WeaponEntry, WeaponFilter,
-    filter_armour, filter_sundry, filter_weapons,
+    AbilityFilter, AllReachable, Answer, ArmourFilter, DamagePrompts, FilterEnv, MonsterAdd,
+    MonsterFilter, MonsterFilterInputs, ProfileRequest, SpellFilter, SpellFilterEnv, WeaponEntry,
+    WeaponFilter, filter_armour, filter_monsters, filter_spells, filter_sundry, filter_weapons,
 };
 use touchstone_rules::gear::Character as GlobalChar;
+use touchstone_rules::lairs::{
+    CharCallouts, CharLairEnv, LairCache, LairQuery, calculate_average_lairs,
+};
+use touchstone_rules::monster_sim::MonsterSimInput;
 use touchstone_rules::pipeline::{CharacterState, PipelineOptions, refresh_all};
+use touchstone_rules::rows::monster::{MonsterRowInputs, add_monster_row, backstab_attack};
 use touchstone_rules::rows::{
     Row, RowEnv, SpellOptions, WeaponArgs, WeaponOptions, add_armour_row, add_class_row,
     add_other_item_row, add_race_row, add_shop_row, add_spell_row, add_weapon_row,
@@ -37,6 +47,7 @@ use touchstone_rules::rows::{
 use touchstone_rules::spell_cast::UsableEnv;
 use touchstone_rules::stats::compute_avg_level_max_stats;
 use touchstone_vb6 as vb;
+use touchstone_vb6::{Currency, Rnd};
 
 use crate::calc::{ApiResult, Body, bad, not_found};
 use crate::character::CharacterDto;
@@ -49,6 +60,7 @@ pub enum Tab {
     Weapons,
     Armour,
     Spells,
+    Monsters,
     Items,
     Races,
     Classes,
@@ -62,6 +74,7 @@ impl Tab {
             "weapons" => Self::Weapons,
             "armour" => Self::Armour,
             "spells" => Self::Spells,
+            "monsters" => Self::Monsters,
             "items" => Self::Items,
             "races" => Self::Races,
             "classes" => Self::Classes,
@@ -356,6 +369,7 @@ fn columns(tab: Tab) -> Vec<Col> {
             col("heal_m", "Heal/M", true),
             col("detail", "Detail", false),
         ],
+        Tab::Monsters => monster_columns(1.83),
         Tab::Items => vec![
             col("num", "Number", true),
             col("name", "Name", false),
@@ -402,10 +416,54 @@ struct Built {
     headers: Vec<(usize, &'static str)>,
     /// The weapon Ability column sorts as text, unless a numeric ability is shown.
     ability_numeric: bool,
+    /// The data version, for the Monsters columns (the set depends on it).
+    nmr: f64,
+}
+
+/// The Monsters list's `ColumnHeaders.Add` texts by data version. Most cells carry the number MME sorts by in their tag.
+fn monster_columns(nmr: f64) -> Vec<Col> {
+    let mut c = vec![
+        col("num", "#", true),
+        col("name", "Name", false),
+        tagged("rgn", "Rgn"),
+        tagged("exp", "Exp"),
+        tagged("hp", "HP"),
+        tagged("ac_dr", "AC/DR"),
+        tagged("dodge", "Dodge"),
+        tagged("mr", "MR"),
+        tagged("acc", "Acc (Maj/Mx)"),
+        tagged("damage", "Damage"),
+        tagged("exp_dmg_hp", "Exp/(Dmg+HP)"),
+        tagged(
+            "lair_exp",
+            if nmr >= 1.83 {
+                "Lair Exp"
+            } else {
+                "Script Value"
+            },
+        ),
+        tagged("lairs", "Lairs"),
+    ];
+    if nmr >= 1.83 {
+        c.push(tagged("mobs", "Mobs/Spwn"));
+    } else if nmr >= 1.82 {
+        c.push(tagged("mobs", "#Mobs"));
+    }
+    c.push(tagged("magic", "Mag."));
+    if nmr >= 1.83 {
+        c.push(tagged("bs_def", "BS Defense"));
+    }
+    c.push(tagged("undead", "Undead"));
+    c.push(col("spell_atk", "Spell Atk.", false));
+    c
 }
 
 fn to_table(tab: Tab, built: Built) -> Table {
-    let mut cols = columns(tab);
+    let mut cols = if tab == Tab::Monsters {
+        monster_columns(built.nmr)
+    } else {
+        columns(tab)
+    };
     if tab == Tab::Weapons
         && let Some(c) = cols.last_mut()
     {
@@ -591,6 +649,7 @@ fn weapons(ctx: &Ctx, opts: &Options) -> Built {
         rows,
         headers: Vec::new(),
         ability_numeric: list.numeric_ability_sort,
+        nmr: 0.0,
     }
 }
 
@@ -609,6 +668,7 @@ fn armour(ctx: &Ctx, opts: &Options) -> Built {
         rows,
         headers: Vec::new(),
         ability_numeric: false,
+        nmr: 0.0,
     }
 }
 
@@ -635,16 +695,48 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
         only_in_game: true,
         disable_kai_autolearn: ctx.world.info.disable_kai,
     };
-    let rows = ctx
-        .world
-        .spells
+    // FilterSpells with MME's default controls; the global filter (the character's, or the bar's own values) decides
+    // which spells the class, level and alignment can use
+    let t_char = if ctx.filter_on {
+        CharacterProfile {
+            class: ctx.who.class,
+            level: ctx.who.level,
+            align: i16::try_from(ctx.who.alignment).unwrap_or(0),
+            ..CharacterProfile::default()
+        }
+    } else {
+        CharacterProfile::default()
+    };
+    let header_level = opts.level.map_or_else(
+        || {
+            if use_character {
+                level.clone()
+            } else {
+                ctx.who.level.to_string()
+            }
+        },
+        |l| l.to_string(),
+    );
+    let list = filter_spells(
+        &SpellFilterEnv {
+            usable: &usable,
+            use_character: ctx.filter_on,
+            global_class: ctx.who.class,
+            global_level: vb::val(&header_level),
+        },
+        &SpellFilter::default(),
+        &t_char,
+        false,
+    );
+    let rows = list
+        .entries
         .iter()
-        .filter(|s| usable.spell_is_in_game(s.number))
+        .filter_map(|n| ctx.world.get_spell(*n))
         .filter_map(|s| add_spell_row(&env, s, &profile, &sopts, false))
         .map(|r| r.row)
         .collect();
     // FilterSpells: the column reads "Cast" when the character's chance is shown
-    let headers = if use_character && vb::val(&level) > 0.0 {
+    let headers = if list.cast_header {
         vec![(6, "Cast")]
     } else {
         Vec::new()
@@ -653,7 +745,182 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
         rows,
         headers,
         ability_numeric: false,
+        nmr: 0.0,
     }
+}
+
+/// `Dim`med text of a cast; the damage numbers never need it.
+struct NoCastText;
+
+impl touchstone_rules::attack::CastText for NoCastText {
+    fn spell_name(&self, _: i32) -> String {
+        String::new()
+    }
+    fn spell_eq(&self, _: i32, _: i16) -> String {
+        String::new()
+    }
+}
+
+/// The monster damage arrays (`nMonsterDamageVsChar` and friends) as MME starts: nothing calculated.
+fn uncalculated(world: &World) -> Vec<Currency> {
+    let top = world.monsters.iter().map(|m| m.number).max().unwrap_or(0);
+    vec![Currency::from_scaled(-10_000); usize::try_from(top).unwrap_or(0) + 1]
+}
+
+/// FilterMonsters with MME's default controls (solo, no extra filters), `AddMonster2LV` for every monster it lists.
+/// Without a character the list is made for "no character" (the global filter off); the placeholder pipeline state
+/// behind it only supplies the plumbing the damage environment needs.
+fn monsters(ctx: &Ctx) -> Result<Built, ApiError> {
+    let world = ctx.world;
+    let unprocessable = |m: String| (StatusCode::UNPROCESSABLE_ENTITY, m);
+    let placeholder;
+    let state = if let Some(st) = &ctx.state {
+        st
+    } else {
+        let first = |n: Option<i32>| {
+            n.ok_or_else(|| unprocessable("the data has no classes or races".into()))
+        };
+        let ch = MmeCharacter {
+            race: Some(first(world.races.first().map(|r| r.number))?),
+            class: Some(first(world.classes.first().map(|c| c.number))?),
+            level: 1,
+            stats: [50; 6],
+            ..MmeCharacter::default()
+        };
+        let opts = PipelineOptions {
+            dat_ver_caption: world.info.dat_file_version.clone(),
+            nmr_ver: ctx.nmr,
+            avg_level_max_all_stats: ctx.avg,
+            ..PipelineOptions::default()
+        };
+        placeholder = refresh_all(Profile::Stock, world, &ch, &opts)
+            .map_err(|e| unprocessable(format!("cannot evaluate the default character: {e}")))?;
+        &placeholder
+    };
+    let party = PartyFilter {
+        lair_mode: false,
+        lair_text: ["1", "60", "20", "50", "50", "400", "0", "12", "250"].map(str::to_owned),
+        monster_damage_text: "99999".to_owned(),
+    };
+    let cenv = state.env(["99999".to_owned(), "99999".to_owned()], "1".to_owned());
+    let cctx = cenv.context(world);
+    let key = set_current_attack_type_config(&cctx, &state.character, "");
+    let mut t_char = CharacterProfile::default();
+    populate_character_profile(
+        &cctx,
+        &state.character,
+        &mut t_char,
+        false,
+        false,
+        AttackTypeMud::None,
+        0,
+        false,
+    );
+    let (vs_party, vs_char, vs_default) = (
+        uncalculated(world),
+        uncalculated(world),
+        uncalculated(world),
+    );
+    let slots = vs_char.len();
+    let (mut possy, mut spawn_chance) = (
+        vec![Currency::from_scaled(0); slots],
+        vec![Currency::from_scaled(0); slots],
+    );
+    let mut cache = LairCache::load(world, Profile::Stock, ctx.nmr);
+    let mut sim = MonsterSimInput::default();
+    let mut rnd = Rnd::from_state(327_680);
+    let use_character = state.character.global_filter;
+    let cast = NoCastText;
+    let settings = ExpPerHourSettings::default();
+    // CalculateAverageLairs runs while MME starts (bStartup), when GetLairInfo answers from its cache
+    {
+        let mut env = CharLairEnv {
+            cache: &mut cache,
+            query: LairQuery {
+                profile: Profile::Stock,
+                startup: true,
+                use_character,
+                party: &party,
+                global_attack_config: &key.config,
+            },
+            callouts: CharCallouts {
+                world,
+                damage: cenv.damage_env(world, &cctx, &state.character, &cast),
+                vs_party: &vs_party,
+                vs_char: &vs_char,
+                vs_default: &vs_default,
+                sim_rounds: 1000,
+                sim: &mut sim,
+                rnd: &mut rnd,
+            },
+        };
+        let rows: Vec<(i32, &str)> = world
+            .monsters
+            .iter()
+            .map(|m| (m.number, m.summoned_by.as_deref().unwrap_or("")))
+            .collect();
+        calculate_average_lairs(&mut env, ctx.nmr, &rows, &mut possy, &mut spawn_chance);
+    }
+    let mut env = CharLairEnv {
+        cache: &mut cache,
+        query: LairQuery {
+            profile: Profile::Stock,
+            startup: false,
+            use_character,
+            party: &party,
+            global_attack_config: &key.config,
+        },
+        callouts: CharCallouts {
+            world,
+            damage: cenv.damage_env(world, &cctx, &state.character, &cast),
+            vs_party: &vs_party,
+            vs_char: &vs_char,
+            vs_default: &vs_default,
+            sim_rounds: 1000,
+            sim: &mut sim,
+            rnd: &mut rnd,
+        },
+    };
+    let filter_inputs = MonsterFilterInputs {
+        only_in_game: true,
+        use_exp_multi: true,
+        settings: &settings,
+        possy: &possy,
+        global_level: f64::from(ctx.who.level),
+        reach: &AllReachable,
+        prompts: DamagePrompts::default(),
+    };
+    let row_inputs = MonsterRowInputs {
+        use_exp_multi: true,
+        is_main_list: true,
+        settings: &settings,
+        possy: &possy,
+        spawn_chance: &spawn_chance,
+        backstab_attack: backstab_attack(state.attack_config()),
+    };
+    let mut rows: Vec<Row> = Vec::new();
+    let mut add = |env: &mut CharLairEnv<'_>, a: &MonsterAdd| {
+        let mut t = t_char.clone();
+        t.hp = a.hp;
+        t.hp_regen = a.hp_regen;
+        rows.extend(add_monster_row(env, &row_inputs, &t, a.number, &a.args));
+    };
+    // no question is asked with the default prompt state; a Yes would be the right answer anyway
+    let _ = filter_monsters(
+        &mut env,
+        &filter_inputs,
+        &MonsterFilter::default(),
+        &t_char,
+        false,
+        &mut |_| Answer::Yes,
+        &mut add,
+    );
+    Ok(Built {
+        rows,
+        headers: Vec::new(),
+        ability_numeric: false,
+        nmr: ctx.nmr,
+    })
 }
 
 fn sundry(ctx: &Ctx, opts: &Options) -> Built {
@@ -671,6 +938,7 @@ fn plain(rows: Vec<Row>) -> Built {
         rows,
         headers: Vec::new(),
         ability_numeric: false,
+        nmr: 0.0,
     }
 }
 
@@ -774,6 +1042,7 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),
         Tab::Spells => spells(&ctx, &req.options),
+        Tab::Monsters => monsters(&ctx)?,
         Tab::Items => sundry(&ctx, &req.options),
         Tab::Races => {
             let equipped = EquippedGlobals::default();
