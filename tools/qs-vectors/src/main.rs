@@ -5,6 +5,7 @@
 //! See docs/quicksilver-profile.md part 4 and tasks/Q-005-qs-vectors.md.
 
 mod knees;
+mod regen;
 mod spells;
 mod training;
 
@@ -53,7 +54,12 @@ fn main() {
     let version = std::env::var("QS_CONTENT_VERSION").expect("QS_CONTENT_VERSION (set by run.sh)");
 
     let mut stale = Vec::new();
-    for fam in [knees::family(), spells::family(), training::family()] {
+    for fam in [
+        knees::family(),
+        regen::family(),
+        spells::family(),
+        training::family(),
+    ] {
         let text = render(&fam, &commit, &version);
         let path = Path::new(&dir).join(format!("{}.json", fam.name));
         if check {

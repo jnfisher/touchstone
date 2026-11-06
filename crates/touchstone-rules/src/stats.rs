@@ -499,6 +499,9 @@ pub struct ManaRegenInput {
 
 /// Port of modMMudFunc CalcManaRegen: mana regenerated per tick (a Currency in MME, always a
 /// whole number). On an overflow MME's handler returns whatever was assigned so far.
+///
+/// Quicksilver (R10) keeps this function as it is, `meditating` included: the standing rate is the same,
+/// and its rest and meditate payments are [`calc_rest_mana_regen`] and [`calc_meditate_mana_regen`].
 #[must_use]
 pub fn calc_mana_regen(profile: Profile, input: &ManaRegenInput) -> Currency {
     let mut r = Currency::from_scaled(0);
@@ -542,6 +545,104 @@ fn mana_regen_steps(
         }
     }
     Ok(())
+}
+
+/// Seconds between slow ticks, the standing mana rate's period (Quicksilver's slow update).
+pub const QS_SLOW_SECS: i32 = 30;
+/// Seconds between rest ticks under Quicksilver; resting and meditating both heal on them.
+pub const QS_REST_TICK_SECS: i32 = 21;
+/// Seconds between meditate ticks under Quicksilver.
+pub const QS_MEDITATE_TICK_SECS: i32 = 15;
+
+/// One rest or meditate payment under Quicksilver (rule R10, row `rest_mana_mult` or
+/// `meditate_mana_mult`): the tick adds `(mult - 1) * standing * period / 30`, so that with the
+/// 30-second standing tick a minute comes to `mult` times the standing rate. The division is in
+/// whole mana; the remainder (thirtieths) goes in `carry` for the next tick, which keeps the total
+/// exact over every `30 * period` seconds. A multiple of 0 or 1 adds nothing.
+pub fn qs_boost_tick(standing: i32, mult: u32, period: i32, carry: &mut i32) -> i32 {
+    let extra = i128::from(mult.saturating_sub(1));
+    let num = extra * i128::from(standing.max(0)) * i128::from(period) + i128::from(*carry);
+    let slow = i128::from(QS_SLOW_SECS);
+    *carry = i32::try_from(num % slow).unwrap_or(0);
+    i32::try_from(num / slow).unwrap_or(i32::MAX)
+}
+
+/// The same payment averaged over a whole cycle, as a Currency. Exact for the two real periods
+/// (21 and 15 seconds give tenths and halves), so the panel shows the tick without a carry.
+fn qs_average_tick(standing: i32, mult: u32, period: i32) -> Currency {
+    let extra = i128::from(mult.saturating_sub(1));
+    let scaled = extra * i128::from(standing.max(0)) * i128::from(period) * 10_000
+        / i128::from(QS_SLOW_SECS);
+    Currency::from_scaled(i64::try_from(scaled).unwrap_or(i64::MAX))
+}
+
+/// The standing rate (a whole number) that the rest and meditate payments are built on.
+fn qs_standing(profile: Profile, input: &ManaRegenInput) -> i32 {
+    let standing = calc_mana_regen(
+        profile,
+        &ManaRegenInput {
+            meditating: false,
+            ..*input
+        },
+    );
+    i32::try_from(standing.scaled() / 10_000).unwrap_or(i32::MAX)
+}
+
+/// The balance when R10 is on. A Quicksilver balance whose two multiples are `Balance::NEUTRAL`'s
+/// (1: resting and meditating add nothing to the standing rate) is read as "off": MME's meditation
+/// tick is not a multiple of the standing rate, so NEUTRAL cannot express it, and every rest and
+/// meditate path takes the stock route (see docs/differences.md).
+pub(crate) fn regen_on(profile: Profile) -> Option<&'static Balance> {
+    match profile {
+        Profile::Stock => None,
+        Profile::Quicksilver(b) => {
+            let off = Balance::NEUTRAL;
+            let same = b.rest_mana_mult == off.rest_mana_mult
+                && b.meditate_mana_mult == off.meditate_mana_mult;
+            (!same).then_some(b)
+        }
+    }
+}
+
+/// Mana of one rest tick (every [`QS_REST_TICK_SECS`] seconds), averaged over its carry cycle.
+///
+/// Quicksilver rule R10, no MME counterpart: in the stock rules resting restores no mana, so
+/// `Profile::Stock` gives 0. `input.mp_regen` counts and `input.meditating` is ignored.
+#[must_use]
+pub fn calc_rest_mana_regen(profile: Profile, input: &ManaRegenInput) -> Currency {
+    match regen_on(profile) {
+        None => Currency::from_scaled(0),
+        Some(b) => qs_average_tick(
+            qs_standing(profile, input),
+            b.rest_mana_mult,
+            QS_REST_TICK_SECS,
+        ),
+    }
+}
+
+/// Mana of one meditate tick, averaged over its carry cycle.
+///
+/// Stock: MME's `CalcManaRegen` with the meditating flag (a 10-second tick that takes no
+/// "Alter Mana Regeneration", as the Char tab calls it). Quicksilver rule R10: a tick every
+/// [`QS_MEDITATE_TICK_SECS`] seconds that brings the minute to `meditate_mana_mult` times the
+/// standing rate, regeneration buffs counted. `input.meditating` is ignored.
+#[must_use]
+pub fn calc_meditate_mana_regen(profile: Profile, input: &ManaRegenInput) -> Currency {
+    match regen_on(profile) {
+        None => calc_mana_regen(
+            profile,
+            &ManaRegenInput {
+                mp_regen: 0,
+                meditating: true,
+                ..*input
+            },
+        ),
+        Some(b) => qs_average_tick(
+            qs_standing(profile, input),
+            b.meditate_mana_mult,
+            QS_MEDITATE_TICK_SECS,
+        ),
+    }
 }
 
 /// Port of modMMudFunc CalcMR: magic resistance from intellect and willpower; 0 on overflow.
