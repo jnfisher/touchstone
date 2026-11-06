@@ -491,6 +491,7 @@ class ListItemShim(ExtObject):
     def __init__(self, text, subs):
         self.text = text
         self.subs = [x if isinstance(x, SubItemShim) else SubItemShim(x) for x in subs]
+        self.selected = False
 
     def vb_get(self, name, args):
         n = name.lower()
@@ -499,11 +500,17 @@ class ListItemShim(ExtObject):
         if n == "listsubitems":
             sub = _SubItems(self.subs)
             return sub.vb_default(args) if args else sub
+        if n == "selected":
+            return self.selected
+        if n == "ensurevisible":
+            return None
         raise VBError(438)
 
     def vb_set(self, name, args, value):
         if name.lower() == "text":
             self.text = V.c_str(value)
+        elif name.lower() == "selected":
+            self.selected = bool(value)
         else:
             raise VBError(438)
 
@@ -543,6 +550,18 @@ class _ListItems(ExtObject):
         return self.rows[i - 1]
 
 
+class _Count(ExtObject):
+    """An object with just `.Count` (`lv.ColumnHeaders.Count`)."""
+
+    def __init__(self, n):
+        self.n = n
+
+    def vb_get(self, name, args):
+        if name.lower() == "count":
+            return V.I32(int(self.n))
+        raise VBError(438)
+
+
 class ListViewShim(ControlShim):
     """A ListView whose rows the scenario gives: {"$listview": [{"Text": "12", "Sub": ["", "CARRIED x2"]}]}.
     Rows can be added, removed and edited by the code under test; `dump()` is what a case reads back."""
@@ -550,11 +569,15 @@ class ListViewShim(ControlShim):
     def __init__(self, rows, decode=_plain):
         super().__init__({}, decode)
         self.rows = [ListItemShim(str(r.get("Text", "")), [str(x) for x in r.get("Sub", [])]) for r in rows]
+        for li, r in zip(self.rows, rows):
+            li.selected = bool(r.get("Sel", False))
 
     def vb_get(self, name, args):
         if name.lower() == "listitems":
             lst = _ListItems(self.rows)
             return lst.vb_default(args) if args else lst
+        if name.lower() == "columnheaders" and not args:
+            return _Count(12)
         return super().vb_get(name, args)
 
     def dump(self, encode):
@@ -567,7 +590,10 @@ class ListViewShim(ControlShim):
                 if x.tag is not EMPTY:
                     d["g"] = encode(x.tag)
                 subs.append(d)
-            out.append({"text": r.text, "subs": subs})
+            row = {"text": r.text, "subs": subs}
+            if r.selected:
+                row["sel"] = True       # only rows a case selected, so older families' fixtures are unchanged
+            out.append(row)
         return out
 
 
