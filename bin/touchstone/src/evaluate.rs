@@ -712,6 +712,9 @@ pub(crate) struct Ctx<'a> {
     pub(crate) filter_on: bool,
     /// `nEquippedItem`.
     pub(crate) equipped_items: [i32; 20],
+    /// The attack choice of the character that came with the request, used or not: MME keeps its
+    /// `nGlobalAttack*` globals whatever `chkGlobalFilter` says, so "Damage vs Mob" follows them.
+    pub(crate) attack: Option<touchstone_rules::character::AttackConfig>,
 }
 
 impl Ctx<'_> {
@@ -982,6 +985,7 @@ pub(crate) fn with_monster_env<R>(
             class: Some(first(world.classes.first().map(|c| c.number))?),
             level: 1,
             stats: [50; 6],
+            attack: ctx.attack.unwrap_or_default(),
             ..MmeCharacter::default()
         };
         let opts = PipelineOptions {
@@ -1206,6 +1210,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
     let mut level_text = "0".to_owned();
     let mut who = GlobalChar::default();
     let mut equipped_items = [0; 20];
+    let mut attack = None;
     let mut filter_on = false;
     if let Some(g) = req.global_filter.as_ref().filter(|g| !g.use_character) {
         // the bar's own values: the character, if one came along, stays out of it
@@ -1226,6 +1231,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
                 "pick a class and race".into(),
             ));
         }
+        attack = Some(ch.attack);
         let (use_char, min_item_level) = match &req.global_filter {
             Some(g) => (g.use_character, g.min_item_level),
             None => (dto.global_filter, dto.options.min_item_level),
@@ -1276,6 +1282,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
         who,
         filter_on,
         equipped_items,
+        attack,
     })
 }
 

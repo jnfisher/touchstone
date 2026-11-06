@@ -90,6 +90,15 @@ pub struct DetailBody {
     pub attack_type: i32,
     /// Items: the optional `bFullDetails` argument.
     pub full_details: bool,
+    /// Monsters: `nLookupLimit`, how many rooms and lairs "Spawns via ..." lists before it stops with a
+    /// "... plus n more" line. MME starts with 100.
+    pub lookup_limit: Option<i32>,
+    /// Monsters: `frmMain.bAutoCalcMonDamage`, simulate the monster's damage on the character on the spot.
+    pub auto_calc_damage: bool,
+    /// Monsters: `frmMain.bDontLookupMonRegen`, leave the "Spawns via ..." lookup out.
+    pub dont_lookup_regen: bool,
+    /// Monsters: `bMobPrintCharDamageOutFirst`, the character's damage before the monster's.
+    pub print_char_damage_out_first: bool,
 }
 
 // ---------- response ----------
@@ -650,9 +659,9 @@ fn monster_pane(
         let charm = touchstone_vb6::cstr(s.state.stats.stat_with_bonus[5]);
         let inputs = MonsterDetailInputs {
             use_exp_multi: true,
-            auto_calc_mon_damage: false,
-            dont_lookup_mon_regen: false,
-            print_char_damage_out_first: false,
+            auto_calc_mon_damage: sh.body.auto_calc_damage,
+            dont_lookup_mon_regen: sh.body.dont_lookup_regen,
+            print_char_damage_out_first: sh.body.print_char_damage_out_first,
             hide_record_numbers: sh.body.hide_record_numbers,
             sim_rounds: s.sim_rounds,
             settings: s.settings,
@@ -671,8 +680,12 @@ fn monster_pane(
             vs_party: env.callouts.vs_party.to_vec(),
             vs_char: env.callouts.vs_char.to_vec(),
         };
-        // nLookupLimit
-        pull_monster_detail(env, &ab, &inputs, &mut caches, number, 100)
+        let limit = sh
+            .body
+            .lookup_limit
+            .and_then(|l| i16::try_from(l).ok())
+            .unwrap_or(100);
+        pull_monster_detail(env, &ab, &inputs, &mut caches, number, limit)
     })?;
     let mut out = empty("monsters", number);
     out.lines = rows.iter().map(|r| line_json(world, r)).collect();
@@ -773,6 +786,12 @@ pub async fn post_route(
         .is_some_and(|c| !(0..=i32::from(i16::MAX)).contains(&c))
     {
         return Err(bad("charm must be between 0 and 32767"));
+    }
+    if body
+        .lookup_limit
+        .is_some_and(|c| !(0..=i32::from(i16::MAX)).contains(&c))
+    {
+        return Err(bad("lookup_limit must be between 0 and 32767"));
     }
     run(state, kind, number, body).await
 }
