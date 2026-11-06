@@ -3,13 +3,14 @@
 //! Three kinds of entry are reproduced, in NMR's order: `Room m/r` (the room's specific
 //! monster), the rooms whose generation range covers the monster (`Group: m/r`, or
 //! `[group-min-max][max]Group(lair): m/r` for a lair room) and `Spell #n` (a summon spell).
-//! Entries for text blocks that summon the monster (`Textblock #n(p%)`) are not reproduced
-//! (docs/data-gaps.md).
+//! Then `Textblock #n(p%)` for scripts that summon the monster, in the order they were read
+//! (`p` is the line's own share when the line is a random line).
 use std::collections::HashMap;
 
 use touchstone_model::WorldParts;
 
 use super::lairs::pool;
+use super::scripts::Scripts;
 use super::source::{Source, clip};
 
 /// Column width of `Monsters.Summoned By`.
@@ -18,7 +19,7 @@ const WIDTH: usize = 20000;
 const ABILITY_SUMMON: i32 = 12;
 const ROOM_LAIR: i64 = 3;
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
+pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
     let mut specific: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
     for r in &parts.rooms {
         if r.npc > 0 {
@@ -74,6 +75,15 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
         }
     }
 
+    let mut texts: HashMap<i32, Vec<String>> = HashMap::new();
+    for &(monster, block, pct) in &sc.fx.summons {
+        let p = pct.map_or_else(String::new, |p| format!("({p}%)"));
+        texts
+            .entry(monster)
+            .or_default()
+            .push(format!("Textblock #{block}{p}"));
+    }
+
     for m in &mut parts.monsters {
         let mut kinds: Vec<String> = Vec::new();
         if let Some(v) = specific.get(&m.number) {
@@ -94,6 +104,9 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts) {
                     .collect::<Vec<_>>()
                     .join(", "),
             );
+        }
+        if let Some(v) = texts.get(&m.number) {
+            kinds.push(v.join(", "));
         }
         m.summoned_by = if kinds.is_empty() {
             None

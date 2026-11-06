@@ -25,7 +25,6 @@ const NOT_MAPPED: &[(&str, &str)] = &[
     ("lairs", "avg_dmg"),
     ("lairs", "avg_dmg_phys"),
     ("lairs", "avg_dmg_spell"),
-    ("tbinfo", "action"),
 ];
 
 #[derive(Default)]
