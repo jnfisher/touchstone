@@ -283,7 +283,8 @@ pub struct Balance {
     pub backstab_stealth_div: u32,
     /// A stab's damage is multiplied by `(100 + L * backstab_level_pct / 100)` percent.
     pub backstab_level_pct: u32,
-    /// A stab crit rolls from max up to this percentage of max.
+    /// A stab crit rolls from max up to this percentage of max. touchstone reads 0 as "a stab
+    /// never crits" (the neutral setting); the engine would deal the max every time.
     pub backstab_crit_max_pct: u32,
     /// Percentage chance of the Thief's extra blow, 0..=100.
     pub opportunist_pct: u32,
@@ -356,8 +357,9 @@ impl Balance {
     /// answers as MME does (layer 1 of `docs/quicksilver-profile.md` part 4): crit knee 40,
     /// stealth divisor 10, level percentage 100, the other knees out of reach, class shares 100,
     /// opportunist and weave chances 0, area cut 0, rest and meditate multiples 1, no
-    /// casting-stat bonus. Keys with no stock counterpart (stab energy and crit, weave sizing,
-    /// targeting, guard, scale cap) keep their 1.20.0 values. The soft-cap keys are floor 0 and
+    /// casting-stat bonus, no scale cap and no stab crit (`backstab_crit_max_pct` 0 reads as off
+    /// in touchstone; MME's stab never crits). Keys with no stock counterpart (stab energy, weave
+    /// sizing, targeting, guard) keep their 1.20.0 values. The soft-cap keys are floor 0 and
     /// 10 a point in every band, the nearest the type comes to MME's ladder (equal up to the race
     /// maximum; Q-007 decides above it).
     pub const NEUTRAL: Self = v120::NEUTRAL;

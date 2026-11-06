@@ -4,6 +4,7 @@
 //! linked crates. Deterministic: fixed input grids, cases sorted by id, keys sorted, no clock.
 //! See docs/quicksilver-profile.md part 4 and tasks/Q-005-qs-vectors.md.
 
+mod backstab;
 mod knees;
 mod regen;
 mod training;
@@ -54,6 +55,7 @@ fn main() {
 
     let mut stale = Vec::new();
     for fam in [
+        backstab::family(),
         knees::family(),
         regen::family(),
         training::family(),
