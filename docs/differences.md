@@ -531,3 +531,11 @@ a normal blow's energy (when positive, and not for the fixed-1000 attacks).
 - **The floor stays unmodelled.** The engine floors a blow at 200; a cost below that gives the same five swings through
   MME's cap, so swings agree, and `fixtures/quicksilver/energy.json` (255 characters, two levels each) is compared on
   swings. The engine's cost sits within one of the percentage of the cost without the ability, from later truncating steps.
+
+## PullSpellEQ integer edges (P3-04b)
+
+- MME's `For y = nMin + 1 To nMax` over EndCast and Summon ranges keeps the limit as the Currency it is and
+  converts only the start to a Long. The port does the same (`for_to`), as the oracle's interpreter does; real
+  VB6 may convert the limit too and raise error 6 for a limit beyond Long. Stock data never reaches it.
+- A Spells value outside Integer that is passed to `GetAbilityStats` (an Integer parameter) makes `PullSpellEQ`
+  return an empty string (error 6, handled by `Resume out`), as in MME; no other path converts it.

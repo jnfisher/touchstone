@@ -83,6 +83,34 @@ fn spells_fixture() {
         ran += 1;
         let mut bad = |what: String| fails.push(format!("{id}: {what}; inputs {inp}"));
 
+        // An argument outside its Integer parameter raises error 6 at the call, before the port
+        // (whose arguments are i16) could be reached; the case must record exactly that.
+        let call_args = inp["steps"]
+            .as_array()
+            .map_or(&inp["args"], |st| &st[1]["args"]);
+        if let Some(a) = call_args.as_array() {
+            let proc = inp["steps"]
+                .as_array()
+                .map_or(inp["proc"].as_str(), |st| st[1]["call"].as_str())
+                .unwrap_or("");
+            // (argument index, is Integer) per procedure: the cast level and the spell bonus.
+            let int_args: &[usize] = match proc {
+                "PullSpellEQ" => &[1, 11],
+                "GetSpellMinDamage" | "GetSpellMaxDamage" | "GetSpellDuration" => &[1],
+                "GetCurrentSpellMinMax" => &[1, 5],
+                _ => &[],
+            };
+            let out_of_range = int_args.iter().any(|&k| i16::try_from(arg(a, k)).is_err());
+            if out_of_range {
+                if escaped != Some(6) {
+                    bad(format!(
+                        "integer argument out of range, escaped {escaped:?}"
+                    ));
+                }
+                continue;
+            }
+        }
+
         if let Some(steps) = inp["steps"].as_array() {
             // Step 0 positions the cursor; step 1 is the call under test.
             // A failed seek leaves the cursor on the first record (MoveFirst).
