@@ -404,6 +404,7 @@ fn panel_world() -> World {
             legit: false,
             disable_kai: false,
             update_url: String::new(),
+            content_version: None,
         },
         items: vec![],
         monsters: vec![],
