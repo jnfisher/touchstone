@@ -122,6 +122,11 @@ ForeColor was assigned (null for the one that was not). `"hwnd": n` in the `rows
 Variant assigned. A control given as `{"$recordlv": [rows]}` is a recording ListView too (rows preloaded as
 `{"Text", "Tag", "Sub": [text | [text, tag]]}`).
 
+Detail panes (`Pull*Detail`, family `monster_detail`): a `rows` step with `"lv": "list"` keeps every row of each key's ListView,
+compactly with the Bold flag (a row with no Tag, ForeColor, Bold or sub-items is its Text alone, else `[Text, Tag, ForeColor, Bold, cells]`,
+a cell its Text alone or `[Text, Tag, ForeColor, Bold]`), and a call argument `{"key": true}` is the record number the step is on.
+A scenario's `stub_replace` also replaces a Private procedure of a loaded module (`AddMonsterReachRows`).
+
 ### Fixture file
 
 One line per case. `header`: family, `mme_sha`, `generator_version`, scenario and database sha256,
