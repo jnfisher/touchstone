@@ -58,10 +58,13 @@ describe('spells menu (PopUpSpellsMenu)', () => {
 			'Set as Bless Spell'
 		]);
 	});
-	it('disables what needs the Results window, with a reason', () => {
-		const off = buildMenu({ list: 'spells' }).filter((i) => i.disabled);
-		expect(off.map((i) => i.id)).toEqual(['whatCasts', 'findCounters']);
-		expect(off.every((i) => i.disabled && i.disabled.length > 10)).toBe(true);
+	it('runs the lookups: what casts a spell and the counters finder are enabled', () => {
+		expect(buildMenu({ list: 'spells' }).filter((i) => i.disabled)).toEqual([]);
+		expect(buildMenu({ list: 'monsterDetail' }).find((i) => i.id === 'findCounters')?.disabled).toBeUndefined();
+	});
+	it('the Spell Book list has the spells menu', () => {
+		expect(labels('spellBook')).toContain('What casts this spell?');
+		expect(labels('spellBook')).toContain('Find counters (negates/dispells)');
 	});
 });
 
@@ -121,6 +124,7 @@ describe('aux menu (PopUpAuxMenu)', () => {
 			'Add to Item Manager'
 		]);
 		expect(labels('otherItemLoc')).toEqual(['Copy Name to Clipboard']);
+		expect(buildMenu({ list: 'otherItems' }).find((i) => i.id === 'copyChest')?.disabled).toBeUndefined();
 		expect(labels('otherItemLoc', { chestsEnabled: true })).toEqual([
 			'Copy Name to Clipboard',
 			'Copy Chest to Clipboard'

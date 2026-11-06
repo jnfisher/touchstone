@@ -2,6 +2,7 @@
 	// The dialogs a context-menu action can raise: the text to copy by hand when the browser would not
 	// copy for us, and a Yes/No question (MME's MsgBox).
 	import { dialogs } from '$lib/dialogs.svelte';
+	import ResultsDialog from './ResultsDialog.svelte';
 
 	let area = $state<HTMLTextAreaElement>();
 	$effect(() => {
@@ -18,6 +19,8 @@
 		if (e.key !== 'Escape') return;
 		if (dialogs.fallback) dialogs.closeText();
 		if (dialogs.question) dialogs.question.resolve(undefined);
+		if (dialogs.prompt) dialogs.prompt.resolve(undefined);
+		if (dialogs.results) dialogs.closeResults();
 	}}
 />
 
@@ -43,6 +46,33 @@
 				{/each}
 				<button type="button" class={btn} onclick={() => q.resolve(undefined)}>Cancel</button>
 			</div>
+		</div>
+	</div>
+{/if}
+
+<ResultsDialog />
+
+{#if dialogs.prompt}
+	{@const q = dialogs.prompt}
+	<div class="bg-background/80 fixed inset-0 z-[60] flex items-center justify-center p-4" role="presentation">
+		<div class="bg-card w-full max-w-sm rounded-lg border p-4 shadow-xl" role="dialog" aria-modal="true" aria-label={q.title} data-testid="menu-prompt">
+		<form
+			class="flex flex-col gap-3"
+			onsubmit={(e) => {
+				e.preventDefault();
+				q.resolve(q.value);
+			}}
+		>
+			<h2 class="text-base font-semibold">{q.title}</h2>
+			<label class="flex flex-col gap-1 text-sm">
+				<span class="whitespace-pre-line">{q.text}</span>
+				<input class="bg-background border-input h-8 rounded-md border px-2" bind:value={q.value} data-testid="menu-prompt-input" />
+			</label>
+			<div class="flex justify-end gap-2">
+				<button type="submit" class={btn} data-testid="menu-prompt-ok">OK</button>
+				<button type="button" class={btn} onclick={() => q.resolve(undefined)}>Cancel</button>
+			</div>
+		</form>
 		</div>
 	</div>
 {/if}

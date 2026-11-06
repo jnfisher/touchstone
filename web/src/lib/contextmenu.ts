@@ -123,8 +123,7 @@ export interface MenuContext {
 	chestsEnabled?: boolean;
 }
 
-export const NO_RESULTS_WINDOW = 'The Results window is not in touchstone yet.';
-export const NO_CHESTS = 'Chest contents are not in touchstone yet.';
+export const NO_CHEST_HERE = 'MME does nothing for a row of the chest list.';
 export const NO_SHOP_ASSIGN = "Assigning a shop to Item Manager rows is not in touchstone yet.";
 export const NO_ADD_SHOP_ITEMS = 'MME never shows this item.';
 
@@ -166,9 +165,9 @@ function spellsMenu(list: MenuList): MenuItem[] {
 		},
 		{ id: 'copyDetails', label: 'Copy Details to Clipboard' },
 		{ id: 'copyNames', label: 'Copy Name(s) to Clipboard' },
-		{ id: 'whatCasts', label: 'What casts this spell?', disabled: NO_RESULTS_WINDOW },
+		{ id: 'whatCasts', label: 'What casts this spell?' },
 		{ id: 'learn', label: 'Mark/Unmark Spell as Learned' },
-		{ id: 'findCounters', label: 'Find counters (negates/dispells)', disabled: NO_RESULTS_WINDOW },
+		{ id: 'findCounters', label: 'Find counters (negates/dispells)' },
 		{ id: 'setCombatSpell', label: 'Set as Combat Attack/Heal Spell' },
 		{ id: 'setBless', label: 'Set as Bless Spell' }
 	];
@@ -210,7 +209,7 @@ function auxMenu(c: MenuContext): MenuItem[] {
 				}
 			];
 			if (!rowList) {
-				out.push({ id: 'findCounters', label: 'Find counters (negates/dispells)', disabled: NO_RESULTS_WINDOW });
+				out.push({ id: 'findCounters', label: 'Find counters (negates/dispells)' });
 			} else if (!c.autoCalcDamage) {
 				out.push({ id: 'recalcDamage', label: 'Re-calculate damage based on current character stats' });
 			}
@@ -230,7 +229,7 @@ function auxMenu(c: MenuContext): MenuItem[] {
 		case 'otherItemLoc':
 			return [
 				{ id: 'copyName', label: 'Copy Name to Clipboard' },
-				...(c.chestsEnabled ? [{ id: 'copyChest' as const, label: 'Copy Chest to Clipboard', disabled: NO_CHESTS }] : [])
+				...(c.chestsEnabled ? [{ id: 'copyChest' as const, label: 'Copy Chest to Clipboard', disabled: NO_CHEST_HERE }] : [])
 			];
 		case 'itemManagerLoc':
 			return [
@@ -241,7 +240,7 @@ function auxMenu(c: MenuContext): MenuItem[] {
 			return [
 				{ id: 'copyDetail', label: detail },
 				{ id: 'copyName', label: 'Copy Name to Clipboard' },
-				{ id: 'copyChest', label: 'Copy Chest to Clipboard', disabled: NO_CHESTS },
+				{ id: 'copyChest', label: 'Copy Chest to Clipboard' },
 				{ id: 'addToItemManager', label: 'Add to Item Manager' }
 			];
 		default:

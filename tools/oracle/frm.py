@@ -105,5 +105,8 @@ def build_source(raw, spec):
         if spec.get("me_is_form"):
             # `Me.hWnd`, `Me.Enabled`: in a module `Me` is nothing, so name the form (its shim takes any property)
             body = [re.sub(r"\bMe\.", "frmMain.", l) for l in body]
+        for prefix in spec.get("strip_prefix", []):
+            # the form's own name before its controls (`frmSpellBook.cmbClass`): in a module they are bare names
+            body = [re.sub(r"\b%s\." % re.escape(prefix), "", l) for l in body]
         out += body
     return "\n".join(out) + "\n"

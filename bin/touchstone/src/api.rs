@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_damage, monster_sim, panes, paste, reach, rooms, settings,
+    item_manager, monster_damage, monster_sim, panes, paste, reach, rooms, settings, spell_tools,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -67,6 +67,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
         .route("/api/spells/{number}/effect", get(detail::spell_effect))
+        .route("/api/spells/{number}/casts", get(spell_tools::casts_route))
+        .route("/api/spells/counters", post(spell_tools::counters_route))
+        .route("/api/items/{number}/chest", get(spell_tools::chest_route))
+        .route("/api/spell-book/list", post(spell_tools::book_route))
+        .route("/api/spell-book/class", post(spell_tools::class_route))
+        .route("/api/spell-book/copy-global", post(spell_tools::copy_route))
         .route(
             "/api/monsters/{number}/max-damage",
             get(detail::monster_max_damage),

@@ -14,6 +14,8 @@ import { dialogs } from './dialogs.svelte';
 import { selection } from './explorer-state.svelte';
 import { createItemManager } from './itemmanager.svelte';
 import { getSettingsStore } from './settings.svelte';
+import { api } from './api';
+import { castRows, chestClipText, counterRows } from './spelltools';
 
 /** The record a menu was opened on, and the cells of its row. */
 export interface MenuTarget {
@@ -29,7 +31,7 @@ export interface MenuTarget {
 	/** The monster pane's lines, for copying a monster. */
 	lines?: ClipRow[];
 	/** A pane line the menu was opened on: what it stands for. */
-	line?: { kind: string; number: number };
+	line?: { kind: string; number: number; tag?: string };
 	/** The shop boxes (charm, "what the shop pays"). */
 	shop?: { charm: number; showSell: boolean };
 	/** Monsters: the row is a lair-only group, and the numbers it shows. */
@@ -194,6 +196,43 @@ export function createMenuActions(deps: Deps = {}) {
 		return { name: c[1] ?? '', ac: ac ?? '', dr: dr ?? '', dodge, mr };
 	}
 
+	/** `LookUpSpellCast`: a list of what casts the spell, each line opening its record. */
+	async function whatCasts(n: number): Promise<string | undefined> {
+		if (n <= 0) return undefined;
+		const out = await api.spellCasts(n);
+		if (out.status === 'missing') return 'Cannot find Spell.';
+		if (out.status === 'nothing') return 'Nothing.';
+		dialogs.showResults({ title: out.caption, rows: castRows(out) });
+		return undefined;
+	}
+
+	/** `FindNegates`: asks for a level first when MME does. */
+	async function findCounters(t: MenuTarget): Promise<string | undefined> {
+		const onPane = t.list === 'monsterDetail' || t.list === 'monsterCompareLoc';
+		const spell = onPane ? (t.line?.kind === 'spell' ? t.line.number : 0) : (t.number ?? 0);
+		if (spell <= 0) return undefined;
+		const base = onPane ? { spell, tag: t.line?.tag || String(spell) } : { spell };
+		let out = await api.spellCounters(base);
+		if (out.ask_level) {
+			const typed = await dialogs.askText('Find counters', 'Cast spell at a certain level?\n0 or cancel == no', '0');
+			out = await api.spellCounters({ ...base, level_answer: Number.parseFloat(typed ?? '') || 0 });
+		}
+		if (out.rows.length === 0) return 'Nothing.';
+		dialogs.showResults({ title: 'Spell/Ability Negated By:', rows: counterRows(out) });
+		return undefined;
+	}
+
+	/** The chest button's text for the clipboard (`mnuAuxPopUpItem_Click` case 5 on the Items list). */
+	async function copyChest(t: MenuTarget): Promise<string | undefined> {
+		const n = t.number ?? 0;
+		if (n <= 0) return undefined;
+		const chest = await api.itemChest(n);
+		if (chest.message) return chest.message;
+		const text = chestClipText(t.cells?.[1] ?? '', n, chest);
+		if (text === undefined) return undefined;
+		return copy({ text, error: null });
+	}
+
 	return {
 		addToCompare,
 		/** Runs one menu item; resolves to a short message for the page to show. */
@@ -285,6 +324,12 @@ export function createMenuActions(deps: Deps = {}) {
 					await go('/spells');
 					return undefined;
 				}
+				case 'whatCasts':
+					return whatCasts(n);
+				case 'findCounters':
+					return findCounters(t);
+				case 'copyChest':
+					return copyChest(t);
 				default:
 					return undefined;
 			}

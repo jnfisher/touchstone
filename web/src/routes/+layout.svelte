@@ -21,6 +21,8 @@
 	import PasteDialog from '$lib/components/paste/PasteDialog.svelte';
 	import { getOptionsStore } from '$lib/options.svelte';
 	import { getNavStore } from '$lib/navhistory.svelte';
+	import SpellBookDialog from '$lib/components/SpellBookDialog.svelte';
+	import { spellBook } from '$lib/spellbook.svelte';
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
@@ -137,6 +139,18 @@
 					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger data-testid="tools-menu">
+					{#snippet child({ props })}
+						<Button {...props} variant="outline" size="sm">Tools</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end">
+					<DropdownMenu.Item data-testid="tools-spell-book" onSelect={() => spellBook.show()}>
+						Spell Book
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 			<OptionsMenu />
 			<InfoPopover />
 			<Tooltip.Root>
@@ -171,6 +185,7 @@
 		</div>
 	{/if}
 	<SettingsDialog bind:open={options.settingsOpen} {theme} {view} />
+	<SpellBookDialog />
 	{#if options.pasteOpen}
 		<PasteDialog store={character} onclose={() => (options.pasteOpen = false)} />
 	{/if}

@@ -43,7 +43,8 @@
 		multiSelect = false,
 		selectedIds,
 		onSelectionIds,
-		onRowContext
+		onRowContext,
+		onRowDoubleClick
 	}: {
 		rows: T[];
 		columnDefs: ColDef<T>[];
@@ -68,6 +69,8 @@
 		onSelectionIds?: (ids: string[]) => void;
 		/** A right-click on a row (the context menu's row); the row is selected first, as MME's lists do. */
 		onRowContext?: (row: T, ids: string[]) => void;
+		/** A double-click on a row (the Spell Book opens the spell in its tab). */
+		onRowDoubleClick?: (row: T) => void;
 	} = $props();
 
 	let host: HTMLDivElement;
@@ -218,6 +221,9 @@
 				if (e.rowIndex === null || e.rowPinned) return;
 				const node = e.api.getDisplayedRowAtIndex(e.rowIndex);
 				if (node && !node.isSelected()) node.setSelected(true, true, 'rowClicked');
+			},
+			onRowDoubleClicked: (e) => {
+				if (e.data && !e.node.rowPinned) onRowDoubleClick?.(e.data);
 			},
 			onCellContextMenu: (e) => {
 				if (!e.data || e.node.rowPinned) return;

@@ -53,6 +53,8 @@ export interface EvalOptions {
 	level?: number;
 	anti_magic?: boolean;
 	vs_mr?: string;
+	/** The Compare tab's and the Spell Book's lists: show exactly these records, no filter. */
+	numbers?: number[];
 	/** The Monsters tab's filter boxes, lair/party mode and extra filters. */
 	monsters?: MonsterControls;
 }
