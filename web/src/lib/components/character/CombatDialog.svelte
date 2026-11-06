@@ -21,14 +21,22 @@
 		type CombatOptions,
 		type CombatPreview
 	} from '$lib/combat';
+	import { combatPrefill } from '$lib/handoff.svelte';
 	import { getSettingsStore } from '$lib/settings.svelte';
 	import { inputCls, labelCls } from '../calc/styles';
 
 	let {
 		store,
 		onclose,
-		client = combatClient
-	}: { store: CharacterStore; onclose: () => void; client?: CombatClient } = $props();
+		client = combatClient,
+		goto: gotoChoice
+	}: {
+		store: CharacterStore;
+		onclose: () => void;
+		client?: CombatClient;
+		/** SetupChooseAttack's arguments: a backstab weapon or a spell to go to (the menus' "Set ..." items). */
+		goto?: { backstab?: number; spell?: number };
+	} = $props();
 
 	const settings = getSettingsStore();
 	let page = $state<'attack' | 'heal'>('attack');
@@ -50,10 +58,34 @@
 				if (!alive) return;
 				opts = o;
 				form = formFromAttack(doc.attack, o, doc.global_filter && doc.level > 0 ? doc.level : undefined);
+				goToChoice(o);
 			})
 			.catch((e: unknown) => (error = e instanceof Error ? e.message : String(e)));
 		return () => (alive = false);
 	});
+
+	// SetupChooseAttack(nGotoBackstab, nGotoSpell)
+	function goToChoice(o: CombatOptions) {
+		if (!form || !gotoChoice) return;
+		const { backstab, spell } = gotoChoice;
+		if (spell) {
+			if (o.heal_any.some((c) => c.number === spell) && !o.attack_any.some((c) => c.number === spell)) {
+				form.healRadio = 3;
+				form.healAny = spell;
+				page = 'heal';
+			} else if (o.attack_learned.some((c) => c.number === spell)) {
+				form.radio = 2;
+				form.learnedSpell = spell;
+			} else if (o.attack_any.some((c) => c.number === spell)) {
+				form.radio = 3;
+				form.anySpell = spell;
+			}
+		}
+		if (backstab && o.backstab_weapons.some((c) => c.number === backstab)) {
+			form.backstabWeapon = backstab;
+			form.backstab = true;
+		}
+	}
 
 	// MME refreshes from a timer a moment after each change; this is that timer.
 	let ticket = 0;

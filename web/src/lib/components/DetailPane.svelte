@@ -12,6 +12,7 @@
 		canCompare = false,
 		onLink,
 		linkable,
+		onMenu,
 		before,
 		children
 	}: {
@@ -25,6 +26,8 @@
 		canCompare?: boolean;
 		onLink?: (r: { target: RefTarget | null }) => void;
 		linkable?: (r: RefRow) => boolean;
+		/** A right-click on a monster line, a shop stock line or a reference row (its index in that list). */
+		onMenu?: (e: { part: 'line' | 'shopLine' | 'ref'; index: number }) => void;
 		/** Controls that sit above the rows (the shop's charm box). */
 		before?: Snippet;
 		children?: Snippet;
@@ -74,10 +77,10 @@
 					{#if !l.label && !l.cells.some((c) => c.text)}
 						<div class="col-span-2 h-1.5" aria-hidden="true"></div>
 					{:else}
-						<dt class="text-muted-foreground whitespace-nowrap {l.bold ? 'font-semibold' : ''} {lineColorClass(l.color)}">
+						<dt oncontextmenu={() => onMenu?.({ part: 'line', index: k })} class="text-muted-foreground whitespace-nowrap {l.bold ? 'font-semibold' : ''} {lineColorClass(l.color)}">
 							{l.label}
 						</dt>
-						<dd class="min-w-0 break-words whitespace-pre-wrap">
+						<dd oncontextmenu={() => onMenu?.({ part: 'line', index: k })} class="min-w-0 break-words whitespace-pre-wrap">
 							{#each l.cells as c, j (j)}
 								{#if l.target && onLink && j === 0}
 									<button
@@ -114,8 +117,8 @@
 					<dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">
 						{#each g.rows as r, j (j)}
 							{#if r.label}
-								<dt class="text-muted-foreground whitespace-nowrap">{r.label}</dt>
-								<dd class="break-words whitespace-pre-wrap">{r.value}</dd>
+								<dt oncontextmenu={() => r.kind === 'shop_line' && onMenu?.({ part: 'shopLine', index: j })} class="text-muted-foreground whitespace-nowrap">{r.label}</dt>
+								<dd oncontextmenu={() => r.kind === 'shop_line' && onMenu?.({ part: 'shopLine', index: j })} class="break-words whitespace-pre-wrap">{r.value}</dd>
 							{:else}
 								<dd class="col-span-2 break-words whitespace-pre-wrap">{r.value}</dd>
 							{/if}
@@ -138,7 +141,7 @@
 						<table class="w-max min-w-full">
 							<tbody>
 								{#each pane.references as r, k (k)}
-									<tr class="border-t first:border-t-0">
+									<tr class="border-t first:border-t-0" oncontextmenu={() => onMenu?.({ part: 'ref', index: k })}>
 										{#each refCells(r, cols) as cell, c (c)}
 											<td class="px-2 py-0.5 {c === 0 && cols > 1 ? 'text-muted-foreground tabular-nums' : ''}">
 												{#if cell && onLink && r.target && (linkable?.(r) ?? true) && c === cols - 1}
