@@ -38,7 +38,10 @@
 		rowState,
 		onSelect,
 		onCount,
-		onWidth
+		onWidth,
+		multiSelect = false,
+		selectedIds,
+		onSelectionIds
 	}: {
 		rows: T[];
 		columnDefs: ColDef<T>[];
@@ -55,6 +58,12 @@
 		onCount?: (n: number) => void;
 		/** Total width of the columns plus scrollbar, once sized; the list pane's natural width. */
 		onWidth?: (w: number) => void;
+		/** Ctrl/Shift-click select several rows (the Item Manager); selection is then `selectedIds`. */
+		multiSelect?: boolean;
+		/** Row ids shown as selected in multi-select mode; changes are applied without echoing back. */
+		selectedIds?: string[];
+		/** The user's selection changed (multi-select mode), as row ids. */
+		onSelectionIds?: (ids: string[]) => void;
 	} = $props();
 
 	let host: HTMLDivElement;
@@ -152,6 +161,17 @@
 		}
 	}
 
+	function selectMany(ids: string[] | undefined) {
+		if (!api || !multiSelect || !ids) return;
+		const want = new Set(ids);
+		const have = api.getSelectedNodes().map((n) => n.id ?? '');
+		if (have.length === want.size && have.every((i) => want.has(i))) return;
+		const current = api.getSelectedNodes();
+		if (current.length) api.setNodesSelected({ nodes: current, newValue: false, source: 'api' });
+		const nodes = ids.map((i) => api!.getRowNode(i)).filter((n) => n !== undefined);
+		if (nodes.length) api.setNodesSelected({ nodes, newValue: true, source: 'api' });
+	}
+
 	function select(id: string | undefined) {
 		if (!api || id === undefined) return;
 		const node = api.getRowNode(id);
@@ -176,14 +196,21 @@
 			},
 			multiSortKey: 'ctrl',
 			enableCellTextSelection: true,
-			rowSelection: { mode: 'singleRow', checkboxes: false, enableClickSelection: true },
+			rowSelection: multiSelect
+				? { mode: 'multiRow', checkboxes: false, headerCheckbox: false, enableClickSelection: true }
+				: { mode: 'singleRow', checkboxes: false, enableClickSelection: true },
 			quickFilterText: quickFilter,
 			onSelectionChanged: (e) => {
+				if (multiSelect) {
+					if (e.source !== 'api') onSelectionIds?.(e.api.getSelectedNodes().map((n) => n.id ?? ''));
+					return;
+				}
 				const row = e.api.getSelectedRows()[0];
 				if (row && e.source !== 'api') onSelect?.(row);
 			},
 			// Arrow keys move the focused cell; the selection (and detail pane) follows it.
 			onCellFocused: (e) => {
+				if (multiSelect) return;
 				if (e.rowIndex === null || e.rowPinned) return;
 				const node = e.api.getDisplayedRowAtIndex(e.rowIndex);
 				if (node && !node.isSelected()) node.setSelected(true, true, 'rowClicked');
@@ -192,6 +219,7 @@
 			onFirstDataRendered: () => {
 				sizeColumns();
 				select(selectedId);
+				selectMany(selectedIds);
 			}
 		});
 		host.addEventListener('keydown', onKeydown, true);
@@ -211,6 +239,11 @@
 
 	$effect(() => {
 		api?.setGridOption('rowData', rows);
+		// new data drops the selection; put the page's back
+		selectMany(selectedIds);
+	});
+	$effect(() => {
+		selectMany(selectedIds);
 	});
 	$effect(() => {
 		api?.setGridOption('columnDefs', columnDefs);

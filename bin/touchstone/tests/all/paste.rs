@@ -33,7 +33,7 @@ fn opt_str(v: &Value) -> Option<String> {
     v.as_str().map(str::to_string)
 }
 
-fn char_world(data: &Value) -> World {
+pub(crate) fn char_world(data: &Value) -> World {
     let items = data["items"]
         .as_array()
         .unwrap()
@@ -344,7 +344,7 @@ fn spell(r: &Value, keys: &[&str]) -> Spell {
     }
 }
 
-fn fixture(name: &str) -> Value {
+pub(crate) fn fixture(name: &str) -> Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(format!("../../fixtures/rules/{name}.json"));
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
@@ -391,7 +391,7 @@ fn party_world(data: &Value, nmr: &str) -> World {
     .unwrap()
 }
 
-fn app_for(world: World) -> (TempDir, axum::Router) {
+pub(crate) fn app_for(world: World) -> (TempDir, axum::Router) {
     let dir = TempDir::new().unwrap();
     let info = SourceInfo {
         kind: "mdb",
@@ -402,7 +402,7 @@ fn app_for(world: World) -> (TempDir, axum::Router) {
     (dir, app(state))
 }
 
-async fn post(app: &axum::Router, uri: &str, body: &Value) -> (StatusCode, Value) {
+pub(crate) async fn post(app: &axum::Router, uri: &str, body: &Value) -> (StatusCode, Value) {
     let req = Request::builder()
         .method("POST")
         .uri(uri)

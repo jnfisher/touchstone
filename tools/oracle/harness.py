@@ -230,6 +230,7 @@ class Env:
         specs = spec if isinstance(spec, list) else [spec]
         self.it.bind("objToolTip", shims.NoopShim())
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
+        self.it.bind_proc("RGB", lambda it_, r, g, b: V.mk_i32(V.int_value(r) + 256 * V.int_value(g) + 65536 * V.int_value(b)))
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
         for n in [n for one in specs for n in one.get("stub_procs", [])]:   # display-only helpers (tool-tip text)
             self.it.bind_proc(n, lambda it_, *a: "")
@@ -336,6 +337,8 @@ class Env:
         for n, sf in (("LV_RefreshSort", False), ("LV_RefreshSort_ShopsFirst", True)):
             if n.lower() not in it.ext_procs:
                 it.bind_proc(n, refresh_sort(sf))
+        for n, v in (("lvwcolumnleft", 0), ("lvwcolumnright", 1), ("lvwcolumncenter", 2)):     # ColumnHeaders.Add alignment
+            it.bind(n, V.I32(v))
         for n, v in (("ldtstring", 0), ("ldtnumber", 1), ("ldtDateTime", 2)):     # modListViewExt's ListDataType
             it.bind(n, V.I32(v))
         # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
@@ -575,6 +578,10 @@ class Env:
         if refs:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
             self.saved[step.get("as", target)] = refs
+        if step.get("capture"):
+            # `capture` {name: read expression}: the reads taken right after this call (the controls a
+            # Sub fills), so one case can run many calls on one set-up; lands in "<as>.cap"
+            results[step.get("as", target) + ".cap"] = {k: self.read(objs, x) for k, x in step["capture"].items()}
 
     def select_step(self, st, results):
         """Step `{"select": "cmbEquip", "index": 3, "item": 1234, "as": "name"}`: the user picks the list entry whose
@@ -600,12 +607,16 @@ class Env:
         after the `post` calls (`{"call", "args"}` with `{"lv": true}` as the ListView) ran on it, each result and
         the ListView after it going to `<as>.post`. `watch` names a control element (`cmbCharBless(0)`) whose
         list gains entries (AddItem): `<as>.watch` holds `[text, ItemData]` or null per key. Rows are
-        `[Text, Tag, [[sub Text, sub Tag, sub ForeColor], ..]]`; a Tag or ForeColor never assigned is null."""
+        `[Text, Tag, [[sub Text, sub Tag, sub ForeColor], ..]]`, plus the row's ForeColor as a fourth element when it was
+        assigned; a Tag or ForeColor never assigned is null. `hwnd` gives the ListView an hWnd other than 0, the
+        value frmMain's own lists read, for code that asks whether it was handed `lvMonsters`."""
         spec = st["rows"]
         rs = self.it.get_global(spec["table"])
         rs.vb_set("index", [], spec["index"])
         shared = spec.get("lv") == "shared"
         lv_shared = shims.RecordingListViewShim() if shared else None
+        if shared and "hwnd" in spec:
+            lv_shared.props["hwnd"] = V.I32(spec["hwnd"])
         watch = None
         if spec.get("watch"):
             wname, widx = re.match(r"(\w+)\((\d+)\)$", spec["watch"]).groups()
@@ -614,6 +625,8 @@ class Env:
         for key in spec["keys"]:
             rs.vb_get("seek", ["=", decode(key)])
             lv = lv_shared or shims.RecordingListViewShim()
+            if "hwnd" in spec:
+                lv.props["hwnd"] = V.I32(spec["hwnd"])   # a list that is not frmMain's own (its hWnd reads 0)
             before = len(watch.items.get("list", {})) if watch else 0
             args = self.build_args(st.get("args", []), objs, [], lv)
             n_events = len(self.rec.events)
@@ -698,6 +711,9 @@ class Env:
                 if n > 1 or sel != 0:       # a combo holding only its None entry is left out
                     out[str(i)] = {"n": n, "sel": sel, "data": [int(c.vb_get("itemdata", [V.I16(k)])) for k in range(n)]}
             return out
+        if expr == "%clip":
+            # what the code under test left on the clipboard ("" when it never copied)
+            return self.it.externals["clipboard"].text
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)

@@ -97,6 +97,11 @@ value; `{"$add"|"$sub"|"$mul"|"$min"|"$max": [x, y]}` work elementwise on lists;
 `samples`: `{"name", "seed", "count", "draw": {v: {"int": [lo, hi]} | {"choice": [..]}, "n": k for lists}, "case"}`,
 drawn with splitmix64 so they never depend on the Python version.
 
+A step may carry `"capture": {name: read expression}` (the `read` forms below, e.g. `%c.txtDetail.Text`, `%lv.lvLoc`): the
+reads are taken right after that call and land in `outputs["<as>.cap"]`, so one case can run many calls of a
+Sub that fills controls (family `misc_detail`). A recording ListView also answers `ColumnHeaders` (`Count`, `Clear`, `Add`) and
+`ListItems.Add(Index, Key, Text)` honours its Text and Index.
+
 Scenario extras: `"modules": ["modItemParse.bas"]` loads more MME files beside the six always loaded;
 a call argument `{"udt": "TypeName", "fields": {...}}` builds a Type value (a list fills a dynamic array,
 `[]` leaves it unallocated). `Not Not arr` evaluates to 0/1 for unallocated/allocated arrays.
@@ -112,8 +117,8 @@ seeks each key in the table's global recordset and calls the procedure with a Li
 key a fresh ListView and stores `null` (no row) or the row it built; `"shared"` fills one ListView and stores all rows,
 after the `post` calls ran on it (their results and the rows after each go to `<as>.post`). `watch` names a control
 element whose list gains entries from `AddItem` (`NewIndex` and `ItemData` work); `<as>.watch` holds `[text, ItemData]`
-or null per key. A row is `[Text, Tag, cells]`; a cell is its Text alone, or `[Text, Tag, ForeColor]` when a Tag or
-ForeColor was assigned (null for the one that was not). Texts are `CStr` of what was assigned and tags `CStr` of the
+or null per key. A row is `[Text, Tag, cells]` (plus the row's own ForeColor as a fourth element when MME assigned one); a cell is its Text alone, or `[Text, Tag, ForeColor]` when a Tag or
+ForeColor was assigned (null for the one that was not). `"hwnd": n` in the `rows` spec gives the ListView an hWnd other than 0 (frmMain's lists read 0), for code that asks whether it was handed `lvMonsters`. Texts are `CStr` of what was assigned and tags `CStr` of the
 Variant assigned. A control given as `{"$recordlv": [rows]}` is a recording ListView too (rows preloaded as
 `{"Text", "Tag", "Sub": [text | [text, tag]]}`).
 

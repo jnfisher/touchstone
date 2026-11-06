@@ -709,6 +709,7 @@ fn martial_arts_rows(
         let mut row = Row {
             text: "0".to_string(),
             tag: Some((-kind).to_string()),
+            fore_color: None,
             cells: Vec::new(),
         };
         let c = &mut row.cells;

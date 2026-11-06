@@ -491,6 +491,7 @@ class ListItemShim(ExtObject):
     def __init__(self, text, subs):
         self.text = text
         self.subs = [x if isinstance(x, SubItemShim) else SubItemShim(x) for x in subs]
+        self.selected = False
 
     def vb_get(self, name, args):
         n = name.lower()
@@ -499,11 +500,17 @@ class ListItemShim(ExtObject):
         if n == "listsubitems":
             sub = _SubItems(self.subs)
             return sub.vb_default(args) if args else sub
+        if n == "selected":
+            return self.selected
+        if n == "ensurevisible":
+            return None
         raise VBError(438)
 
     def vb_set(self, name, args, value):
         if name.lower() == "text":
             self.text = V.c_str(value)
+        elif name.lower() == "selected":
+            self.selected = bool(value)
         else:
             raise VBError(438)
 
@@ -543,6 +550,18 @@ class _ListItems(ExtObject):
         return self.rows[i - 1]
 
 
+class _Count(ExtObject):
+    """An object with just `.Count` (`lv.ColumnHeaders.Count`)."""
+
+    def __init__(self, n):
+        self.n = n
+
+    def vb_get(self, name, args):
+        if name.lower() == "count":
+            return V.I32(int(self.n))
+        raise VBError(438)
+
+
 class ListViewShim(ControlShim):
     """A ListView whose rows the scenario gives: {"$listview": [{"Text": "12", "Sub": ["", "CARRIED x2"]}]}.
     Rows can be added, removed and edited by the code under test; `dump()` is what a case reads back."""
@@ -550,11 +569,15 @@ class ListViewShim(ControlShim):
     def __init__(self, rows, decode=_plain):
         super().__init__({}, decode)
         self.rows = [ListItemShim(str(r.get("Text", "")), [str(x) for x in r.get("Sub", [])]) for r in rows]
+        for li, r in zip(self.rows, rows):
+            li.selected = bool(r.get("Sel", False))
 
     def vb_get(self, name, args):
         if name.lower() == "listitems":
             lst = _ListItems(self.rows)
             return lst.vb_default(args) if args else lst
+        if name.lower() == "columnheaders" and not args:
+            return _Count(12)
         return super().vb_get(name, args)
 
     def dump(self, encode):
@@ -567,7 +590,10 @@ class ListViewShim(ControlShim):
                 if x.tag is not EMPTY:
                     d["g"] = encode(x.tag)
                 subs.append(d)
-            out.append({"text": r.text, "subs": subs})
+            row = {"text": r.text, "subs": subs}
+            if r.selected:
+                row["sel"] = True       # only rows a case selected, so older families' fixtures are unchanged
+            out.append(row)
         return out
 
 
@@ -639,6 +665,7 @@ class RecItem(ExtObject):
     def __init__(self, text=""):
         self.text = text
         self.tag = None
+        self.fore = None
         self.subs = []
 
     def vb_get(self, name, args):
@@ -647,6 +674,8 @@ class RecItem(ExtObject):
             return self.text
         if n == "tag":
             return "" if self.tag is None else self.tag
+        if n == "forecolor":
+            return V.mk_i32(0) if self.fore is None else self.fore
         if n == "listsubitems":
             if args:
                 return RecSubItems(self).vb_default(args)
@@ -661,6 +690,8 @@ class RecItem(ExtObject):
             self.text = V.c_str(value)
         elif n == "tag":
             self.tag = value
+        elif n == "forecolor":
+            self.fore = value
         elif n == "selected":
             pass
         else:
@@ -679,8 +710,13 @@ class RecItems(ExtObject):
         if n == "count":
             return V.I32(len(self.lv.rows))
         if n == "add":
-            item = RecItem()
-            self.lv.rows.append(item)
+            # Add([Index], [Key], [Text]): the text of `Add(, , "x")`; Index inserts at that 1-based place
+            text = V.c_str(args[2]) if len(args) > 2 and args[2] is not V.MISSING else ""
+            item = RecItem(text)
+            at = V.int_value(args[0]) if args and args[0] is not V.MISSING else len(self.lv.rows) + 1
+            if at < 1 or at > len(self.lv.rows) + 1:
+                raise VBError(35600, "Index out of bounds")
+            self.lv.rows.insert(at - 1, item)
             return item
         if n == "clear":
             self.lv.rows.clear()
@@ -697,6 +733,28 @@ class RecItems(ExtObject):
         return iter(list(self.lv.rows))
 
 
+class RecHeaders(ExtObject):
+    """A recording ListView's ColumnHeaders: only the count (code re-adds the columns when it differs), Clear and Add."""
+
+    def __init__(self, lv):
+        self.lv = lv
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "count":
+            return V.I32(len(self.lv.headers))
+        if n == "clear":
+            self.lv.headers.clear()
+            return None
+        if n == "add":
+            self.lv.headers.append([V.c_str(a) if isinstance(a, str) else a for a in args])
+            return ControlShim()
+        raise VBError(438)
+
+    def vb_default(self, args):
+        raise VBError(438)
+
+
 class RecordingListViewShim(ControlShim):
     """A ListView that records the rows MME's Add*2LV procedures build. The scenario may preload rows:
     {"$recordlv": [{"Text": "1", "Tag": "x", "Sub": ["a", ["b", "tag"]]}]}; `dump()` is what a `%lv.` read returns:
@@ -705,6 +763,7 @@ class RecordingListViewShim(ControlShim):
     def __init__(self, rows=None, decode=_plain):
         super().__init__({}, decode)
         self.rows = []
+        self.headers = []
         for r in rows or []:
             item = RecItem(str(r.get("Text", "")))
             if "Tag" in r:
@@ -720,11 +779,14 @@ class RecordingListViewShim(ControlShim):
         if name.lower() == "listitems":
             items = RecItems(self)
             return items.vb_default(args) if args else items
+        if name.lower() == "columnheaders" and not args:
+            return RecHeaders(self)
         return super().vb_get(name, args)
 
     def dump(self, enc):
-        """[Text, Tag, cells] per row; a cell is its Text alone when its Tag and ForeColor were never assigned,
-        else [Text, Tag, ForeColor] with null for what was not assigned. Tags are CStr of the assigned Variant."""
+        """[Text, Tag, cells] per row (a fourth element, the row's ForeColor, only when it was assigned); a cell is
+        its Text alone when its Tag and ForeColor were never assigned, else [Text, Tag, ForeColor] with null for
+        what was not assigned. Tags are CStr of the assigned Variant."""
         def tag(x):
             return None if x is None else (x if isinstance(x, str) else V.c_str(x))
 
@@ -732,7 +794,8 @@ class RecordingListViewShim(ControlShim):
             if s.tag is None and s.fore is None:
                 return s.text
             return [s.text, tag(s.tag), None if s.fore is None else int(V.int_value(s.fore))]
-        return [[r.text, tag(r.tag), [cell(s) for s in r.subs]] for r in self.rows]
+        return [[r.text, tag(r.tag), [cell(s) for s in r.subs]] + ([int(V.int_value(r.fore))] if r.fore is not None else [])
+                for r in self.rows]
 
 
 class ControlArrayShim(ExtObject):
