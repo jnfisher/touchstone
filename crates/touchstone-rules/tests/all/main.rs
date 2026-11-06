@@ -14,6 +14,7 @@ mod equip;
 mod exp;
 mod exp_per_hour;
 mod filters;
+mod find_best;
 mod game_text;
 mod gear;
 mod hit_calc;
