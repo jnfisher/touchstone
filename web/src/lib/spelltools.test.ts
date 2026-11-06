@@ -10,6 +10,9 @@ import {
 	counterRows,
 	isTextColumn,
 	spellBarOptions,
+	spellFilterOptions,
+	spellFiltersActive,
+	DEFAULT_SPELL_FILTERS,
 	spellOptionsEnabled
 } from './spelltools';
 import { DEFAULT_FILTER } from './globalfilter';
@@ -30,6 +33,19 @@ describe('the Spells tab option boxes (chkSpellOptions_Click)', () => {
 			vs_mr: '0',
 			anti_magic: true
 		});
+	});
+});
+
+describe('the Spells tab filter boxes (FilterSpells)', () => {
+	it('sends nothing while every box is at its reset value', () => {
+		expect(spellFiltersActive(DEFAULT_SPELL_FILTERS)).toBe(false);
+		expect(spellFilterOptions(DEFAULT_SPELL_FILTERS)).toEqual({});
+	});
+	it('sends all the boxes once one filters', () => {
+		const f = { ...DEFAULT_SPELL_FILTERS, magery: 2, target: 3 };
+		expect(spellFiltersActive(f)).toBe(true);
+		expect(spellFilterOptions(f)).toEqual({ spells: f });
+		expect(spellFiltersActive({ ...DEFAULT_SPELL_FILTERS, learnable_only: true })).toBe(true);
 	});
 });
 

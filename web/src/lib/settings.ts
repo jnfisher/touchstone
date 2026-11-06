@@ -23,6 +23,8 @@ export interface Settings {
   monster_sim_rounds: number;
   route_waypoint_interval: number;
   auto_load_last_char: boolean;
+  /** `HideRecordNumbers` (`bHideRecordNumbers`): names print without their "(n)". */
+  hide_record_numbers: boolean;
 }
 
 export const KNOB_MIN = 0.01;
@@ -59,6 +61,7 @@ export function defaultSettings(): Settings {
     monster_sim_rounds: 500,
     route_waypoint_interval: WAYPOINT_DEFAULT,
     auto_load_last_char: true,
+    hide_record_numbers: false,
   };
 }
 
@@ -176,6 +179,7 @@ export interface Draft {
   simRounds: string;
   waypoint: string;
   autoLoad: boolean;
+  hideNumbers: boolean;
 }
 
 export function toDraft(s: Settings, block: ExpHrBlock = s.exp_per_hour.global): Draft {
@@ -191,6 +195,7 @@ export function toDraft(s: Settings, block: ExpHrBlock = s.exp_per_hour.global):
     simRounds: fmt(s.monster_sim_rounds),
     waypoint: fmt(s.route_waypoint_interval),
     autoLoad: s.auto_load_last_char,
+    hideNumbers: s.hide_record_numbers,
   };
 }
 
@@ -208,6 +213,7 @@ export function draftSettings(d: Draft, globalBlock: ExpHrBlock): Settings {
     monster_sim_rounds: clampSimRounds(vbVal(d.simRounds)),
     route_waypoint_interval: clampWaypoint(vbVal(d.waypoint)),
     auto_load_last_char: d.autoLoad,
+    hide_record_numbers: d.hideNumbers,
   };
 }
 

@@ -148,6 +148,34 @@ fn item_lines(env: &AbilityEnv, slots: &[AbilitySlot]) -> (Vec<AbilityLine>, Vec
     (lines, class_ok)
 }
 
+#[derive(Serialize)]
+pub struct AbilityName {
+    pub number: i16,
+    /// `GetAbilityList`: `Name (n)`, or just the name with record numbers hidden; `[Ability n]` for a number with no name.
+    pub name: String,
+}
+
+/// The ability combos' items (`sAbilityList`): every number MME lists, in number order.
+pub async fn ability_list(State(state): State<Arc<AppState>>) -> ApiResult {
+    let list = touchstone_rules::ability_text::get_ability_list(
+        Profile::Stock,
+        state.hide_record_numbers(),
+    );
+    let rows: Vec<AbilityName> = list
+        .into_iter()
+        .enumerate()
+        .skip(1)
+        .filter(|(_, name)| !name.is_empty())
+        .filter_map(|(n, name)| {
+            Some(AbilityName {
+                number: i16::try_from(n).ok()?,
+                name,
+            })
+        })
+        .collect();
+    json(&serde_json::json!({ "abilities": rows }))
+}
+
 pub async fn abilities(
     State(state): State<Arc<AppState>>,
     Path((table, number)): Path<(String, i32)>,

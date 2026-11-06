@@ -6,6 +6,7 @@ import type { CharacterDoc } from './character';
 import { characterReady, wireFilter, type GlobalFilter, type WireFilter } from './globalfilter';
 import type { MonsterControls } from './monsters';
 import type { DamagePrompt } from './monsterdamage';
+import type { SpellFilterBoxes } from './spelltools';
 
 export type EvalTab = 'weapons' | 'armour' | 'spells' | 'monsters' | 'items' | 'races' | 'classes' | 'shops';
 
@@ -55,6 +56,8 @@ export interface EvalOptions {
 	vs_mr?: string;
 	/** The Compare tab's and the Spell Book's lists: show exactly these records, no filter. */
 	numbers?: number[];
+	/** The Spells tab's filter boxes. */
+	spells?: SpellFilterBoxes;
 	/** The Monsters tab's filter boxes, lair/party mode and extra filters. */
 	monsters?: MonsterControls;
 }

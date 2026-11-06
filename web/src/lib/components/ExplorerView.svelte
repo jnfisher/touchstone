@@ -7,6 +7,7 @@
 	import DamageQuestion from '$lib/components/DamageQuestion.svelte';
 	import MonsterDamageMenu from '$lib/components/MonsterDamageMenu.svelte';
 	import MonsterFilters from '$lib/components/MonsterFilters.svelte';
+	import SpellFilters from '$lib/components/SpellFilters.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopControls from '$lib/components/ShopControls.svelte';
 	import SpellEffect from '$lib/components/SpellEffect.svelte';
@@ -20,11 +21,12 @@
 	import { COMPARE_KINDS, type CompareKind } from '$lib/compare';
 	import { linkFor, paneBody, paneClient, paneKind, type Pane, type RefTarget } from '$lib/detail';
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
+	import { getSettingsStore } from '$lib/settings.svelte';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
 	import { getMonsterFilterStore } from '$lib/monsters.svelte';
-	import { roomsView, selection, shopView, spellBar } from '$lib/explorer-state.svelte';
+	import { roomsView, selection, shopView, spellBar, spellFilters } from '$lib/explorer-state.svelte';
 	import { dialogs } from '$lib/dialogs.svelte';
-	import { chestRows, spellBarOptions, spellOptionsEnabled } from '$lib/spelltools';
+	import { chestRows, spellBarOptions, spellFilterOptions, spellOptionsEnabled } from '$lib/spelltools';
 	import { getDamageStore } from '$lib/monsterdamage.svelte';
 	import type { DamagePrompt } from '$lib/monsterdamage';
 	import {
@@ -99,6 +101,7 @@
 	// character store is shared with the Character tab; edits re-fetch after a short pause.
 	const bar = getGlobalFilterStore();
 	const monsterBoxes = getMonsterFilterStore();
+	const settings = getSettingsStore();
 	const damage = getDamageStore();
 	// MME clears the calculated monster damage when a character is loaded or pasted
 	$effect(() => {
@@ -133,6 +136,8 @@
 	$effect(() => {
 		const tab = computedTab;
 		void monsterBoxes.reachRev;
+		// record numbers in the cells follow the Settings window
+		void settings.current.hide_record_numbers;
 		if (!tab) return;
 		// The Monsters list also shows damage by the character's attack choice with the bar off.
 		const isMonsters = tab === 'monsters';
@@ -147,6 +152,7 @@
 					: {}),
 				...(list ? { numbers: $state.snapshot(list.numbers) } : {}),
 				...(slug === 'spells' && !list ? spellBarOptions($state.snapshot(spellBar)) : {}),
+				...(slug === 'spells' && !list ? spellFilterOptions($state.snapshot(spellFilters)) : {}),
 				// "Set Weapon/Spell Combat Calc. to Mob" from the monsters' menu
 				...vsMobOptions(slug)
 			},
@@ -195,6 +201,7 @@
 	$effect(() => {
 		const k = kind;
 		void monsterBoxes.reachRev;
+		void settings.current.hide_record_numbers;
 		const id = selectedId === undefined ? undefined : Number(selectedId);
 		if (!k || id === undefined) {
 			pane = undefined;
@@ -494,6 +501,9 @@
 
 	{#if slug === 'monsters' && !list}
 		<MonsterFilters />
+	{/if}
+	{#if slug === 'spells' && !list}
+		<SpellFilters />
 	{/if}
 
 	<div class="relative min-h-0 flex-1">

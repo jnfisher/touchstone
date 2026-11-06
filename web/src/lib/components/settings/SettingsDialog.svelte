@@ -66,11 +66,12 @@
 	function byCharacterChanged() {
 		const s = settings.current;
 		const block = draft.byCharacter && characterName ? (character.doc.exp_hr ?? defaultBlock()) : s.exp_per_hour.global;
-		const keep = { simRounds: draft.simRounds, waypoint: draft.waypoint, autoLoad: draft.autoLoad, by: draft.byCharacter };
+		const keep = { simRounds: draft.simRounds, waypoint: draft.waypoint, autoLoad: draft.autoLoad, hideNumbers: draft.hideNumbers, by: draft.byCharacter };
 		draft = toDraft(s, block);
 		draft.simRounds = keep.simRounds;
 		draft.waypoint = keep.waypoint;
 		draft.autoLoad = keep.autoLoad;
+		draft.hideNumbers = keep.hideNumbers;
 		draft.byCharacter = keep.by;
 	}
 
@@ -262,6 +263,11 @@
 				<label class="flex items-center gap-2 text-sm">
 					<input type="checkbox" class="accent-primary size-4" bind:checked={draft.autoLoad} data-testid="settings-auto-load" />
 					Open the last character at start
+				</label>
+				<h3 class="{legend} mt-5">Lists and details</h3>
+				<label class="flex items-center gap-2 text-sm">
+					<input type="checkbox" class="accent-primary size-4" bind:checked={draft.hideNumbers} data-testid="settings-hide-numbers" />
+					Hide record numbers
 				</label>
 				<h3 class="{legend} mt-5">View (this browser)</h3>
 				<div class="flex flex-col gap-1.5">
