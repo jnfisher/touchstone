@@ -69,7 +69,7 @@
 			<div class="grid grid-cols-2 gap-3">
 				<Field label="Encum." bind:value={form.encum} testid="swing-encum" />
 				<div class="flex flex-col gap-1">
-					<span class="{labelCls} flex items-baseline justify-between">
+					<span class="{labelCls} flex h-4 items-center justify-between">
 						<span>Max Enc.</span>
 						<label class="flex items-center gap-1 font-normal" title="Follow strength, as MME does">
 							<input type="checkbox" bind:checked={form.maxEncumAuto} data-testid="swing-max-auto" />

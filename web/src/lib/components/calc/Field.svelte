@@ -21,7 +21,7 @@
 </script>
 
 <label class="flex flex-col gap-1" title={hint || undefined}>
-	<span class="{labelCls} flex items-baseline justify-between">
+	<span class="{labelCls} flex h-4 items-center justify-between">
 		<span>{label}</span>
 		{#if note}<span class="text-foreground tabular-nums" data-testid="{testid}-note">{note}</span>{/if}
 	</span>
