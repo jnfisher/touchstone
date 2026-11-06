@@ -149,7 +149,7 @@ pub struct CombatRoundInfo {
 /// A VB6 error (Long overflow of the regenerated HP) returns the partly filled result.
 #[must_use]
 pub fn calc_combat_rounds(profile: Profile, a: &CombatRoundsArgs) -> CombatRoundInfo {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     let mut r = CombatRoundInfo::default();
     let _ = combat_rounds_steps(a, &mut r);
     r
@@ -307,7 +307,7 @@ pub fn is_mob_killable(
     char_hp_regen: i16,
     mob_hp_regen: i32,
 ) -> bool {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     killable_steps(
         char_dmg,
         char_hp,
@@ -582,7 +582,7 @@ pub fn attack_profile(t: &crate::character::CharacterProfile) -> AttackProfile {
 /// gives [`DamageOutput::start`].
 #[must_use]
 pub fn get_damage_output(env: &DamageEnv, req: &DamageRequest) -> DamageOutput {
-    let Profile::Stock = env.ctx.profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = env.ctx.profile;
     damage_steps(env, req).unwrap_or_else(|Abort| DamageOutput::start())
 }
 

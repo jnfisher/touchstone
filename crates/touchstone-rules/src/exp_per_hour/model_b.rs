@@ -64,7 +64,7 @@ pub fn model_b(
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
     match profile {
-        Profile::Stock => {}
+        Profile::Stock | Profile::Quicksilver(_) => {}
     }
     let n_char_mana = i16::try_from(input.n_char_mana).map_err(|_| RulesError::Vb6(6))?;
     let _ = vb; // formatting errors cannot happen: Model B builds no text.

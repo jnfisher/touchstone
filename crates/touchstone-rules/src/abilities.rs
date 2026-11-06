@@ -27,7 +27,9 @@ const EFFECTS_CHAR_STATS: [i16; 94] = [
 /// count as "no", as they do when MME's `bForceAll` is off.
 pub fn ability_effects_char_stats(profile: Profile, ability: i16) -> bool {
     match profile {
-        Profile::Stock => EFFECTS_CHAR_STATS.binary_search(&ability).is_ok(),
+        Profile::Stock | Profile::Quicksilver(_) => {
+            EFFECTS_CHAR_STATS.binary_search(&ability).is_ok()
+        }
     }
 }
 
@@ -132,7 +134,7 @@ fn simple_lookup(
     none: i32,
 ) -> i32 {
     match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             if ability <= 0 || number <= 0 {
                 return none;
             }
@@ -151,7 +153,7 @@ pub fn item_has_ability(
     ability: i16,
 ) -> i32 {
     match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             if ability < -1 || item < 1 {
                 return NO_ABILITY;
             }

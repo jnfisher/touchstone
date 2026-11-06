@@ -127,7 +127,7 @@ pub fn calc_exp_per_hour(
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
     match profile {
-        Profile::Stock => {}
+        Profile::Stock | Profile::Quicksilver(_) => {}
     }
     let mut ret = ExpPerHourInfo::default();
     if input.n_exp.scaled() == 0 {

@@ -486,7 +486,7 @@ pub fn char_is_evil_aligned(ch: &Character) -> bool {
 /// Port of modMain GetCharActiveVileWard: GreaterMUD only, so 0 for the stock rules.
 #[must_use]
 pub fn get_char_active_vile_ward(profile: Profile) -> i32 {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     0
 }
 
@@ -541,7 +541,7 @@ fn populate_steps(
     force_no_char: bool,
     out: &mut Populated,
 ) -> R<()> {
-    let Profile::Stock = ctx.profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = ctx.profile;
     let st = ctx.stats;
     let a = &ch.attack;
     let use_character = ch.global_filter || force_use_char;

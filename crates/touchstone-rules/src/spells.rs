@@ -696,7 +696,7 @@ impl SpellEnv<'_> {
                 }
                 8 | 18 => {
                     match self.profile {
-                        Profile::Stock => {}
+                        Profile::Stock | Profile::Quicksilver(_) => {}
                     }
                     does_damage = true;
                 }

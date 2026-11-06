@@ -47,7 +47,7 @@ fn finite(x: f64) -> Res<f64> {
 #[must_use]
 pub fn get_hit_min(profile: Profile, _class: i32) -> i32 {
     match profile {
-        Profile::Stock => 8,
+        Profile::Stock | Profile::Quicksilver(_) => 8,
     }
 }
 
@@ -55,7 +55,7 @@ pub fn get_hit_min(profile: Profile, _class: i32) -> i32 {
 #[must_use]
 pub fn get_hit_cap(profile: Profile) -> i32 {
     match profile {
-        Profile::Stock => 99,
+        Profile::Stock | Profile::Quicksilver(_) => 99,
     }
 }
 
@@ -63,7 +63,7 @@ pub fn get_hit_cap(profile: Profile) -> i32 {
 #[must_use]
 pub fn get_spell_hit_cap(profile: Profile) -> i32 {
     match profile {
-        Profile::Stock => 98,
+        Profile::Stock | Profile::Quicksilver(_) => 98,
     }
 }
 
@@ -72,7 +72,7 @@ pub fn get_spell_hit_cap(profile: Profile) -> i32 {
 #[must_use]
 pub fn get_dodge_cap(profile: Profile, _class: i32, _soft_cap: bool) -> i32 {
     match profile {
-        Profile::Stock => 95,
+        Profile::Stock | Profile::Quicksilver(_) => 95,
     }
 }
 
@@ -115,7 +115,7 @@ pub fn calc_dodge_vs_accuracy(profile: Profile, raw_dodge: i32, accy: i32, _clas
     let raw = raw_dodge.min(9999);
     let accy = accy.clamp(0, 9999);
     let pct = match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             if accy > 8 {
                 let temp = (accy / 8).max(1);
                 (raw * 10 / temp).min(get_dodge_cap(profile, 0, false))
@@ -171,7 +171,7 @@ pub fn dodge_max_acc_for_percent(
     }
     let raw = raw_dodge.min(9999);
     match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             let cap = get_dodge_cap(profile, class, false);
             let target = target_pct.min(cap);
             // Best case is accuracy 9..15, where the percent is raw * 10 capped.
@@ -232,7 +232,7 @@ pub fn calculate_accuracy(profile: Profile, input: &AccuracyInput, text_in: &str
 }
 
 fn accuracy_steps(profile: Profile, i: &AccuracyInput, text: &mut String) -> Res<i16> {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     let mut worn = i.accuracy_worn;
     let mut encum_pct = i.encum_pct;
     if worn == 0 {
@@ -314,7 +314,7 @@ pub struct BackstabAccuracyInput {
 /// gives 0 (MME's handler).
 #[must_use]
 pub fn calculate_backstab_accuracy(profile: Profile, input: &BackstabAccuracyInput) -> i32 {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     let Ok(sum) = vb::add_i16(input.stealth, input.agility) else {
         return 0;
     };
@@ -365,7 +365,7 @@ pub fn calculate_attack_defense(profile: Profile, input: &AttackDefenseInput) ->
 }
 
 fn attack_defense_steps(profile: Profile, i: &AttackDefenseInput) -> Res<AttackDefense> {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     // Only the upper bound is applied: the lower-bound test sits after a colon on the same
     // one-line If, so it runs only when the value was above 9999.
     let cap = |v: i32| v.min(9999);

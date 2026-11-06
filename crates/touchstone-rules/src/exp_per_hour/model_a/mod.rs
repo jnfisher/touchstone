@@ -49,7 +49,7 @@ pub fn model_a(
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
     match profile {
-        Profile::Stock => {}
+        Profile::Stock | Profile::Quicksilver(_) => {}
     }
     Ok(run(input, knobs).unwrap_or_default())
 }
