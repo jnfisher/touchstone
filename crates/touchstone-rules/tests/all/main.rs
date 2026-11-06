@@ -23,6 +23,7 @@ mod lair_info;
 mod lairs;
 mod locations;
 mod mega_stat;
+mod misc_detail;
 mod mmec;
 mod monster_glue;
 mod monster_glue_char;
