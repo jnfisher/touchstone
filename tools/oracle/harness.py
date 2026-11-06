@@ -215,6 +215,9 @@ class Env:
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
         for n in [n for one in specs for n in one.get("stub_procs", [])]:   # display-only helpers (tool-tip text)
             self.it.bind_proc(n, lambda it_, *a: "")
+        # `stub_replace`: stubs for procedures of a loaded module (ExpandCombo), which the module's own copy would otherwise win
+        for n in [n for one in specs for n in one.get("stub_replace", [])]:
+            self.it.bind_proc(n, lambda it_, *a: "")
             self.stubbed.append(n)
         for n in [n for one in specs for n in one.get("stub_false", [])]:   # yes/no helpers of the UI (is a window loaded)
             self.it.bind_proc(n, lambda it_, *a: False)

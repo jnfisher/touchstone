@@ -53,7 +53,8 @@ FRM["procs"] = FRM["procs"] + ["FilterWeapons", "FilterArmour", "FilterSundry", 
 # ResetFilterOptions is the real one here (FilterAll calls it); the rest of the pipeline's display helpers stay stubs
 FRM["stub_procs"] = [p for p in FRM["stub_procs"] if p != "ResetFilterOptions"] + [
     "LV_RefreshSort", "LV_Sort_ColumnClick", "lvWeapons_ItemClick", "lvArmour_ItemClick", "lvOtherItems_ItemClick",
-    "ExpandCombo", "LoadResPicture", "LockWindowUpdate", "FilterSpells", "cmbGlobalClass_Click"]
+    "FilterSpells", "cmbGlobalClass_Click"]
+FRM["stub_replace"] = ["ExpandCombo", "LoadResPicture", "LockWindowUpdate"]       # also defined in a loaded module
 FRM["stub_false"] = ["FormIsLoaded"]
 FRM["me_is_form"] = True
 FRM["extra"] = ["Public Enum ListDataType", "ldtstring = 0", "ldtnumber = 1", "ldtdate = 2", "End Enum", "Public Const vbResBitmap = 0", "Public Const vbDefaultButton1 = 0", "Public Const vbDefaultButton2 = 256"]
