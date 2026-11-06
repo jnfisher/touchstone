@@ -1,0 +1,70 @@
+---
+id: T-025
+title: Make the oracle fast
+model: sonnet
+phase: 2
+depends: []
+touches:
+  - tools/oracle/vbi/
+  - tools/oracle/harness.py
+  - tools/oracle/shims.py
+  - tools/oracle/oracle.py
+  - tools/oracle/tests/
+  - tools/oracle/README.md
+---
+
+## Goal
+`python3 -I tools/oracle/oracle.py check` (regenerate every family, diff with the committed fixtures)
+finishes in about 3 minutes instead of 15-25, without changing a byte of any fixture.
+
+## Read
+`tools/oracle/oracle.py`, `harness.py`, `shims.py`, `vbi/interp.py`, `vbi/compiler.py`, `vbi/values.py`.
+
+## Do
+Profile first, then fix what the profile shows. Findings (sampling profiler, `signal.setitimer`; cProfile
+is 5x slower and unusable on `combat`):
+1. `combat` (the slowest family, 584 s CPU) spends its time in one MME loop (`CalcCombatRounds`,
+   the regen `Do While`) that runs millions of iterations of Double-with-Integer arithmetic,
+   comparisons and `If`/`Do` tests. Cost was `values.arith` / `_prep` / `as_float` / `is_num`.
+2. Item-table families (`item_match`, `textblock`, `monster_glue`) rebuilt and re-sorted the
+   recordset index (`_set_index`) on every `tabX.Index = ...`, and every case reopens its recordsets.
+3. `call_proc` argument binding: per-call `isinstance` chains, slot lists, static/return setup.
+4. `run` stored the program counter on the frame for every instruction.
+5. No module re-parsing per case (modules load once per family); no shim linear scans beyond `_set_index`.
+
+Changes:
+- `values.py`: fast paths in `arith`, `div`, `compare` for Double/integer-type operands; `EXACT_TYPE`.
+- `compiler.py`: `+ - * /` closures handle Double with Double/integer inline and fall back to the general
+  path (so Overflow, divide by zero and every other type keep their old behaviour); skip coercion of an
+  already-exact type on assignment; inline `truth` in `Do` tests; cached scalar function-return default.
+- `interp.py`: `call_proc` fast path for positional plain arguments; `run` records the pc only when an
+  error is raised.
+- `shims.py`: `Database.index_for` builds each index (order, first-row-per-key map, row->position map)
+  once per database load; `Seek` and `Bookmark` use the position map instead of `list.index`.
+- `oracle.py check --jobs N` (default `min(4, cpu_count)`): families in forked worker processes,
+  biggest scenario first, each family reported as it finishes.
+- `check` also splits the slowest families (`COST_HINTS` in `oracle.py`) into interleaved pieces of cases
+  (`build_fixture(part=(k, n))` + `assemble_fixture`); cases are independent because `run_case` resets
+  the environment, and the byte comparison with the committed fixture proves each split. `gen` stays serial.
+- Also: direct 1-D/2-D array element reads and inline `And`/`Or` on Booleans in `compiler.py`.
+- `tests/test_fastpaths.py`: the fast paths agree with the general path, including errors.
+
+## Timings
+`oracle.py gen FAMILY`, CPU seconds, before -> after the arithmetic/interpreter changes (the machine was
+shared; load average 3-5 throughout, CPU time is the stable number):
+combat 584 -> 143, textblock 62 -> 59, monster_glue 46 -> 42, exp 25 -> 24, gear2 24 -> 23,
+gear 19 -> 18, monster_sim 17 -> 16, pipeline 15 -> 15, spells 12 -> 12, ability_text 11 -> 10,
+exphr_b 6.0 -> 3.7; the other families are under 6 s each. Sum 865 -> 406.
+The index cache then took `item_match` 234 -> 37 s, `textblock` 147 -> 45 s and `monster_glue`
+95 -> 30 s wall (measured under load, in a parallel `check`; those two families were still slow in the
+sum above because the cache landed after that measurement).
+`paste_party` (merged from main meanwhile) is an item-table scan per case: 336 -> ~265 s CPU for `gen`,
+split into pieces by `check`.
+Full `oracle.py check` (31 families, -j 4), all current: 288 s wall at 03:48, with other agents' jobs
+keeping 1-2 of the 4 cores busy (load average 2-4 the whole time), about 11.5 min CPU in total. On an
+idle 4-core box that CPU total is about 3 minutes; the same check took 15-25 minutes serially before.
+The measured number on this shared machine is above the 4-minute goal; the load is reported with it.
+
+## Done when
+- `python3 -I tools/oracle/oracle.py check` reports every family current, in under ~4 minutes.
+- `python3 -I -m unittest discover -s tools -p 'test_*.py'` passes; `tools/guard.sh` passes.
