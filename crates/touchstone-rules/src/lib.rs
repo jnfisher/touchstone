@@ -18,6 +18,7 @@ pub mod hit_calc;
 pub mod item_value;
 pub mod monster_glue;
 pub mod monster_sim;
+pub mod pipeline;
 pub mod spell_cast;
 pub mod spells;
 pub mod stats;
