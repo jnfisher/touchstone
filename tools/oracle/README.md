@@ -163,3 +163,10 @@ as the NOT NULL column's empty value, because the conversion stores an empty tex
   selecting something), `%gt.name` (a global array without trailing zeros).
 - `frm` specs take `subs_all` (replace every matching line; a replacement may span lines). VB6 raises a combo's Click
   and a text box's Change only when the value changes; the paste scenario's `subs` call the real handler procedures in that case.
+
+### Table subsets (P3-30, family filters_sm)
+
+A scenario may give `"db_only": {"Monsters": [numbers], "Spells": [...], "Lairs": ["group", ...]}`: the converted database is read
+with only the listed rows (by the first column) of those tables, in their original order. It exists so that a filter that walks
+a whole table can ship the table inside the scenario; the subset must hold whole lairs, or MME's own cursor moves send
+`FilterMonsters` round its loop again.

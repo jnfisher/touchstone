@@ -59,6 +59,24 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - `FilterSpells` and `FilterMonsters` are not part of `filter_all` (card P3-30), nor is the `RefreshAll` that
   `FilterAll` ends with.
 
+## List filters, spells and monsters (P3-30)
+
+- MME lists spells in the table's physical order, which is not by number for some rows; the port lists by number and the
+  fixture test compares spell lists sorted. Monsters are physically in number order, so their lists are compared in order
+  (the no-character exp/hr filter overwrites the profile's HP for the rest of the pass, so order matters there).
+- `FilterMonsters` asks, in lair mode, whether to calculate the monster damage first. The port takes the answer from a
+  callback and reports a Yes (`recalc`) instead of running `CalculateMonsterDamageVsCharALL`: the caller owns the damage
+  caches. `/api/evaluate/monsters` never asks (the prompt state says "already asked") and lists solo mode with the default
+  filters; the controls, lair mode and the extra filters are P4-08/P4-09.
+- Reachability (`modReachability`) is a trait; the default says every monster is reachable, which is also MME's answer
+  when nothing is computed. The fixture scripts a rule (multiples of 7 are out of reach below level 30) to pin the plumbing.
+- `/api/evaluate/monsters` with no character uses a placeholder first-class, first-race level-1 character to build the
+  damage environment; the list itself is made for "no character" (the global filter off), as MME does. The
+  `nMonsterDamageVs*` caches start uncalculated, so damage is the Monsters table's average until a calculation fills them.
+- In the fixture's database a Monsters table of whole lairs stands for the stock one (`db_only`): MME's `GetDamageOutput`
+  moves the cursor to the first record when a monster is missing, which restarts `FilterMonsters`' own loop forever. A
+  missing mob cannot happen in a real database; the port does not model it.
+
 ## Item Manager (P4-19)
 
 - `LV_CopySelectedActionsToClipboard` builds its text in memory; a flag with a quantity near 2 billion would
