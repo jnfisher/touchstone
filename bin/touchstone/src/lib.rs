@@ -3,10 +3,13 @@
 mod api;
 pub mod calc;
 pub mod character;
+pub mod combat_setup;
 pub mod config;
 mod detail;
 pub mod equip;
 pub mod evaluate;
+pub mod monster_sim;
+pub mod paste;
 pub mod settings;
 pub mod source;
 pub mod state;

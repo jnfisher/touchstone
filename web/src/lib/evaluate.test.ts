@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { newCharacter } from './character';
+import { DEFAULT_FILTER } from './globalfilter';
 import { colorClass, createEvaluateClient, evaluateBody, EvaluateError, isEvalTab, toColDefs, type EvalRow } from './evaluate';
 
 const columns = [
@@ -18,14 +19,23 @@ const row: EvalRow = {
 
 describe('request', () => {
 	const picked = { ...newCharacter('Bo'), class: 1, race: 2 };
-	it('sends the character with the global filter on, only when it is complete and in use', () => {
-		expect(evaluateBody(picked, true, { attack: 4 })).toEqual({
-			character: { ...picked, global_filter: true },
+	const mirror = { ...DEFAULT_FILTER, use_character: true, min_item_level: 4 };
+	const own = { ...DEFAULT_FILTER, use_character: false, class: 3, level: 20, alignment: 2 };
+	it('sends the character only while the bar mirrors it and it is complete', () => {
+		expect(evaluateBody(picked, mirror, { attack: 4 })).toEqual({
+			character: picked,
+			global_filter: mirror,
 			options: { attack: 4 }
 		});
-		expect(evaluateBody(picked, false)).toEqual({ options: {} });
-		expect(evaluateBody(newCharacter('x'), true)).toEqual({ options: {} });
-		expect(evaluateBody(undefined, true)).toEqual({ options: {} });
+		// the bar's own values: no character
+		expect(evaluateBody(picked, own)).toEqual({ global_filter: own, options: {} });
+		// mirroring an unfinished or missing character falls back to the bar's own values
+		expect(evaluateBody(newCharacter('x'), mirror)).toEqual({
+			global_filter: { ...mirror, use_character: false },
+			options: {}
+		});
+		expect(evaluateBody(undefined, mirror).character).toBeUndefined();
+		expect(evaluateBody(undefined, mirror).global_filter.use_character).toBe(false);
 	});
 	it('knows the tabs it serves', () => {
 		expect(isEvalTab('weapons')).toBe(true);
@@ -62,7 +72,7 @@ describe('column mapping', () => {
 describe('client', () => {
 	it('posts the body and returns the table', async () => {
 		const fetchFn = vi.fn(async () => new Response(JSON.stringify({ columns, rows: [row] })));
-		const t = await createEvaluateClient(fetchFn as unknown as typeof fetch).evaluate('weapons', { options: {} });
+		const t = await createEvaluateClient(fetchFn as unknown as typeof fetch).evaluate('weapons', { global_filter: DEFAULT_FILTER, options: {} });
 		expect(t.rows).toHaveLength(1);
 		const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
 		expect(url).toBe('/api/evaluate/weapons');
@@ -70,7 +80,7 @@ describe('client', () => {
 	});
 	it('reports the server reason', async () => {
 		const fetchFn = vi.fn(async () => new Response('pick a class and race', { status: 422 }));
-		await expect(createEvaluateClient(fetchFn as unknown as typeof fetch).evaluate('spells', { options: {} })).rejects.toMatchObject({
+		await expect(createEvaluateClient(fetchFn as unknown as typeof fetch).evaluate('spells', { global_filter: DEFAULT_FILTER, options: {} })).rejects.toMatchObject({
 			status: 422,
 			message: 'pick a class and race'
 		});

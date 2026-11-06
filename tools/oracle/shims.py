@@ -340,6 +340,8 @@ class ControlShim(ExtObject):
         if n == "clear":
             rows = []
             at = None
+            self.props.pop("newindex", None)
+            self.props["listindex"] = V.I32(-1)    # VB6: Clear leaves nothing selected
         else:
             at = V.int_value(args[1]) if len(args) > 1 and args[1] is not V.MISSING else len(rows)
             if at < 0 or at > len(rows):
@@ -355,6 +357,9 @@ class ControlShim(ExtObject):
         n = name.lower()
         if n in ("additem", "clear") and n in self.COMBO_METHODS:
             return self._combo_method(n, args)
+        if n == "columnheaders" and args:
+            # `lv.ColumnHeaders(i)`: a header whose Tag the code may set (the sort kind); nothing reads it back here
+            return self.items.setdefault("columnheaders", {}).setdefault(V.int_value(args[0]), ControlShim(decode=self.decode))
         if args:
             tbl = self.items.get(n)
             i = V.int_value(args[0])

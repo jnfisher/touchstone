@@ -13,6 +13,7 @@
 	import { createViewStore } from '$lib/view.svelte';
 	import { pageTitle } from '$lib/view';
 	import { getCharacterStore } from '$lib/character.svelte';
+	import GlobalFilterBar from '$lib/components/GlobalFilterBar.svelte';
 	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 
@@ -112,6 +113,7 @@
 				<Tooltip.Content>Settings</Tooltip.Content>
 			</Tooltip.Root>
 		</nav>
+		<GlobalFilterBar />
 
 		<main class="min-h-0 flex-1 p-2 sm:p-4">
 			{@render children()}

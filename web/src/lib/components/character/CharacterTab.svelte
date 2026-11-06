@@ -4,6 +4,8 @@
 	import { exportUrl, isMmecName } from '$lib/character';
 	import { getCharacterStore, openLastCharacter, rememberLastCharacter } from '$lib/character.svelte';
 	import { cardCls } from '../calc/styles';
+	import PasteDialog from '../paste/PasteDialog.svelte';
+	import CombatDialog from './CombatDialog.svelte';
 	import BlessPanel from './BlessPanel.svelte';
 	import DerivedPanel from './DerivedPanel.svelte';
 	import EquipPanel from './EquipPanel.svelte';
@@ -43,6 +45,8 @@
 	}
 	$effect(() => rememberLastCharacter(store.storedName));
 
+	let pasting = $state(false);
+	let combat = $state(false);
 	let fileInput = $state<HTMLInputElement>();
 	let importNote = $state<string>();
 
@@ -137,6 +141,21 @@
 				data-testid="char-export-disabled">Export .mmec</span
 			>
 		{/if}
+		<button
+			type="button"
+			class="border-input h-8 rounded-md border px-3 text-sm"
+			onclick={() => (pasting = true)}
+			data-testid="char-paste">Paste character</button
+		>
+		<button
+			type="button"
+			class="border-input h-8 rounded-md border px-3 text-sm disabled:opacity-50"
+			disabled={store.doc.class === null || store.doc.race === null}
+			title="Choose the attack, backstab and healing"
+			onclick={() => (combat = true)}
+			data-testid="char-combat"
+			>Combat{store.evaluated?.attack_name ? `: ${store.evaluated.attack_name}` : ''}</button
+		>
 		<span class="text-muted-foreground ml-auto text-xs" data-testid="char-status">{statusText}</span>
 	</div>
 
@@ -159,3 +178,11 @@
 	<section class="{cardCls} mt-4" aria-label="Equipment"><EquipPanel {store} {items} /></section>
 	<section class="{cardCls} mt-4" aria-label="Derived stats"><DerivedPanel {store} /></section>
 </div>
+
+{#if pasting}
+	<PasteDialog {store} onclose={() => (pasting = false)} />
+{/if}
+
+{#if combat}
+	<CombatDialog {store} onclose={() => (combat = false)} />
+{/if}

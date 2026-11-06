@@ -666,6 +666,29 @@ pub fn add_weapon_row(
     Some(row)
 }
 
+/// `CalculateAttack` as `FilterWeapons` calls it (the damage check and the maximum-effort lists), with the
+/// same tables and globals `AddWeapon2LV` gives it. `casts` is the ByRef `sCasts`.
+#[must_use]
+pub fn calculate_weapon_attack(
+    env: &RowEnv,
+    ch: &attack::CharacterProfile,
+    req: &AttackRequest,
+    casts: &mut String,
+) -> attack::AttackDamage {
+    let abilities = env.ability_env(false);
+    let attack_env = AttackEnv {
+        items: &env.world.items,
+        classes: &env.world.classes,
+        races: &env.world.races,
+        equipped: env.equipped,
+        cast_text: &abilities,
+        dat_ver_caption: env.dat_ver_caption,
+        avg_level_max_all_stats: env.avg_level_max_all_stats,
+        accuracy_tag: env.accuracy_tag,
+    };
+    attack::calculate_attack(env.profile, &attack_env, ch, req, casts)
+}
+
 #[allow(clippy::too_many_lines)] // one MME procedure, kept in its order
 fn weapon_steps(
     env: &RowEnv,

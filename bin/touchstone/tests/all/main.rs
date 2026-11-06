@@ -1,10 +1,13 @@
 mod api;
 mod calc;
 mod character;
+mod combat_setup;
 mod common;
 mod detail;
 mod equip;
 mod evaluate;
+mod monster_sim;
+mod paste;
 mod settings;
 
 mod health {

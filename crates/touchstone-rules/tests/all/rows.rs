@@ -22,11 +22,11 @@ use touchstone_vb6 as vb;
 use crate::fixture::{self, Names, Textblocks};
 use crate::pipeline::Inputs;
 
-fn i(v: &Value) -> i32 {
+pub(crate) fn i(v: &Value) -> i32 {
     v.as_i64().unwrap_or_else(|| panic!("not an integer: {v}")) as i32
 }
 
-fn s(v: &Value) -> String {
+pub(crate) fn s(v: &Value) -> String {
     v.as_str().unwrap_or("").to_string()
 }
 
@@ -116,7 +116,7 @@ fn sundry(r: &Value) -> Item {
     }
 }
 
-fn spell(r: &Value) -> Spell {
+pub(crate) fn spell(r: &Value) -> Spell {
     // Number, Name, Short, ReqLevel, EnergyCost, ManaCost, MinBase, MaxBase, Diff, TypeOfResists, Targets, Dur, AttType,
     // Magery, MageryLVL, Cap, MaxIncLVLs, MaxInc, MinIncLVLs, MinInc, DurIncLVLs, DurInc, Learnable, LearnedFrom, Abilities
     Spell {
@@ -150,7 +150,7 @@ fn spell(r: &Value) -> Spell {
     }
 }
 
-fn class(r: &Value) -> Class {
+pub(crate) fn class(r: &Value) -> Class {
     Class {
         number: i(&r[0]),
         name: s(&r[1]),
@@ -166,7 +166,7 @@ fn class(r: &Value) -> Class {
     }
 }
 
-fn race(r: &Value) -> Race {
+pub(crate) fn race(r: &Value) -> Race {
     // Number, Name, mSTR, mINT, mWIL, mAGL, mHEA, mCHM, xSTR, xINT, xWIL, xAGL, xHEA, xCHM, HPPerLVL, ExpTable, BaseCP
     Race {
         number: i(&r[0]),

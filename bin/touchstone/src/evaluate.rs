@@ -19,10 +19,15 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use touchstone_model::{Item, World};
+use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::attack::EquippedGlobals;
 use touchstone_rules::character::AttackTypeMud;
+use touchstone_rules::filters::{
+    AbilityFilter, Answer, ArmourFilter, FilterEnv, ProfileRequest, WeaponEntry, WeaponFilter,
+    filter_armour, filter_sundry, filter_weapons,
+};
+use touchstone_rules::gear::Character as GlobalChar;
 use touchstone_rules::pipeline::{CharacterState, PipelineOptions, refresh_all};
 use touchstone_rules::rows::{
     Row, RowEnv, SpellOptions, WeaponArgs, WeaponOptions, add_armour_row, add_class_row,
@@ -123,11 +128,70 @@ pub struct Options {
     pub vs_mr: BoxText,
 }
 
+/// The global filter bar (card P4-21): `chkGlobalFilter` and the boxes of its frame.
+///
+/// The defaults are the case `ItemIsUsableByChar` answers true for at once (level 999, any class,
+/// any alignment), so a bar left alone filters nothing.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct GlobalFilterBody {
+    /// Mirror the loaded character (class, race, level, alignment, and its stats for the row
+    /// calculations); the class, race, level and alignment below are then ignored.
+    pub use_character: bool,
+    /// `cmbGlobalClass`: a class number, 0 for the first entry (any class).
+    pub class: i32,
+    /// `cmbGlobalRace`.
+    pub race: i32,
+    /// `txtGlobalLevel(0)`.
+    pub level: i32,
+    /// `cmbGlobalAlignment.ListIndex`: 0 any, 1 good, 2 neutral, 3 evil.
+    pub alignment: i32,
+    /// `txtGlobalMinLVL`.
+    pub min_item_level: i32,
+}
+
+impl Default for GlobalFilterBody {
+    fn default() -> Self {
+        Self {
+            use_character: false,
+            class: 0,
+            race: 0,
+            level: MAX_LEVEL,
+            alignment: 0,
+            min_item_level: 0,
+        }
+    }
+}
+
+impl GlobalFilterBody {
+    fn validate(&self) -> Result<(), (StatusCode, String)> {
+        let id = 0..=i32::from(i16::MAX);
+        if !id.contains(&self.class) || !id.contains(&self.race) {
+            return Err(bad("class and race must be record numbers"));
+        }
+        if !(0..=MAX_LEVEL).contains(&self.level) {
+            return Err(bad(format!("level must be 0 to {MAX_LEVEL}")));
+        }
+        if !(0..=MAX_LEVEL).contains(&self.min_item_level) {
+            return Err(bad(format!("min_item_level must be 0 to {MAX_LEVEL}")));
+        }
+        if !(0..=3).contains(&self.alignment) {
+            return Err(bad(
+                "alignment must be 0 (any), 1 (good), 2 (neutral) or 3 (evil)",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct EvaluateBody {
-    /// The loaded character; it is used when its `global_filter` is on, as `chkGlobalFilter`.
+    /// The loaded character; it is used when the global filter says so (`use_character`), or,
+    /// with no `global_filter` object, when its own `global_filter` is on, as `chkGlobalFilter`.
     pub character: Option<CharacterDto>,
+    /// The global filter bar; absent means the character's own flag decides.
+    pub global_filter: Option<GlobalFilterBody>,
     pub options: Options,
 }
 
@@ -152,10 +216,6 @@ impl Options {
             return Err(bad(format!("level must be 0 to {MAX_LEVEL}")));
         }
         Ok(())
-    }
-
-    fn ability_value(&self) -> f64 {
-        self.ability_value.as_ref().map_or(1.0, |t| vb::val(&t.0))
     }
 }
 
@@ -415,6 +475,13 @@ struct Ctx<'a> {
     level_text: String,
     /// `lblInvenCharStat(10).Tag`, the accuracy a swing falls back on.
     accuracy_tag: String,
+    /// The global filter's class, race, level, alignment and minimum item level.
+    who: GlobalChar,
+    /// `chkGlobalFilter.Value = 1`: the lists keep to what `who` can use. True too for a filter
+    /// that has its own values and no character (`state` is then `None`).
+    filter_on: bool,
+    /// `nEquippedItem`.
+    equipped_items: [i32; 20],
 }
 
 impl Ctx<'_> {
@@ -433,23 +500,32 @@ impl Ctx<'_> {
 
 type ApiError = (StatusCode, String);
 
-fn ability_ok(it: &Item, opts: &Options) -> bool {
-    let value = opts.ability_value();
-    if opts.ability > 0 {
-        return it.abilities.iter().any(|s| {
-            s.ability == opts.ability
-                && match opts.ability_op {
-                    AbilityOp::Le => f64::from(s.value) <= value,
-                    AbilityOp::Ge => f64::from(s.value) >= value,
-                }
-        });
+/// `FilterEnv` over the list tabs: `bOnlyInGame` is on, as the data the tabs show is the in-game data.
+fn filter_env<'a>(ctx: &'a Ctx<'a>) -> FilterEnv<'a> {
+    let martial = ctx.state.as_ref().map_or([0.0; 3], |st| {
+        std::array::from_fn(|k| st.stats.stat_tag[37 + k].map_or(0.0, |t| vb::val(&vb::cstr(t))))
+    });
+    FilterEnv {
+        profile: Profile::Stock,
+        world: ctx.world,
+        only_in_game: true,
+        global_filter: ctx.filter_on,
+        who: ctx.who,
+        equipped: ctx.equipped_items,
+        martial_skill: martial,
     }
-    if opts.ability == -1 {
-        // `nFilterNegate` is a Long: a value of 0 or less filters nothing
-        let spell = vb::clng(value).unwrap_or(0);
-        return spell <= 0 || it.negate_spell.contains(&spell);
+}
+
+fn ability_filter(opts: &Options) -> AbilityFilter {
+    AbilityFilter {
+        selected: opts.ability,
+        at_most: opts.ability_op == AbilityOp::Le,
+        // MME starts the box with 1
+        value_text: opts
+            .ability_value
+            .as_ref()
+            .map_or_else(|| "1".to_owned(), |t| t.0.clone()),
     }
-    true
 }
 
 fn weapons(ctx: &Ctx, opts: &Options) -> Built {
@@ -458,9 +534,6 @@ fn weapons(ctx: &Ctx, opts: &Options) -> Built {
     } else {
         5
     };
-    let mud = AttackTypeMud::from_code(attack).unwrap_or(AttackTypeMud::Normal);
-    let profile = ctx.profile(mud, 0);
-    let ch = CharacterState::attack_profile_of(&profile);
     let equipped = ctx
         .state
         .as_ref()
@@ -477,47 +550,60 @@ fn weapons(ctx: &Ctx, opts: &Options) -> Built {
             opts.vs_dodge.0.clone(),
         ],
     };
-    let args = WeaponArgs {
-        ability: i16::try_from(opts.ability.max(0)).unwrap_or(0),
-        attack_type: attack,
-        force_calc: false,
+    let filter = WeaponFilter {
+        calc_combat: opts.calc_combat,
+        slow_85: opts.slow_85,
+        combo: Some(attack),
+        vs: wopts.extras.clone(),
+        ability: ability_filter(opts),
+        ..WeaponFilter::default()
     };
+    let profile_for = |req: ProfileRequest| {
+        let mud = AttackTypeMud::from_code(req.mud).unwrap_or(AttackTypeMud::Normal);
+        ctx.profile(mud, req.weapon)
+    };
+    // the tabs have no dialogs: a character without backstab skill is calculated anyway
+    let list = filter_weapons(
+        &filter_env(ctx),
+        &env,
+        &filter,
+        false,
+        &profile_for,
+        &mut |_| Answer::Yes,
+    );
     let mut rows = Vec::new();
-    for it in &ctx.world.items {
-        if it.item_type == 1
-            && it.in_game
-            && ability_ok(it, opts)
-            && let Some(row) = add_weapon_row(&env, Some(it), &ch, &wopts, &args)
-        {
-            rows.push(row);
+    for entry in list.entries {
+        match entry {
+            WeaponEntry::Built(r) => rows.push(r),
+            WeaponEntry::Add(a) => {
+                let ch = CharacterState::attack_profile_of(&profile_for(a.profile));
+                let args = WeaponArgs {
+                    ability: a.ability,
+                    attack_type: a.attack_type,
+                    force_calc: a.force_calc,
+                };
+                let item = a.item.and_then(|n| ctx.world.get_item(n));
+                rows.extend(add_weapon_row(&env, item, &ch, &wopts, &args));
+            }
         }
-    }
-    // a backstab list ends with the surprise punch, unless an ability narrows the list
-    if attack == 4 && opts.ability == 0 {
-        let punch = ctx.profile(AttackTypeMud::Surprise, -1);
-        let ch = CharacterState::attack_profile_of(&punch);
-        let args = WeaponArgs {
-            ability: 0,
-            attack_type: -4,
-            force_calc: false,
-        };
-        rows.extend(add_weapon_row(&env, None, &ch, &wopts, &args));
     }
     Built {
         rows,
         headers: Vec::new(),
-        ability_numeric: opts.ability > 0 && opts.ability != 43,
+        ability_numeric: list.numeric_ability_sort,
     }
 }
 
 fn armour(ctx: &Ctx, opts: &Options) -> Built {
-    let ability = i16::try_from(opts.ability.max(0)).unwrap_or(0);
-    let rows = ctx
-        .world
-        .items
+    let filter = ArmourFilter {
+        ability: ability_filter(opts),
+        ..ArmourFilter::default()
+    };
+    let list = filter_armour(&filter_env(ctx), &filter, ctx.filter_on);
+    let rows = list
+        .entries
         .iter()
-        .filter(|it| it.item_type == 0 && it.in_game && ability_ok(it, opts))
-        .filter_map(|it| add_armour_row(it, ability))
+        .filter_map(|a| add_armour_row(ctx.world.get_item(a.item)?, a.ability))
         .collect();
     Built {
         rows,
@@ -570,13 +656,12 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
     }
 }
 
-fn sundry(ctx: &Ctx) -> Built {
-    let rows = ctx
-        .world
-        .items
+fn sundry(ctx: &Ctx, opts: &Options) -> Built {
+    let list = filter_sundry(&filter_env(ctx), &ability_filter(opts));
+    let rows = list
+        .entries
         .iter()
-        .filter(|it| ((it.item_type == 0 && it.worn == 0) || it.item_type > 1) && it.in_game)
-        .filter_map(add_other_item_row)
+        .filter_map(|n| add_other_item_row(ctx.world.get_item(*n)?))
         .collect();
     plain(rows)
 }
@@ -605,11 +690,31 @@ fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
 /// character that is not well formed.
 pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, ApiError> {
     req.options.validate()?;
+    if let Some(g) = &req.global_filter {
+        g.validate()?;
+        if g.use_character && req.character.is_none() {
+            return Err(bad("use_character needs a character"));
+        }
+    }
     let nmr = nmr_ver(&world.info.nmr_version);
     let avg = compute_avg_level_max_stats(Profile::Stock, &world.races).all_stats;
 
     let mut state = None;
     let mut level_text = "0".to_owned();
+    let mut who = GlobalChar::default();
+    let mut equipped_items = [0; 20];
+    let mut filter_on = false;
+    if let Some(g) = req.global_filter.as_ref().filter(|g| !g.use_character) {
+        // the bar's own values: the character, if one came along, stays out of it
+        filter_on = true;
+        who = GlobalChar {
+            level: g.level,
+            class: g.class,
+            race: g.race,
+            alignment: g.alignment,
+            min_item_level: g.min_item_level,
+        };
+    }
     if let Some(dto) = &req.character {
         let ch = dto.to_character().map_err(bad)?;
         if ch.class.is_none() || ch.race.is_none() {
@@ -618,10 +723,14 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
                 "pick a class and race".into(),
             ));
         }
-        if dto.global_filter {
+        let (use_char, min_item_level) = match &req.global_filter {
+            Some(g) => (g.use_character, g.min_item_level),
+            None => (dto.global_filter, dto.options.min_item_level),
+        };
+        if use_char {
             let opts = PipelineOptions {
                 hide_class_race: dto.options.hide_class_race,
-                min_item_level: dto.options.min_item_level,
+                min_item_level,
                 dat_ver_caption: world.info.dat_file_version.clone(),
                 nmr_ver: nmr,
                 avg_level_max_all_stats: avg,
@@ -634,7 +743,16 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
                 )
             })?;
             state = Some(st);
+            filter_on = true;
             level_text = ch.level.to_string();
+            who = GlobalChar {
+                level: ch.level,
+                class: ch.class.unwrap_or(0),
+                race: ch.race.unwrap_or(0),
+                alignment: i32::from(ch.alignment),
+                min_item_level,
+            };
+            equipped_items = ch.equipped;
         }
     }
     let accuracy_tag = state
@@ -648,12 +766,15 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
         state,
         level_text,
         accuracy_tag,
+        who,
+        filter_on,
+        equipped_items,
     };
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),
         Tab::Spells => spells(&ctx, &req.options),
-        Tab::Items => sundry(&ctx),
+        Tab::Items => sundry(&ctx, &req.options),
         Tab::Races => {
             let equipped = EquippedGlobals::default();
             let env = row_env(&ctx, &equipped);

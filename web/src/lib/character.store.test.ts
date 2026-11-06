@@ -121,6 +121,32 @@ describe("character store", () => {
   });
 });
 
+describe("applying a pasted character", () => {
+  it("keeps the old file when the pasted name differs and saves the new one beside it", async () => {
+    const { client, files, raw } = fakeClient();
+    const s = createCharacterStore(client);
+    s.set({ name: "Old", level: 3 });
+    await s.flush();
+    expect([...files.keys()]).toEqual(["Old"]);
+    await s.applyPasted({ ...newDoc("Zed"), level: 14 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect([...files.keys()].sort()).toEqual(["Old", "Zed"]);
+    expect(raw.remove).not.toHaveBeenCalled();
+    expect(s.doc.level).toBe(14);
+  });
+
+  it("overwrites the same character when the name matches", async () => {
+    const { client, files } = fakeClient();
+    const s = createCharacterStore(client);
+    s.set({ name: "Zed", level: 3 });
+    await s.flush();
+    await s.applyPasted({ ...newDoc("Zed"), level: 20 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect([...files.keys()]).toEqual(["Zed"]);
+    expect(files.get("Zed")?.level).toBe(20);
+  });
+});
+
 describe("shared store and opening the last character", () => {
   it("hands out one store", () => {
     expect(getCharacterStore()).toBe(getCharacterStore());
