@@ -2722,7 +2722,8 @@ pub struct ReachRowOptions {
 }
 
 /// `GetRoomName(, map, room, bHideRecordNumbers)` over a lookup of room names (`None`: no such room).
-fn get_room_name(
+#[must_use]
+pub fn get_room_name(
     names: &dyn Fn(i32, i32) -> Option<String>,
     map: i32,
     room: i32,
