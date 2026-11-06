@@ -337,6 +337,16 @@ class ControlShim(ExtObject):
             lst[at] = V.c_str(args[0])
             self.props["newindex"] = V.I32(at)
             return None
+        if n == "clear" and not args:
+            # a combo or list box empties (`cmbEquip(x).clear`); ListIndex goes back to nothing selected
+            self.items.pop("list", None)
+            self.items.pop("itemdata", None)
+            self.props.pop("newindex", None)
+            self.props["listindex"] = V.I32(-1)
+            return None
+        if n == "columnheaders" and args:
+            # `lv.ColumnHeaders(i)`: a header whose Tag the code may set (the sort kind); nothing reads it back here
+            return self.items.setdefault("columnheaders", {}).setdefault(V.int_value(args[0]), ControlShim(decode=self.decode))
         if args:
             tbl = self.items.get(n)
             i = V.int_value(args[0])
@@ -688,6 +698,8 @@ class ControlArrayShim(ExtObject):
     def vb_get(self, name, args):
         if name.lower() == "count":
             return V.I32(max(self.members) + 1 if self.members else 0)
+        if name.lower() == "ubound":
+            return V.I16(max(self.members) if self.members else -1)
         raise VBError(438)
 
 
