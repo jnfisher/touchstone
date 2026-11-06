@@ -7,6 +7,7 @@ mod ability_text;
 mod accuracy;
 mod attack;
 mod char_panel;
+mod character;
 mod exp;
 mod exp_per_hour;
 mod game_text;
