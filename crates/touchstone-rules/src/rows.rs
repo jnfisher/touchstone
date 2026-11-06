@@ -21,7 +21,8 @@
 //!
 //! The procedures read a few controls directly: [`WeaponOptions`] and [`SpellOptions`] stand for
 //! them. The character comes in as the profile `PopulateCharacterProfile` made;
-//! [`no_character_profile`] builds the profile of "no character" (the global filter off).
+//! [`no_character_profile`] builds the profile of "no character" (the global filter off) and
+//! [`party_profile`] the one of a lair party, which is not a loaded character.
 //!
 //! Not ported: `InvenAddEquip` (the `AddToInven` argument; it only touches the inventory list)
 //! and the dark-mode colour map `TColor`, which the colours here are the light-theme values of.
@@ -198,7 +199,10 @@ fn cur_text(c: Currency) -> String {
     if frac == 0 {
         format!("{sign}{whole}")
     } else {
-        format!("{sign}{whole}.{}", format!("{frac:04}").trim_end_matches('0'))
+        format!(
+            "{sign}{whole}.{}",
+            format!("{frac:04}").trim_end_matches('0')
+        )
     }
 }
 
@@ -437,10 +441,7 @@ fn armour_steps(item: &Item, ability: i16, row: &mut Row) -> Res<()> {
         vb::cstr(f64::from(item.damage_resist) / 10.0)
     )));
     // the tag is assigned after the cell exists, so an overflow leaves the cell without it
-    let tag = vb::add_i32(
-        vb::mul_i32(item.armour_class, 100_000)?,
-        item.damage_resist,
-    )?;
+    let tag = vb::add_i32(vb::mul_i32(item.armour_class, 100_000)?, item.damage_resist)?;
     row.cells[5].tag = Some(tag.to_string());
     row.cells.push(Cell::new(item.accy.to_string()));
     row.cells.push(Cell::new("0"));
@@ -510,12 +511,12 @@ pub fn armour_ac_dr_tags_are_by_dr(rows: &[Row]) -> bool {
 
 fn tags_are_by_dr_steps(rows: &[Row]) -> Res<bool> {
     for row in rows {
-        if let Some((ac, dr)) = ac_dr_parts(row)? {
-            if ac != dr {
-                let by_dr = vb::add_i32(vb::mul_i32(dr, 100_000)?, ac)?;
-                let tag = row.cells[5].tag.as_deref().unwrap_or("");
-                return Ok(vb::val(tag) == f64::from(by_dr));
-            }
+        if let Some((ac, dr)) = ac_dr_parts(row)?
+            && ac != dr
+        {
+            let by_dr = vb::add_i32(vb::mul_i32(dr, 100_000)?, ac)?;
+            let tag = row.cells[5].tag.as_deref().unwrap_or("");
+            return Ok(vb::val(tag) == f64::from(by_dr));
         }
     }
     Ok(false)
@@ -587,7 +588,10 @@ fn race_color_steps(world: &World, rows: &mut [Row]) -> Res<()> {
                 None
             };
             if let Some(color) = color {
-                row.cells.get_mut(3 + x).ok_or(Vb6Error::Overflow)?.fore_color = Some(color);
+                row.cells
+                    .get_mut(3 + x)
+                    .ok_or(Vb6Error::Overflow)?
+                    .fore_color = Some(color);
             }
         }
     }
@@ -700,24 +704,30 @@ fn weapon_steps(
         None => "Fists".to_string(),
     }));
     let record_or = |f: fn(&Item) -> i32, absent: i32| item.map_or(absent, f);
-    cells.push(Cell::new(if calc_combat {
-        dmg.min_dmg
-    } else {
-        record_or(|i| i.min, 0)
-    }
-    .to_string()));
-    cells.push(Cell::new(if calc_combat {
-        dmg.max_dmg
-    } else {
-        record_or(|i| i.max, 0)
-    }
-    .to_string()));
-    cells.push(Cell::new(if dmg.attack_speed > 0 {
-        i32::from(dmg.attack_speed)
-    } else {
-        record_or(|i| i.speed, 1150)
-    }
-    .to_string()));
+    cells.push(Cell::new(
+        if calc_combat {
+            dmg.min_dmg
+        } else {
+            record_or(|i| i.min, 0)
+        }
+        .to_string(),
+    ));
+    cells.push(Cell::new(
+        if calc_combat {
+            dmg.max_dmg
+        } else {
+            record_or(|i| i.max, 0)
+        }
+        .to_string(),
+    ));
+    cells.push(Cell::new(
+        if dmg.attack_speed > 0 {
+            i32::from(dmg.attack_speed)
+        } else {
+            record_or(|i| i.speed, 1150)
+        }
+        .to_string(),
+    ));
     cells.push(Cell::new("0"));
     cells.push(Cell::new(record_or(|i| i.str_req, 0).to_string()));
     cells.push(Cell::new(record_or(|i| i.encum, 0).to_string()));
@@ -1173,6 +1183,15 @@ fn unloaded_profile(
     };
     let mut t = CharacterProfile::default();
     // bForceNoParty is False only for the party profile
-    populate_character_profile(&ctx, &character, &mut t, false, !global_filter, mud, 0, false);
+    populate_character_profile(
+        &ctx,
+        &character,
+        &mut t,
+        false,
+        !global_filter,
+        mud,
+        0,
+        false,
+    );
     t
 }

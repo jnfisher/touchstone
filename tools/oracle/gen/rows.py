@@ -350,7 +350,25 @@ scn = {
     "family": "rows",
     "description": "List-row builders (FAM-21 without monsters): AddWeapon2LV, AddArmour2LV, AddOtherItem2LV, AddSpell2LV, "
                    "AddRace2LV, AddShop2LV, AddClass2LV and the passes RaceColorCode, SetArmourACDRSortTags, ArmourACDRTagsAreByDR",
-    "notes": [],
+    "notes": [
+        "Each case builds rows with a `rows` step (see tools/oracle/README.md): the record is seeked in the table's global "
+        "recordset, the Add*2LV procedure runs against a recording ListView and the row it added (or null) is stored. "
+        "Row = [Text, Tag, cells]; a cell is its Text, or [Text, Tag, ForeColor] when one was assigned.",
+        "Characters: cases warrior/mage/mystic reuse the pipeline scenario's ladder-c1-l50, ladder-c12-l50 and ladder-c15-l50 "
+        "(RefreshAll runs once, then PopulateCharacterProfile per attack kind, outputs 'p<kind>.refs'); the weapon profile is "
+        "PopulateCharacterProfile(force_use_char, force_no_party, kind) as FilterWeapons calls it, the spell profile the one "
+        "FilterSpells calls (no kind). 'nochar' cases have chkGlobalFilter off; 'party' cases a lair party of 3 with the filter on "
+        "(a profile of level 0 that is not a loaded character).",
+        "Form values the procedures read: chkWeaponOptions(3) calculate combat, (4) 85% speed, txtWeaponExtras(2..4) versus AC/DR/dodge, "
+        "cmbWeaponCombos(1) attack kind, chkSpellOptions(0) calculate, (2) anti-magic, txtSpellOptions(0) versus MR, txtGlobalLevel(1).",
+        "nAbility 43 is only run on weapons that have the ability: a spell number of 0 means 'the spell under the table cursor' "
+        "in PullSpellEQ, which the rows would then depend on. Armour never has abilities 22, 105 or 106 in the stock data.",
+        "edge-* cases: txtWeaponExtras that overflow CLng (the row keeps only its Text and Tag), round and negative extras, and "
+        "spell level boxes that round, are zero or overflow Integer (no row).",
+        "data holds the tables the Rust test rebuilds the world from: full item rows for weapons, armour and the gear the three "
+        "characters wear, minimal rows for the other items, all spells (name, short and every column the rows and spell text read), "
+        "classes, races, shops, monster names and the textblocks a spell ability can cast.",
+    ],
     "database": True,
     "frm": PIPE["frm"],
     "data": DATA,

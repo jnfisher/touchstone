@@ -275,7 +275,10 @@ fn flag(inp: &Inputs, name: &str, idx: Option<usize>) -> bool {
 }
 
 fn text(inp: &Inputs, name: &str, idx: usize) -> String {
-    inp.elem(name, idx)["Text"].as_str().unwrap_or("").to_string()
+    inp.elem(name, idx)["Text"]
+        .as_str()
+        .unwrap_or("")
+        .to_string()
 }
 
 fn weapon_options(inp: &Inputs) -> WeaponOptions {
@@ -331,8 +334,16 @@ fn check_profile(name: &str, got: &CharacterProfile, want: &Value) -> Result<(),
         ("nagi", f64::from(got.agi), &want["nagi"]),
         ("ncrit", f64::from(got.crit), &want["ncrit"]),
         ("nstealth", f64::from(got.stealth), &want["nstealth"]),
-        ("nplusbsaccy", f64::from(got.plus_bs_accy), &want["nplusbsaccy"]),
-        ("nspelldmgbonus", f64::from(got.spell_dmg_bonus), &want["nspelldmgbonus"]),
+        (
+            "nplusbsaccy",
+            f64::from(got.plus_bs_accy),
+            &want["nplusbsaccy"],
+        ),
+        (
+            "nspelldmgbonus",
+            f64::from(got.spell_dmg_bonus),
+            &want["nspelldmgbonus"],
+        ),
     ];
     for (field, g, w) in checks {
         if (g - w.as_f64().unwrap_or(f64::NAN)).abs() > 1e-9 {
@@ -350,7 +361,11 @@ fn run_case(header: &Value, case: &Value, db: &Db, fails: &mut Vec<String>) -> u
     let inp = Inputs::new(header, case);
     let steps = case["inputs"]["steps"].as_array().unwrap();
     let out = &case["outputs"];
-    assert!(case.get("error").is_none(), "{id}: the oracle raised {}", case["error"]);
+    assert!(
+        case.get("error").is_none(),
+        "{id}: the oracle raised {}",
+        case["error"]
+    );
     let dat_ver = header["setup"]["forms"]["frmMain"]["lblDatVer"]["Caption"]
         .as_str()
         .unwrap()
@@ -392,9 +407,13 @@ fn run_case(header: &Value, case: &Value, db: &Db, fails: &mut Vec<String>) -> u
                 let party = PartyFilter {
                     lair_mode: flag(&inp, "optMonsterFilter", Some(1)),
                     lair_text: std::array::from_fn(lair),
-                    monster_damage_text: inp.ctl("txtMonsterDamage")["Text"].as_str().unwrap_or("").to_string(),
+                    monster_damage_text: inp.ctl("txtMonsterDamage")["Text"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string(),
                 };
-                let in_party = a[2] != true && party.lair_mode && vb::val(&party.lair_text[0]) > 1.0;
+                let in_party =
+                    a[2] != true && party.lair_mode && vb::val(&party.lair_text[0]) > 1.0;
                 let profile = match &state {
                     _ if in_party && global_filter && !no_char => {
                         party_profile(Profile::Stock, &db.world, 1.83, 0.0, &party, mud)
@@ -433,22 +452,39 @@ fn run_case(header: &Value, case: &Value, db: &Db, fails: &mut Vec<String>) -> u
                                 force_calc: args[6] == true,
                             };
                             // the surprise punch needs a record under the cursor but reads none of it
-                            built = add_weapon_row(&env, db.world.get_item(*key), &ch, &weapon_opts, &w);
+                            built = add_weapon_row(
+                                &env,
+                                db.world.get_item(*key),
+                                &ch,
+                                &weapon_opts,
+                                &w,
+                            );
                         }
                         "AddSpell2LV" => {
                             let sp = db.world.get_spell(*key).unwrap();
-                            if let Some(r) = add_spell_row(&env, sp, ch.unwrap(), &spell_opts, args[2] == true) {
+                            if let Some(r) =
+                                add_spell_row(&env, sp, ch.unwrap(), &spell_opts, args[2] == true)
+                            {
                                 bless = r.bless_entry.map_or(Value::Null, |(t, d)| json!([t, d]));
                                 built = Some(r.row);
                             }
                         }
                         "AddArmour2LV" => {
-                            built = add_armour_row(db.world.get_item(*key).unwrap(), i(&args[2]) as i16);
+                            built = add_armour_row(
+                                db.world.get_item(*key).unwrap(),
+                                i(&args[2]) as i16,
+                            );
                         }
-                        "AddOtherItem2LV" => built = add_other_item_row(db.world.get_item(*key).unwrap()),
+                        "AddOtherItem2LV" => {
+                            built = add_other_item_row(db.world.get_item(*key).unwrap())
+                        }
                         "AddShop2LV" => built = add_shop_row(db.world.get_shop(*key).unwrap()),
-                        "AddClass2LV" => built = add_class_row(&env, db.world.get_class(*key).unwrap()),
-                        "AddRace2LV" => built = add_race_row(&env, db.world.get_race(*key).unwrap()),
+                        "AddClass2LV" => {
+                            built = add_class_row(&env, db.world.get_class(*key).unwrap())
+                        }
+                        "AddRace2LV" => {
+                            built = add_race_row(&env, db.world.get_race(*key).unwrap())
+                        }
                         other => panic!("{id}: unknown row procedure {other}"),
                     }
                     if shared {
@@ -459,7 +495,12 @@ fn run_case(header: &Value, case: &Value, db: &Db, fails: &mut Vec<String>) -> u
                     got_bless.push(bless);
                 }
                 let mut want_post = Vec::new();
-                for p in st.get("post").and_then(Value::as_array).into_iter().flatten() {
+                for p in st
+                    .get("post")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
                     let result = match p["call"].as_str().unwrap() {
                         "SetArmourACDRSortTags" => {
                             set_armour_ac_dr_sort_tags(&mut rows, p["args"][1] == true);
@@ -475,7 +516,11 @@ fn run_case(header: &Value, case: &Value, db: &Db, fails: &mut Vec<String>) -> u
                     want_post.push(json!({"result": result, "rows": rows_json(&rows)}));
                 }
                 // fixtures/rules/rows.json: `<as>` holds the rows, `<as>.post` the passes' results, `<as>.watch` the bless entries
-                let got = if shared { rows_json(&rows) } else { Value::Array(got_each) };
+                let got = if shared {
+                    rows_json(&rows)
+                } else {
+                    Value::Array(got_each)
+                };
                 if got != out[name] {
                     let at = got
                         .as_array()
@@ -490,10 +535,14 @@ fn run_case(header: &Value, case: &Value, db: &Db, fails: &mut Vec<String>) -> u
                         at.map_or_else(|| out[name].to_string(), |k| out[name][k].to_string()),
                     ));
                 }
-                if !want_post.is_empty() && Value::Array(want_post.clone()) != out[format!("{name}.post")] {
+                if !want_post.is_empty()
+                    && Value::Array(want_post.clone()) != out[format!("{name}.post")]
+                {
                     fails.push(format!("{id} {name}.post differs"));
                 }
-                if spec.get("watch").is_some() && Value::Array(got_bless) != out[format!("{name}.watch")] {
+                if spec.get("watch").is_some()
+                    && Value::Array(got_bless) != out[format!("{name}.watch")]
+                {
                     fails.push(format!("{id} {name}.watch (bless entries) differs"));
                 }
                 checked += keys.len();
@@ -518,7 +567,12 @@ fn rows_match_the_oracle() {
         "{} of {} cases failed ({checked} records):\n{}",
         fails.len(),
         fx.cases.len(),
-        fails.iter().take(20).cloned().collect::<Vec<_>>().join("\n")
+        fails
+            .iter()
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
     );
     assert!(checked > 4000, "only {checked} records ran");
 }
