@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { DetailGroup } from '$lib/explorers';
-	import { groupRows, refCells, refColumns, type Pane, type RefRow } from '$lib/detail';
+	import { groupRows, refCells, refColumns, type Pane, type RefRow, type RefTarget } from '$lib/detail';
+	import { lineColorClass } from '$lib/monsters';
 
 	let {
 		groups,
@@ -22,7 +23,7 @@
 		compare?: boolean;
 		/** Weapons and armour offer the compare toggle. */
 		canCompare?: boolean;
-		onLink?: (r: RefRow) => void;
+		onLink?: (r: { target: RefTarget | null }) => void;
 		linkable?: (r: RefRow) => boolean;
 		/** Controls that sit above the rows (the shop's charm box). */
 		before?: Snippet;
@@ -64,6 +65,38 @@
 			<p class="text-destructive mb-3" role="alert">Could not load the details: {error}</p>
 		{:else if !pane && head}
 			<p class="text-muted-foreground mb-3" data-testid="pane-loading">Loading details...</p>
+		{/if}
+
+		{#if pane?.lines?.length}
+			<!-- The monster pane: MME's lvMonsterDetail, line by line with its own colours and bold. -->
+			<dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5" data-testid="pane-lines">
+				{#each pane.lines as l, k (k)}
+					{#if !l.label && !l.cells.some((c) => c.text)}
+						<div class="col-span-2 h-1.5" aria-hidden="true"></div>
+					{:else}
+						<dt class="text-muted-foreground whitespace-nowrap {l.bold ? 'font-semibold' : ''} {lineColorClass(l.color)}">
+							{l.label}
+						</dt>
+						<dd class="min-w-0 break-words whitespace-pre-wrap">
+							{#each l.cells as c, j (j)}
+								{#if l.target && onLink && j === 0}
+									<button
+										type="button"
+										class="text-primary text-left hover:underline {c.bold ? 'font-semibold' : ''}"
+										data-testid="pane-link"
+										onclick={() => onLink({ target: l.target })}
+									>
+										{c.text}
+									</button>
+								{:else}
+									<span class="{c.bold ? 'font-semibold' : ''} {lineColorClass(c.color)}">{c.text}</span>
+								{/if}
+								{#if j < l.cells.length - 1}<br />{/if}
+							{/each}
+						</dd>
+					{/if}
+				{/each}
+			</dl>
 		{/if}
 
 		{#if pane}

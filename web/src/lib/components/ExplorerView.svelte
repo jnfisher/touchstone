@@ -1,24 +1,25 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
-	import { api, type AbilityTable, type Item, type Spell, type TableName, type TableTypes } from '$lib/api';
+	import { api, type Item, type Spell, type TableName, type TableTypes } from '$lib/api';
 	import ClassRaceBuilder from '$lib/components/ClassRaceBuilder.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
+	import MonsterFilters from '$lib/components/MonsterFilters.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopControls from '$lib/components/ShopControls.svelte';
 	import SpellEffect from '$lib/components/SpellEffect.svelte';
 	import SplitPane from '$lib/components/SplitPane.svelte';
 	import { getCharacterStore, openLastCharacter } from '$lib/character.svelte';
-	import { linkFor, paneBody, paneClient, paneKind, type Pane, type RefRow } from '$lib/detail';
+	import { linkFor, paneBody, paneClient, paneKind, type Pane, type RefTarget } from '$lib/detail';
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
+	import { getMonsterFilterStore } from '$lib/monsters.svelte';
 	import { selection, shopView } from '$lib/explorer-state.svelte';
 	import {
 		buildLookups,
 		listRows,
 		parseNmr,
 		type AnyExplorer,
-		type DetailExtra,
 		type Lookups
 	} from '$lib/explorers';
 	import { toColDefs } from '$lib/grid/columns';
@@ -63,6 +64,7 @@
 	// The server builds these lists (MME's columns and cells for the current character). The
 	// character store is shared with the Character tab; edits re-fetch after a short pause.
 	const bar = getGlobalFilterStore();
+	const monsterBoxes = getMonsterFilterStore();
 	let evaluated = $state.raw<{ tab: string; table: EvalTable }>();
 	let evalError = $state<string>();
 	const payload = $derived(evaluated && evaluated.tab === computedTab ? evaluated.table : undefined);
@@ -71,7 +73,14 @@
 	$effect(() => {
 		const tab = computedTab;
 		if (!tab) return;
-		const body = evaluateBody($state.snapshot(store.doc), $state.snapshot(bar.filter));
+		// The Monsters list also shows damage by the character's attack choice with the bar off.
+		const isMonsters = tab === 'monsters';
+		const body = evaluateBody(
+			$state.snapshot(store.doc),
+			$state.snapshot(bar.filter),
+			isMonsters ? { monsters: $state.snapshot(monsterBoxes.controls) } : {},
+			isMonsters
+		);
 		const ctl = new AbortController();
 		const timer = setTimeout(
 			async () => {
@@ -97,29 +106,7 @@
 		if (computedTab) return table?.find((r) => String(explorer.rowId(r)) === String(selectedId));
 		return rows.find((r) => String(explorer.rowId(r)) === String(selectedId));
 	});
-	const ABILITY_TABLES: readonly string[] = ['monsters'];
-
-	// A monster's ability text and max damage come from the server for the selected record.
-	let extra = $state.raw<DetailExtra>({});
-	let extraTicket = 0;
-	$effect(() => {
-		const table = explorer.table;
-		const id = selectedId === undefined ? undefined : Number(selectedId);
-		const mine = ++extraTicket;
-		extra = {};
-		if (id === undefined || !ABILITY_TABLES.includes(table)) return;
-		const stale = () => mine !== extraTicket;
-		api
-			.abilities(table as AbilityTable, id)
-			.then((abilities) => !stale() && (extra = { ...extra, abilities }))
-			.catch(() => !stale() && (extra = { ...extra, abilitiesFailed: true }));
-		if (table === 'monsters')
-			api
-				.monsterMaxDamage(id)
-				.then((d) => !stale() && (extra = { ...extra, maxDamage: d.max_damage }))
-				.catch(() => {});
-	});
-	const groups = $derived(selected ? explorer.detail(selected, lookups ?? { nmr }, extra) : []);
+	const groups = $derived(selected ? explorer.detail(selected, lookups ?? { nmr }) : []);
 
 	// The record's pane as MME builds it (PullItemDetail and friends) for the current character and
 	// global filter. Shop prices follow the charm box; edits re-fetch after a short pause.
@@ -137,7 +124,12 @@
 		}
 		const showSell = isShops && shopView.selling;
 		const charm = isShops ? (shopView.buying || shopView.selling ? shopView.charm : 0) : undefined;
-		const body = paneBody($state.snapshot(store.doc), $state.snapshot(bar.filter), { charm, showSell });
+		const body = paneBody($state.snapshot(store.doc), $state.snapshot(bar.filter), {
+			charm,
+			showSell,
+			options: k === 'monsters' ? { monsters: $state.snapshot(monsterBoxes.controls) } : undefined,
+			keepCharacter: k === 'monsters'
+		});
 		const ctl = new AbortController();
 		const timer = setTimeout(
 			async () => {
@@ -160,7 +152,7 @@
 	const livePane = $derived(pane && pane.kind === kind && pane.number === Number(selectedId) ? pane : undefined);
 
 	let itemIndex = $state.raw<Map<number, Item>>();
-	async function follow(r: RefRow) {
+	async function follow(r: { target: RefTarget | null }) {
 		if (!r.target) return;
 		let items = itemIndex;
 		if (r.target.table === 'items' && !items) {
@@ -178,7 +170,7 @@
 
 <div class="flex h-full min-h-0 flex-col gap-2">
 	<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-		<h2 class="text-base font-semibold">{title}</h2>
+		<h2 class="text-base font-semibold" data-testid="title">{payload?.filtered ? `*${title}*` : title}</h2>
 		<span class="text-muted-foreground text-sm tabular-nums" data-testid="count">
 			{#if table && (!computedTab || payload)}{shown.toLocaleString('en-US')} of {total.toLocaleString('en-US')}{/if}
 		</span>
@@ -204,6 +196,10 @@
 			</span>
 		{/if}
 	</div>
+
+	{#if slug === 'monsters'}
+		<MonsterFilters />
+	{/if}
 
 	<div class="min-h-0 flex-1">
 		{#if error}

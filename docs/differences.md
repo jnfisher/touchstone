@@ -121,6 +121,16 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   the item pane takes it as `attack_type` and the page leaves it unset (normal attack).
 - A character used through the global filter bar always counts as `chkGlobalFilter` on, whatever flag it was saved with.
 
+## Monsters explorer (P4-08)
+
+- The server has no "calculate monster damage" action, so the Monsters list and pane run with MME's start-up damage
+  arrays (nothing calculated). Panes of monsters MME had calculated beforehand read differently there, and the party
+  wording "vs party defenses" (which needs `bMonsterDamageVsPartyCalculated`) never appears.
+- The Monsters list and pane use `settings.json`'s simulation rounds (500 by default) where the oracle ran 1000, and
+  run `CalculateAverageLairs` first as MME does while starting, so a damage limit that falls between simulated values
+  can list a monster the oracle did not.
+- "Reachable only" is accepted but changes nothing until the reachability module is ported.
+
 ## Find Best (P4-18)
 
 - MME's equipment combos are `Sorted`, and a tie in Find Best (same score, same encumbrance ratio) goes to the
