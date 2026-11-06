@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use touchstone_model::WorldParts;
 
+use super::history::{Field, History};
 use super::lairs::pool;
 use super::scripts::Scripts;
 use super::source::{Source, clip};
@@ -18,8 +19,10 @@ const WIDTH: usize = 20000;
 /// Spell ability that summons a monster.
 const ABILITY_SUMMON: i32 = 12;
 const ROOM_LAIR: i64 = 3;
+/// A base range wider than this is no list of monsters (guards a corrupt spell row).
+const MAX_SUMMON_RANGE: i32 = 100;
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
+pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
     let mut specific: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
     for r in &parts.rooms {
         if r.npc > 0 {
@@ -56,21 +59,29 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
     }
 
     let mut spells: HashMap<i32, Vec<i32>> = HashMap::new();
-    let mut by_number: Vec<_> = parts.spells.iter().collect();
+    // Only spells that are part of the game summon anything.
+    let mut by_number: Vec<_> = parts
+        .spells
+        .iter()
+        .filter(|s| super::scripts::spell_in_game(s))
+        .collect();
     by_number.sort_by_key(|s| s.number);
     for s in by_number {
         for a in s.abilities.iter().filter(|a| a.ability == ABILITY_SUMMON) {
-            // The monster is the ability's value, or the spell's base value when that is 0.
-            let monster = if a.value > 0 {
-                a.value
-            } else if s.min_base == s.max_base {
-                s.min_base
+            // The monster is the ability's value, or the spell's base values when that is 0: a
+            // base range summons any monster in it.
+            let range = if a.value > 0 {
+                a.value..=a.value
+            } else if s.min_base > 0 && s.max_base >= s.min_base {
+                s.min_base..=s.max_base.min(s.min_base + MAX_SUMMON_RANGE)
             } else {
-                0
+                1..=0
             };
-            let list = spells.entry(monster).or_default();
-            if monster > 0 && !list.contains(&s.number) {
-                list.push(s.number);
+            for monster in range {
+                let list = spells.entry(monster).or_default();
+                if !list.contains(&s.number) {
+                    list.push(s.number);
+                }
             }
         }
     }
@@ -98,16 +109,12 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
             kinds.push(v.join(","));
         }
         if let Some(v) = spells.get(&m.number) {
-            kinds.push(
-                v.iter()
-                    .map(|n| format!("Spell #{n}"))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
+            kinds.extend(v.iter().map(|n| format!("Spell #{n}")));
         }
         if let Some(v) = texts.get(&m.number) {
-            kinds.push(v.join(", "));
+            kinds.extend(v.iter().cloned());
         }
+        let kinds = hist.order(Field::SummonedBy, m.number, kinds);
         m.summoned_by = if kinds.is_empty() {
             None
         } else {

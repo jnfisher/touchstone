@@ -8,13 +8,19 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use touchstone_model::{TbInfo, WorldParts};
 
+use super::history::{Field, History};
 use super::scripts::{Scripts, spell_blocks, spell_in_game};
 use super::source::{Source, clip};
 
 /// Column width of `TBInfo.Called From`.
 const WIDTH: usize = 250;
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
+/// The rows' numbers and what calls each of them, before ordering.
+pub(super) fn entries(
+    src: &Source,
+    parts: &WorldParts,
+    sc: &Scripts,
+) -> BTreeMap<i32, Vec<String>> {
     let mut rooms: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
     for r in parts.rooms.iter().filter(|r| r.cmd > 0) {
         rooms
@@ -65,10 +71,8 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
         .map(|n| (n, ()))
         .collect();
 
-    parts.tbinfo = rows
-        .into_keys()
+    rows.into_keys()
         .map(|number| {
-            let block = &src.blocks[&number];
             let mut entries: Vec<String> = Vec::new();
             for (map, room) in rooms.get(&number).into_iter().flatten() {
                 entries.push(format!("Room {map}/{room}"));
@@ -88,6 +92,24 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
                 let pct = c.pct.map_or_else(String::new, |p| format!("({p}%)"));
                 entries.push(format!("{kind} #{}{pct}", c.block));
             }
+            (number, entries)
+        })
+        .collect()
+}
+
+/// Note this pass's entries in the history.
+pub(super) fn observe(src: &Source, parts: &WorldParts, sc: &Scripts, hist: &mut History) {
+    for (number, list) in entries(src, parts, sc) {
+        hist.order(Field::CalledFrom, number, list);
+    }
+}
+
+pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
+    let rows = entries(src, parts, sc);
+    parts.tbinfo = rows
+        .into_iter()
+        .map(|(number, list)| {
+            let block = &src.blocks[&number];
             TbInfo {
                 number,
                 link_to: block.link,
@@ -96,7 +118,10 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
                     .scripts
                     .contains(&number)
                     .then(|| block.text.clone()),
-                called_from: clip(entries.join(", "), WIDTH),
+                called_from: clip(
+                    hist.order(Field::CalledFrom, number, list).join(", "),
+                    WIDTH,
+                ),
             }
         })
         .collect();

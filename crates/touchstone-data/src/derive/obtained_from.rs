@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use touchstone_model::WorldParts;
 
+use super::history::{Field, History};
 use super::scripts::Scripts;
 use super::source::{Source, clip};
 use super::walk::Origin;
@@ -13,7 +14,7 @@ use super::walk::Origin;
 /// Column width of `Items.Obtained From`.
 const WIDTH: usize = 1996;
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
+pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
     let mut rooms: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
     for &(item, map, room) in &src.room_items {
         rooms.entry(item).or_default().push((map, room));
@@ -92,6 +93,7 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
         entries.extend(monsters.remove(&it.number).unwrap_or_default());
         entries.extend(texts.remove(&it.number).unwrap_or_default());
         entries.extend(npcs.remove(&it.number).unwrap_or_default());
+        let entries = hist.order(Field::ObtainedFrom, it.number, entries);
         it.obtained_from = if entries.is_empty() {
             None
         } else {

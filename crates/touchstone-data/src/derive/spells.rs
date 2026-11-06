@@ -9,6 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use touchstone_model::{Monster, WorldParts};
 
+use super::history::{Field, History};
 use super::scripts::Scripts;
 use super::source::{Source, clip};
 use super::walk::Origin;
@@ -40,7 +41,7 @@ fn percent(p: Option<i64>) -> String {
     p.map_or_else(String::new, |p| format!("({p}%)"))
 }
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
+pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
     // Only items that can be obtained teach anything.
     let mut teachers: HashMap<i32, Vec<(i32, [i32; 10])>> = HashMap::new();
     let mut items: Vec<_> = parts
@@ -135,6 +136,7 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
             .map(|(n, _)| format!("Item #{n}"))
             .collect();
         from.extend(by_script.into_iter().flatten().map(|(w, _)| w.clone()));
+        let from = hist.order(Field::LearnedFrom, s.number, from);
         s.learned_from = if from.is_empty() {
             None
         } else {
@@ -187,6 +189,7 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts) {
                 .flatten()
                 .map(|n| format!("Item #{n}")),
         );
+        let entries = hist.order(Field::CastedBy, s.number, entries);
         s.casted_by = if entries.is_empty() {
             None
         } else {
