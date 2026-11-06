@@ -483,6 +483,11 @@ COERCE = {
 }
 
 
+# the VB type each coercion target keeps unchanged (coercing a value of exactly this type is the identity)
+EXACT_TYPE = {"integer": I16, "long": I32, "byte": U8, "single": F32, "double": float,
+              "currency": Cur, "string": str, "boolean": bool}
+
+
 def coerce_to(v, tc):
     """Implicit conversion on assignment / argument passing to a declared type."""
     f = COERCE.get(tc)
@@ -501,6 +506,7 @@ def type_name_of(v):
 # ------------------------------------------------------------------ arithmetic
 
 _RANK = {U8: 1, I16: 2, I32: 3, F32: 4, Cur: 5, float: 6}
+_INTS = (U8, I16, I32)
 
 
 def _prep(v):
@@ -541,6 +547,14 @@ def _cur_scaled(v):
 
 def arith(op, a, b):
     """op in + - *"""
+    ta, tb = type(a), type(b)
+    if ta is float and tb is float:
+        z = a + b if op == "+" else a - b if op == "-" else a * b
+        return mk_dbl(z)
+    if ta in _INTS and tb in _INTS:
+        x, y = int(a), int(b)
+        n = x + y if op == "+" else x - y if op == "-" else x * y
+        return _fit(n, _RANK[ta] if _RANK[ta] > _RANK[tb] else _RANK[tb])
     a = _prep(a)
     b = _prep(b)
     if type(a) is str or type(b) is str:

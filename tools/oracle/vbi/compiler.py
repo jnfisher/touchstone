@@ -31,12 +31,20 @@ class CompiledProc:
         self.static_decls = []
         self.ret_code = "variant"
         self.labels = {}
+        self.no_paramarray = not any(p.paramarray for p in proc.params)
+        self._ret_def = None
 
     def statics_for(self, this):
         return self.static_cells
 
     def ret_default(self, it):
-        return it.default_value(self.ret_code)
+        d = self._ret_def
+        if d is None:
+            d = it.default_value(self.ret_code)
+            if type(d) in (V.I16, V.I32, V.U8, V.Cur, V.F32, float, str, bool) or d is V.EMPTY:
+                self._ret_def = (d,)      # immutable scalar: safe to share
+            return d
+        return d[0]
 
 
 class Ctx:
@@ -844,9 +852,11 @@ class Compiler:
         if tgt.kind == "name" and tgt.low in ctx.locals and ctx.locals[tgt.low] in V.COERCE:
             low = tgt.low
             f = V.COERCE[ctx.locals[low]]
+            exact = V.EXACT_TYPE.get(ctx.locals[low])
 
             def fa(fr):
-                fr.v[low].v = f(val(fr))
+                x = val(fr)
+                fr.v[low].v = x if type(x) is exact else f(x)
             self.emit(ctx, fa)
             return
 
