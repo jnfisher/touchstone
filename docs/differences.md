@@ -170,6 +170,21 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - The "last find best" values of each slot are not kept between clicks in MME either: Next Best recomputes them
   from the worn items. Only the last menu entry and the exclusion list persist.
 
+## Reachability (P3-45)
+
+- Edge order, and so "first found" in route ties and which gate is reported, follows the order the tables are read
+  in. MME reads `Rooms`, `Spells` and `TBInfo` as DAO returns them; touchstone uses the order of the loaded tables
+  (the converted database's row order for the oracle). `Monsters` is read ordered by `Number`, as MME does.
+- MME shows a progress bar and a dialog if the build fails and leaves reachability uncomputed. The port cannot fail
+  on loaded tables, so there is no failure path.
+- `ReachIsMonsterOK` computes on demand in MME (the filter freezes the window for a few seconds). The server does the
+  same for the "Reachable only" list filter; the monster pane shows "(double-click to compute)" until the user runs
+  Calculate Reachability, and the Monsters toolbar button stands in for the Options menu item and the double-click.
+- The result belongs to one load: reloading the data drops it, as loading another database does in MME.
+- The fixture runs on a slice of the stock database (about 5,000 rooms; the whole map is too large to commit). The
+  port was also compared with the oracle on the full stock map (26,694 rooms, 87,147 edges): every edge column, the
+  level breakpoints and every monster's level bands matched.
+
 ## Rooms tab (P4-13)
 
 - The graphical map (frmMap, the cell grid, its drawing and the map buttons) is not built; the Rooms tab shows the text MME

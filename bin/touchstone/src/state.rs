@@ -40,6 +40,8 @@ pub struct Loaded {
     pub info: InfoJson,
     /// MME's `LoadLairInfo` cache, built when a reference list first needs it.
     lair_cache: OnceLock<LairCache>,
+    /// The computed reachability of this load (a reload starts without one).
+    pub reach: crate::reach::ReachSlot,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,6 +118,7 @@ impl Loaded {
             world,
             tables,
             lair_cache: OnceLock::new(),
+            reach: crate::reach::ReachSlot::default(),
             info: InfoJson {
                 source,
                 loaded_at: iso_now(),

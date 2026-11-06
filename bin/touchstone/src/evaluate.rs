@@ -792,6 +792,8 @@ pub(crate) struct Ctx<'a> {
     /// The attack choice of the character that came with the request, used or not: MME keeps its
     /// `nGlobalAttack*` globals whatever `chkGlobalFilter` says, so "Damage vs Mob" follows them.
     pub(crate) attack: Option<touchstone_rules::character::AttackConfig>,
+    /// The load's reachability, for "Reachable only" (computed when that filter asks, as `ReachIsMonsterOK` does).
+    pub(crate) reach: Option<&'a crate::reach::ReachSlot>,
 }
 
 impl Ctx<'_> {
@@ -1259,6 +1261,11 @@ fn monsters(
                     prompt: None,
                 };
             }
+            let computed = if filter.extras.reachable_only {
+                ctx.reach.map(|slot| slot.get_or_compute(ctx.world))
+            } else {
+                None
+            };
             let desc = char_defense_description(s.cctx, s.state).unwrap_or_default();
             let party = controls.party();
             let filter_inputs = MonsterFilterInputs {
@@ -1267,7 +1274,10 @@ fn monsters(
                 settings: s.settings,
                 possy: &s.possy,
                 global_level: f64::from(ctx.who.level),
-                reach: &AllReachable,
+                reach: match &computed {
+                    Some(r) => &**r,
+                    None => &AllReachable,
+                },
                 prompts: if controls.ask_damage {
                     damage.prompts(&desc, &party)
                 } else {
@@ -1452,6 +1462,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
         filter_on,
         equipped_items,
         attack,
+        reach: None,
     })
 }
 
@@ -1483,10 +1494,12 @@ pub fn evaluate_with(
         exp,
         sim_rounds,
         &Snapshot::uncalculated(world),
+        None,
     )
 }
 
-/// [`evaluate_with`] over the monster damage a calculation left (`damage`); only the Monsters list reads it.
+/// [`evaluate_with`] over the monster damage a calculation left (`damage`) and the load's reachability slot, which
+/// "Reachable only" fills on first use; only the Monsters list reads them.
 ///
 /// # Errors
 /// As [`prepare`].
@@ -1497,8 +1510,10 @@ pub fn evaluate_with_damage(
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
     damage: &Snapshot,
+    reach: Option<&crate::reach::ReachSlot>,
 ) -> Result<Table, ApiError> {
-    let ctx = prepare(world, req)?;
+    let mut ctx = prepare(world, req)?;
+    ctx.reach = reach;
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),
@@ -1586,7 +1601,16 @@ pub async fn evaluate_route(
         hit
     } else {
         let job = tokio::task::spawn_blocking(move || {
-            evaluate_with_damage(&loaded.world, tab, &req, &exp, rounds, &damage).and_then(|t| {
+            evaluate_with_damage(
+                &loaded.world,
+                tab,
+                &req,
+                &exp,
+                rounds,
+                &damage,
+                Some(&loaded.reach),
+            )
+            .and_then(|t| {
                 serde_json::to_vec(&t)
                     .map(Bytes::from)
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))

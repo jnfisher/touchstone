@@ -130,6 +130,7 @@
 	const evalDefs = $derived(payload ? evalColDefs(payload.columns, explorer.defaultSort) : []);
 	$effect(() => {
 		const tab = computedTab;
+		void monsterBoxes.reachRev;
 		if (!tab) return;
 		// The Monsters list also shows damage by the character's attack choice with the bar off.
 		const isMonsters = tab === 'monsters';
@@ -190,6 +191,7 @@
 	let compare = $state(true);
 	$effect(() => {
 		const k = kind;
+		void monsterBoxes.reachRev;
 		const id = selectedId === undefined ? undefined : Number(selectedId);
 		if (!k || id === undefined) {
 			pane = undefined;

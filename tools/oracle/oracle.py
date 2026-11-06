@@ -214,7 +214,7 @@ def cmd_gen(args):
 # Rough CPU seconds of the slow families (`gen`, one core). Only used to decide how many pieces a family
 # is split into for `check`; a stale number costs speed, never correctness.
 COST_HINTS = {"combat": 150, "paste_party": 270, "textblock": 50, "monster_glue": 40, "monster_glue_char": 70,
-              "item_match": 40, "exp": 25, "gear2": 25, "gear": 20}
+              "item_match": 40, "exp": 25, "gear2": 25, "gear": 20, "reachability": 180}
 PIECE_SECONDS = 45
 
 

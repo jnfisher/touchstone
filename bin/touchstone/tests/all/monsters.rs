@@ -1033,10 +1033,8 @@ async fn monster_panes_match_the_oracle_without_a_character() {
         let n = key.as_i64().unwrap();
         let (st, got) = call(&app, &format!("/api/detail/monsters/{n}"), Some(&body)).await;
         assert_eq!(st, StatusCode::OK, "monster {n}: {got}");
-        let got: Vec<Value> = got["lines"]
-            .as_array()
-            .unwrap()
-            .iter()
+        let got: Vec<Value> = without_reach_row(got["lines"].as_array().unwrap())
+            .into_iter()
             .map(got_line)
             .collect();
         let want: Vec<Value> = want.as_array().unwrap().iter().map(want_line).collect();
@@ -1182,10 +1180,8 @@ async fn character_case(id: &str) {
         let n = key.as_i64().unwrap();
         let (st, got) = call(&app, &format!("/api/detail/monsters/{n}"), Some(&body)).await;
         assert_eq!(st, StatusCode::OK, "monster {n}: {got}");
-        let got: Vec<Value> = got["lines"]
-            .as_array()
-            .unwrap()
-            .iter()
+        let got: Vec<Value> = without_reach_row(got["lines"].as_array().unwrap())
+            .into_iter()
             .map(got_line)
             .collect();
         let want: Vec<Value> = want.as_array().unwrap().iter().map(want_line).collect();
@@ -1266,4 +1262,21 @@ async fn unknown_monsters_are_404() {
     let app = router(detail_world(false));
     let (st, _) = call(&app, "/api/detail/monsters/99999", None).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
+}
+
+/// The oracle stubs AddMonsterReachRows (the reachability module is its own family); the server shows its
+/// "double-click to compute" row and the blank row after it until reachability is computed.
+fn without_reach_row(lines: &[Value]) -> Vec<&Value> {
+    let mut out = Vec::new();
+    let mut skip = 0;
+    for l in lines {
+        if skip > 0 {
+            skip -= 1;
+        } else if l["kind"] == "reach_compute" {
+            skip = 1;
+        } else {
+            out.push(l);
+        }
+    }
+    out
 }
