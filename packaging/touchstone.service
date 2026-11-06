@@ -2,15 +2,15 @@
 Description=touchstone (MMUD Explorer web server)
 Documentation=https://github.com/jnfisher/touchstone/blob/main/docs/install-pi.md
 # Start after the game so its -wal and -shm files exist: a read-only reader cannot create them.
-# Change or drop silvermere.service to match how the game is started on this machine.
-After=network-online.target silvermere.service
+# quicksilver.service is the unit `quicksilver service install --system` writes; change it if the game runs differently.
+After=network-online.target quicksilver.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=touchstone
 Group=touchstone
-# The game's group (for example `mud`) is added with `usermod -aG mud touchstone`, so the
+# The game's group (`quicksilver` for a `quicksilver service install --system` install) is added with `usermod -aG quicksilver touchstone`, so the
 # database is readable through group permissions.
 ExecStart=/usr/local/bin/touchstone serve --config /etc/touchstone/touchstone.toml
 Restart=on-failure

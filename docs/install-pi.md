@@ -51,7 +51,7 @@ files (check with `ls -l` on the database; `mud` below is a placeholder):
 
 ```sh
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin touchstone
-sudo usermod -aG mud touchstone
+sudo usermod -aG quicksilver touchstone
 ```
 
 What touchstone needs from the game's files is exactly this, because it opens the database
@@ -68,7 +68,7 @@ read-only (`mode=ro`) and the game keeps it in WAL mode:
   move the game to `/srv`.
 - **The game must be running first.** If the game has stopped cleanly, the `-wal` and `-shm`
   files are removed, and a reader that cannot write the directory cannot recreate them; it fails
-  with "attempt to write a readonly database". The unit orders itself after `silvermere.service`
+  with "attempt to write a readonly database". The unit orders itself after `quicksilver.service`
   (rename it in the unit if yours differs) and restarts on failure, so it comes up once the game
   does. If you want touchstone to start without the game running, give the group write permission
   on the database directory and change `ReadOnlyPaths=-/srv/mud` in the unit to
@@ -86,7 +86,7 @@ data_dir = "/var/lib/touchstone"
 
 [source]
 kind = "silvermere"
-path = "/srv/mud/quicksilver/data/game.db"   # the game's SQLite file
+path = "/opt/quicksilver/data/quicksilver.db"   # the game's SQLite file
 ```
 
 Put the directory that holds the database in `ReadOnlyPaths=` in

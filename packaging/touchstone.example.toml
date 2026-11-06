@@ -23,7 +23,7 @@ kind = "silvermere"
 #
 # Quicksilver-style path below; for a stock MME database use kind = "mdb" and, for example,
 # path = "/var/lib/touchstone/data-v1.11p.sqlite".
-path = "/srv/mud/quicksilver/data/game.db"
+path = "/opt/quicksilver/data/quicksilver.db"
 
 # silvermere only: seconds between checks for changed game data. Default 10.
 # reload_interval_secs = 10
