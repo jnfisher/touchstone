@@ -1,12 +1,13 @@
-// The four calculator windows (frmExpCalc, frmCoinConvert, frmSwingCalc, frmBSCalc): their
+// The five calculator windows (frmExpCalc, frmCoinConvert, frmSwingCalc, frmBSCalc, frmHitCalc): their
 // defaults, the mapping from form state to the `POST /api/calc/*` bodies, and the response shapes.
-import type { Item } from './api';
+import type { Item, Monster } from './api';
 
 export const CALCULATORS = [
 	{ slug: 'exp', label: 'Exp Calculator' },
 	{ slug: 'coin', label: 'Coin Converter' },
 	{ slug: 'swing', label: 'Swing Calculator' },
-	{ slug: 'backstab', label: 'Backstab Calculator' }
+	{ slug: 'backstab', label: 'Backstab Calculator' },
+	{ slug: 'hit', label: 'Hit Calculator' }
 ] as const;
 export type CalcSlug = (typeof CALCULATORS)[number]['slug'];
 
@@ -179,7 +180,10 @@ export const BS_ACCURACY = 116;
  * The weapon combo's rows: in-game weapons (item type 1), sorted by name as MME's combos are, and
  * for the backstab calculator only those with BS accuracy.
  */
-export function weaponChoices(items: Item[], opts: { backstabOnly?: boolean } = {}): WeaponChoice[] {
+export function weaponChoices(
+	items: Item[],
+	opts: { backstabOnly?: boolean } = {}
+): WeaponChoice[] {
 	return items
 		.filter(
 			(i) =>
@@ -187,7 +191,11 @@ export function weaponChoices(items: Item[], opts: { backstabOnly?: boolean } = 
 				i.in_game &&
 				(!opts.backstabOnly || i.abilities.some((a) => a.ability === BS_ACCURACY))
 		)
-		.map((i) => ({ number: i.number, name: i.name, label: `${i.name} (${i.number})` }))
+		.map((i) => ({
+			number: i.number,
+			name: i.name,
+			label: `${i.name} (${i.number})`
+		}))
 		.sort((a, b) => a.name.localeCompare(b.name) || a.number - b.number);
 }
 
@@ -311,6 +319,235 @@ export function backstabRequest(f: BackstabForm) {
 	};
 }
 
+// ---------- hit ----------
+
+export type HitType = 'normal' | 'backstab';
+export type HitAttacker = 'character' | 'monster' | 'manual';
+export type HitDefender = 'character' | 'monster' | 'player' | 'manual';
+export type HitStrike = 'normal' | 'bash' | 'smash' | 'kick' | 'jumpkick';
+
+/** Which handler MME would run: a box changed, an option clicked, a monster picked, an arrow. */
+export type HitEvent =
+	| { event: 'calc' }
+	| { event: 'refresh' }
+	| { event: 'monster' }
+	| { event: 'modify'; index: number };
+
+export interface HitEnabled {
+	prot_evil: boolean;
+	vile_ward: boolean;
+	percep: boolean;
+	shadow: boolean;
+	see_hidden: boolean;
+	monster_list: boolean;
+}
+
+/** The window's module variables; the page hands back what the last answer said. */
+export interface HitState {
+	monster_accy: number;
+	monster_ac: number;
+	monster_dodge: number;
+	monster_bs_defense: number;
+	monster_evil: boolean;
+	monster_see_hidden: boolean;
+	defender_ac: number;
+	defender_dodge: number;
+	defender_perception: number;
+	defender_prot_evil: number;
+	defender_vile_ward: number;
+	defender_evilness: number;
+	defender_shadow: boolean;
+	char_perception: number;
+}
+
+/** Stand-in for the loaded character until the Character tab exists: plain boxes. */
+export interface HitCharacter {
+	accuracy: string;
+	ac: string;
+	dodge: string;
+	protEvil: string;
+	stealth: string;
+	bsAccuracy: string;
+	agility: string;
+	shadowAc: string;
+	classNumber: number | null;
+	bsWeapon: number | null;
+	strike: HitStrike;
+	accyAdj: string;
+}
+
+export interface HitForm {
+	calcType: HitType;
+	attacker: HitAttacker;
+	defender: HitDefender;
+	monster: number | null;
+	/** `txtHitCalc(0..5)`: accuracy, AC, dodge, protection from evil, vile ward, perception. */
+	text: string[];
+	shadow: boolean;
+	seeHidden: boolean;
+	evilIndex: number;
+	/** Null until the first answer: the server works the flags out. */
+	enabled: HitEnabled | null;
+	state: HitState;
+	character: HitCharacter;
+}
+
+export interface HitResult {
+	calc_type: HitType;
+	attacker: HitAttacker;
+	defender: HitDefender;
+	attacker_monster_enabled: boolean;
+	text: string[];
+	shadow: boolean;
+	see_hidden: boolean;
+	evil_index: number;
+	enabled: HitEnabled;
+	bs_label: string;
+	main_text: string;
+	sub_left: string;
+	sub_right: string;
+	sub_right_bold: boolean;
+	hit: number | null;
+	dodge: number | null;
+	overall_hit: number | null;
+	state: HitState;
+	errors: { source: string; number: number; text: string }[];
+}
+
+const NO_HIT_STATE: HitState = {
+	monster_accy: 0,
+	monster_ac: 0,
+	monster_dodge: 0,
+	monster_bs_defense: 0,
+	monster_evil: false,
+	monster_see_hidden: false,
+	defender_ac: 0,
+	defender_dodge: 0,
+	defender_perception: 0,
+	defender_prot_evil: 0,
+	defender_vile_ward: 0,
+	defender_evilness: 0,
+	defender_shadow: false,
+	char_perception: 0
+};
+
+/** frmHitCalc's design-time values; the character boxes read 0 as MME's empty tags do. */
+export const HIT_DEFAULTS: HitForm = {
+	calcType: 'normal',
+	attacker: 'character',
+	defender: 'character',
+	monster: null,
+	text: ['100', '0', '10', '0', '0', '0'],
+	shadow: false,
+	seeHidden: false,
+	evilIndex: 0,
+	enabled: null,
+	state: NO_HIT_STATE,
+	character: {
+		accuracy: '0',
+		ac: '0',
+		dodge: '0',
+		protEvil: '0',
+		stealth: '0',
+		bsAccuracy: '0',
+		agility: '0',
+		shadowAc: '0',
+		classNumber: null,
+		bsWeapon: null,
+		strike: 'normal',
+		accyAdj: '0'
+	}
+};
+
+/** The arrow buttons' order in MME: accuracy, AC, dodge, protection, vile ward, perception. */
+export const HIT_BOXES = [
+	{ index: 0, label: 'Attacker Accuracy' },
+	{ index: 1, label: 'vs AC' },
+	{ index: 2, label: 'vs Dodge' },
+	{ index: 3, label: 'vs Prot. Evil' },
+	{ index: 5, label: 'vs Perception' }
+] as const;
+
+export const HIT_STRIKES: { value: HitStrike; label: string }[] = [
+	{ value: 'normal', label: 'Normal' },
+	{ value: 'bash', label: 'Bash' },
+	{ value: 'smash', label: 'Smash' },
+	{ value: 'kick', label: 'Kick' },
+	{ value: 'jumpkick', label: 'Jumpkick' }
+];
+
+function wholeOrZero(s: string): number {
+	return wholeNumber(s) ?? 0;
+}
+
+export function hitRequest(f: HitForm, ev: HitEvent) {
+	const c = f.character;
+	return {
+		...ev,
+		calc_type: f.calcType,
+		attacker: f.attacker,
+		defender: f.defender,
+		...(f.monster === null ? {} : { monster: f.monster }),
+		text: f.text,
+		shadow: f.shadow,
+		see_hidden: f.seeHidden,
+		evil_index: f.evilIndex,
+		...(f.enabled === null ? {} : { enabled: f.enabled }),
+		state: f.state,
+		character: {
+			accuracy: c.accuracy,
+			ac: c.ac,
+			dodge: c.dodge,
+			prot_evil: c.protEvil,
+			stealth: c.stealth,
+			bs_accuracy: c.bsAccuracy,
+			agility: c.agility,
+			shadow_ac: wholeOrZero(c.shadowAc),
+			...(c.classNumber === null ? {} : { class: c.classNumber }),
+			...(c.bsWeapon === null ? {} : { bs_weapon: c.bsWeapon }),
+			strike: c.strike,
+			accy_adj: wholeOrZero(c.accyAdj)
+		}
+	};
+}
+
+/**
+ * What an answer changes in the form. A `calc` answer never rewrites the boxes (the person may
+ * have typed since the request left); the others do, as SetHitCalcVals and the arrows write them.
+ */
+export function applyHit(f: HitForm, r: HitResult, ev: HitEvent): HitForm {
+	const out: HitForm = {
+		...f,
+		attacker: r.attacker,
+		enabled: r.enabled,
+		state: r.state
+	};
+	if (ev.event !== 'calc') {
+		out.text = r.text;
+		out.shadow = r.shadow;
+		out.seeHidden = r.see_hidden;
+		out.evilIndex = r.evil_index;
+	}
+	return out;
+}
+
+/** MME's `LoadMonsters`: named monsters in the table's order, "name (number)". */
+export type MonsterChoice = WeaponChoice;
+export function monsterChoices(monsters: Monster[]): MonsterChoice[] {
+	return monsters
+		.filter((m) => m.in_game && m.name && !m.name.startsWith('sdf'))
+		.map((m) => ({
+			number: m.number,
+			name: m.name ?? '',
+			label: `${m.name} (${m.number})`
+		}));
+}
+
+/** The lines of a CRLF caption. */
+export function captionLines(s: string): string[] {
+	return s === '' ? [] : s.split(/\r?\n/);
+}
+
 // ---------- transport ----------
 
 type FetchFn = typeof fetch;
@@ -342,7 +579,8 @@ export function createCalcClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		exp: (body: ReturnType<typeof expRequest>) => post<ExpCalcResult>('exp', body),
 		coin: (body: object) => post<CoinResult>('coin', body),
 		swing: (body: ReturnType<typeof swingRequest>) => post<SwingResult>('swing', body),
-		backstab: (body: ReturnType<typeof backstabRequest>) => post<BackstabResult>('backstab', body)
+		backstab: (body: ReturnType<typeof backstabRequest>) => post<BackstabResult>('backstab', body),
+		hit: (body: ReturnType<typeof hitRequest>) => post<HitResult>('hit', body)
 	};
 }
 

@@ -308,6 +308,8 @@ pub(crate) fn nmr_ver(s: &str) -> f64 {
                 out.push(c);
                 seen_dot = true;
             }
+            // A later dot (or one before any digit) is skipped, not a stop.
+            '.' => {}
             '-' if out.is_empty() => out.push(c),
             _ if out == "-" => out.clear(),
             _ if !out.is_empty() => break,
