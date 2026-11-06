@@ -418,6 +418,8 @@ class Env:
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
         it.bind("Forms", shims.FormsCollection(self.loaded_forms))
+        if self.db and "db" in self.it.globals:
+            self.it.global_cell("DB").v = shims.DbShim(self.db)
         for g, table in shims.RECORDSET_GLOBALS.items():
             cell = it.globals.get(g.lower())
             if cell is not None:
@@ -617,11 +619,13 @@ class Env:
                 # `capture`: {"name": "%c.txtDetail.Text"}: read expressions evaluated after each key; with `events` the
                 # recorded events of that key move from the case's event list into the capture
                 cap = {k: self.read(objs, expr) for k, expr in spec["capture"].items()}
+                if spec.get("all_rows"):
+                    cap["rows"] = lv.dump(encode)       # every row of this key's ListView (the plain output keeps the first)
                 if spec.get("events"):
                     cap["events"] = self.rec.events[n_events:]
                     del self.rec.events[n_events:]
                 captured.append(cap)
-            if not shared:
+            if not shared and not spec.get("all_rows"):
                 rows = lv.dump(encode)
                 per.append(rows[0] if rows else None)
             if watch is not None:
