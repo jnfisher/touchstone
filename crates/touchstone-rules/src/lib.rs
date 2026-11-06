@@ -10,6 +10,7 @@ pub mod attack;
 pub mod calculators;
 pub mod char_panel;
 pub mod character;
+pub mod class_race_builder;
 pub mod combat;
 pub mod detail;
 pub mod equip;
