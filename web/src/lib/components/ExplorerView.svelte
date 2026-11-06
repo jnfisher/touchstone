@@ -8,6 +8,7 @@
 	import SplitPane from '$lib/components/SplitPane.svelte';
 	import { getCharacterStore, openLastCharacter } from '$lib/character.svelte';
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
+	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
 	import { selection } from '$lib/explorer-state.svelte';
 	import {
 		buildLookups,
@@ -58,17 +59,16 @@
 
 	// The server builds these lists (MME's columns and cells for the current character). The
 	// character store is shared with the Character tab; edits re-fetch after a short pause.
-	let useCharacter = $state(true);
+	const bar = getGlobalFilterStore();
 	let evaluated = $state.raw<{ tab: string; table: EvalTable }>();
 	let evalError = $state<string>();
 	const payload = $derived(evaluated && evaluated.tab === computedTab ? evaluated.table : undefined);
 	const evalRows = $derived(payload?.rows ?? []);
 	const evalDefs = $derived(payload ? evalColDefs(payload.columns, explorer.defaultSort) : []);
-	const hasCharacter = $derived(store.doc.class !== null && store.doc.race !== null);
 	$effect(() => {
 		const tab = computedTab;
 		if (!tab) return;
-		const body = evaluateBody($state.snapshot(store.doc), useCharacter);
+		const body = evaluateBody($state.snapshot(store.doc), $state.snapshot(bar.filter));
 		const ctl = new AbortController();
 		const timer = setTimeout(
 			async () => {
@@ -141,12 +141,6 @@
 		>
 			{detailHidden ? 'Show details' : 'Hide details'}
 		</button>
-		{#if computedTab && hasCharacter}
-			<label class="flex items-center gap-1.5 text-sm" data-testid="use-character">
-				<input type="checkbox" bind:checked={useCharacter} />
-				Use character <span class="text-muted-foreground">({store.doc.name || 'unnamed'})</span>
-			</label>
-		{/if}
 		{#if explorer.pending.length}
 			<span class="text-muted-foreground text-xs" data-testid="pending">
 				Needs a character, coming later: {explorer.pending.join(', ')}

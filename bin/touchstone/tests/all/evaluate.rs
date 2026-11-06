@@ -122,6 +122,11 @@ fn monster(number: i32, name: String) -> Monster {
 
 /// The world of the rows fixture header's `data` (field lists as the generator writes them).
 fn world(data: &Value) -> World {
+    world_with(data, None)
+}
+
+/// The rows fixture's world, with the items of another fixture when given (already sorted).
+fn world_with(data: &Value, items_from: Option<Vec<Item>>) -> World {
     let rows = |k: &str| data[k].as_array().unwrap().clone();
     let mut items: Vec<Item> = rows("items")
         .iter()
@@ -150,6 +155,9 @@ fn world(data: &Value) -> World {
             .map(|r| item(i(&r[0]), s(&r[1]), i(&r[2]), i(&r[3]), i(&r[4]))),
     );
     items.sort_by_key(|r| r.number);
+    if let Some(own) = items_from {
+        items = own;
+    }
     let spells = rows("spells")
         .iter()
         .map(|r| Spell {
@@ -728,4 +736,207 @@ async fn repeated_requests_come_from_the_cache() {
     let (_, a) = post(&app, "/api/evaluate/weapons", &body).await;
     let (_, b) = post(&app, "/api/evaluate/weapons", &body).await;
     assert_eq!(a, b);
+}
+
+// ---------- the global filter bar (card P4-21) ----------
+
+/// The items of fixtures/rules/filters.json (its field list is in the fixture header).
+fn filter_items(fx: &Value) -> Vec<Item> {
+    let mut out: Vec<Item> = fx["header"]["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            let extra = |k: usize| r[13].as_array().map_or(0, |e| i(&e[k]));
+            let mut it = item(i(&r[0]), s(&r[1]), i(&r[2]), extra(0), i(&r[3]));
+            it.min = extra(1);
+            it.max = extra(2);
+            it.armour_class = extra(3);
+            it.damage_resist = extra(4);
+            it.accy = extra(5);
+            it.weapon_type = i(&r[4]);
+            it.armour_type = i(&r[5]);
+            it.worn = i(&r[6]);
+            it.str_req = i(&r[7]);
+            it.speed = i(&r[8]);
+            it.in_game = i(&r[9]) != 0;
+            for (k, c) in r[10].as_array().unwrap().iter().enumerate() {
+                it.class_rest[k] = i(c);
+            }
+            for (k, c) in r[11].as_array().unwrap().iter().enumerate() {
+                it.negate_spell[k] = i(c);
+            }
+            it.abilities = pairs(&r[12]);
+            it
+        })
+        .collect();
+    out.sort_by_key(|r| r.number);
+    out
+}
+
+fn filters_fixture() -> Value {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/rules/filters.json");
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+fn filters_router() -> axum::Router {
+    let rows = fixture();
+    let ours = filters_fixture();
+    let info = SourceInfo {
+        kind: "mdb",
+        path: "test".into(),
+    };
+    let w = world_with(&rows["header"]["data"], Some(filter_items(&ours)));
+    let loaded = Loaded::build(w, info, None, 1).unwrap();
+    app(AppState::with_data_dir(
+        loaded,
+        tempfile::TempDir::new().unwrap().keep(),
+    ))
+}
+
+/// The record numbers of a response, in number order: MME adds rows in the order of its table
+/// (the Access file's physical order), the world keeps them by number, and the grid sorts anyway.
+fn numbers(got: &Value) -> Vec<String> {
+    let mut n: Vec<i64> = got["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["number"].as_i64().unwrap())
+        .collect();
+    n.sort_unstable();
+    n.into_iter().map(|n| n.to_string()).collect()
+}
+
+/// The record numbers a fixture case lists, in number order (weapon rows are "number:kind").
+fn listed(case: &Value, key: &str) -> Vec<String> {
+    let mut n: Vec<i64> = case["outputs"][key]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .unwrap()
+                .split(':')
+                .next()
+                .unwrap()
+                .parse()
+                .unwrap()
+        })
+        .collect();
+    n.sort_unstable();
+    n.into_iter().map(|n| n.to_string()).collect()
+}
+
+#[tokio::test]
+async fn bar_values_filter_armour_as_filter_armour_does() {
+    // fixtures/rules/filters.json armour-g-c*-l*-a*-m*: FilterArmour(True) with the class, level,
+    // alignment and minimum item level boxes the case sets and no character
+    let fx = filters_fixture();
+    let app = filters_router();
+    let mut checked = 0;
+    for c in fx["cases"].as_array().unwrap() {
+        let id = c["id"].as_str().unwrap();
+        if !id.starts_with("armour-g-") {
+            continue;
+        }
+        let forms = &c["inputs"]["forms"]["frmMain"];
+        let class_idx = forms["cmbGlobalClass"]["$array"]["0"]["ListIndex"]
+            .as_i64()
+            .unwrap();
+        // the combo's ItemData is 0, 1, 2 ...: the index is the class number
+        let body = json!({
+            "global_filter": {
+                "use_character": false,
+                "class": class_idx,
+                "level": forms["txtGlobalLevel"]["$array"]["0"]["Text"].as_str().unwrap().parse::<i64>().unwrap(),
+                "alignment": forms["cmbGlobalAlignment"]["ListIndex"],
+                "min_item_level": forms["txtGlobalMinLVL"]["Text"].as_str().unwrap().parse::<i64>().unwrap(),
+            },
+            "options": {}
+        });
+        let (status, got) = post(&app, "/api/evaluate/armour", &body).await;
+        assert_eq!(status, StatusCode::OK, "{id}: {got}");
+        assert_eq!(numbers(&got), listed(c, "armour"), "{id}");
+        checked += 1;
+    }
+    assert_eq!(checked, 27);
+}
+
+#[tokio::test]
+async fn an_untouched_bar_filters_nothing() {
+    // fixtures/rules/filters.json s-default and w-default: FilterSundry and FilterWeapons with the
+    // global filter off list the same as a bar at its defaults (level 999, any class, any alignment)
+    let fx = filters_fixture();
+    let app = filters_router();
+    let bar = json!({"use_character": false});
+    for (id, tab, key) in [
+        ("s-default", "items", "sundry"),
+        ("w-default", "weapons", "weapons"),
+    ] {
+        let c = fx["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap();
+        let body = json!({"global_filter": bar, "options": {}});
+        let (status, got) = post(&app, &format!("/api/evaluate/{tab}"), &body).await;
+        assert_eq!(status, StatusCode::OK, "{id}: {got}");
+        let want = listed(c, key);
+        let have = numbers(&got);
+        assert_eq!(have, want, "{id}");
+        // and the bar is the same as sending no bar at all
+        let (_, plain) = post(
+            &app,
+            &format!("/api/evaluate/{tab}"),
+            &json!({"options": {}}),
+        )
+        .await;
+        assert_eq!(got, plain, "{id}: bar at its defaults");
+    }
+}
+
+#[tokio::test]
+async fn bar_values_narrow_the_lists_and_the_character_is_left_out() {
+    let app = filters_router();
+    let all = post(&app, "/api/evaluate/armour", &json!({"options": {}}))
+        .await
+        .1;
+    let narrow = json!({"global_filter": {"class": 1, "level": 5, "alignment": 3}, "options": {}});
+    let (status, some) = post(&app, "/api/evaluate/armour", &narrow).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(numbers(&some).len() < numbers(&all).len());
+    // a character that comes along with the bar's own values changes nothing
+    let fx = fixture();
+    let c = case(&fx, "warrior-weapons-plain");
+    let mut with = narrow.clone();
+    with["character"] = character(&fx, c);
+    let (status, same) = post(&app, "/api/evaluate/armour", &with).await;
+    assert_eq!(status, StatusCode::OK, "{same}");
+    assert_eq!(same, some);
+}
+
+#[tokio::test]
+async fn bad_bar_values_are_refused() {
+    let app = filters_router();
+    for bar in [
+        json!({"alignment": 4}),
+        json!({"alignment": -1}),
+        json!({"level": 1000}),
+        json!({"min_item_level": -1}),
+        json!({"class": -1}),
+        json!({"race": 40000}),
+        json!({"nonsense": 1}),
+        // mirroring a character needs one
+        json!({"use_character": true}),
+    ] {
+        let (status, got) = post(
+            &app,
+            "/api/evaluate/armour",
+            &json!({"global_filter": bar, "options": {}}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bar}: {got}");
+    }
 }
