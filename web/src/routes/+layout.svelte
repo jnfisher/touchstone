@@ -10,6 +10,11 @@
 	import { CALCULATORS } from '$lib/calc';
 	import { SECTIONS, sectionForKey } from '$lib/sections';
 	import { createThemeStore } from '$lib/theme.svelte';
+	import { createViewStore } from '$lib/view.svelte';
+	import { pageTitle } from '$lib/view';
+	import { getCharacterStore } from '$lib/character.svelte';
+	import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
 
 	let { children } = $props();
 
@@ -17,6 +22,11 @@
 		typeof localStorage === 'undefined' ? undefined : localStorage,
 		(t) => document.documentElement.classList.toggle('dark', t === 'dark')
 	);
+
+	const view = createViewStore(typeof localStorage === 'undefined' ? undefined : localStorage);
+	const character = getCharacterStore();
+	let settingsOpen = $state(false);
+	const title = $derived(pageTitle(view.options, character.doc.name));
 
 	const current = $derived(page.params.section ?? '');
 	const calcName = $derived(page.url.pathname.startsWith('/calc/') ? page.params.name : undefined);
@@ -33,7 +43,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 <svelte:head>
-	<title>touchstone</title>
+	<title>{title}</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
@@ -84,10 +94,28 @@
 					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							size="icon-sm"
+							aria-label="Settings"
+							data-testid="settings-button"
+							onclick={() => (settingsOpen = true)}
+						>
+							<SettingsIcon />
+						</Button>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>Settings</Tooltip.Content>
+			</Tooltip.Root>
 		</nav>
 
 		<main class="min-h-0 flex-1 p-2 sm:p-4">
 			{@render children()}
 		</main>
 	</div>
+	<SettingsDialog bind:open={settingsOpen} {theme} {view} />
 </Tooltip.Provider>
