@@ -442,3 +442,34 @@ they gave before. The pieces (pick, volley, proc) are Q-013a; this is how they e
   on whole kits. The vectors compose the engine's blow resolution (the share of landed blows that deal damage,
   walked over every roll) with the Q-013a proc figures (the exact mean and resist rolls), and the tests check
   that composition and then the wiring end to end through `get_damage_output`.
+
+## Quicksilver: exp/hr (Q-014)
+
+Under `Profile::Quicksilver` with rest and meditate mana on (R10: a balance whose rest or meditate multiple is not 1;
+`Balance::NEUTRAL` reads as off, as in Q-008). Stock and the neutral balance give exactly the answers they gave before.
+
+- MME's Models A to C assume a character rests (HP) or meditates (mana), never both. Quicksilver restores both at
+  once, so those models return `RulesError::Unsupported`. `calc_exp_per_hour` does not fail on them: it runs Model D
+  alone, whichever models the settings tick, and sets `s_notice` (plain text, never an error) when A to C were asked
+  for. The monster pane prints the notice below the movement text; the settings dialog shows Models A to C as
+  unavailable under Quicksilver.
+- Model D has one recovery phase instead of two. Mana returns at the rest multiple of the standing rate (the
+  meditate multiple for a character with a meditation rate, who meditates), HP at MME's rest rate plus the passive
+  rate, and the phase lasts as long as the slower bar. The HP share of the recovery time is the HP time (with
+  MME's heavy-hit relief); the mana share is what mana adds beyond it, so the two shares add up to the phase. The
+  mana rate is the engine's exact rate per second, not MME's `MEDITATE_EFF` approximation, which has no
+  Quicksilver counterpart. Passive recovery while fighting and while walking is unchanged.
+- HP keeps MME's 20-second rest tick (the engine rests on a 21-second tick), parity with the stock model and with
+  `calc_resting_rate`, which Q-008 left alone. The vectors pin the engine's own pieces.
+- The opener (R2) and the opportunist and weave procs (R4, R6) reach Model D through its inputs: the damage per
+  round, the first-round damage and the rounds to kill (`n_rtk`) from `get_damage_output` and `calc_combat_rounds`.
+  Model D does not read the surprise figure itself, in stock or here, and for a single monster (`n_rtk` absent) it
+  derives the rounds from hit points and damage per round as before, so a stab opener does not shorten that path.
+- The killing blow: the engine fires the opportunist and the weave only on a hit that leaves the target alive.
+  Model D does not track the monster's hit points blow by blow (it takes the rounds to kill as an input and its
+  damage per round already holds the procs as a steady-state expectation), so it cannot stop a proc on the last
+  blow. Decision: keep the steady state. A fight's final blow is credited a proc it would not get, an overstatement
+  of at most one proc per kill, small when a kill takes several rounds and largest for one-round kills.
+- No engine figure exists for a whole exp/hr (the balance tool reports damage bands only). The vectors cross-check
+  the recovery component from the engine's own ticks: exact for mana over a 210-second cycle, within one slow tick
+  plus one rest tick (51 seconds) and the 20- versus 21-second rest period (5 percent) for the time to restore both bars.
