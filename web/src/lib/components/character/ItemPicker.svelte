@@ -10,7 +10,8 @@
 		label,
 		testid,
 		onpick,
-		noneLabel = '(none)'
+		noneLabel = '(none)',
+		flagged = false
 	}: {
 		choices: ItemChoice[];
 		value: number;
@@ -18,6 +19,8 @@
 		testid: string;
 		onpick: (n: number) => void;
 		noneLabel?: string;
+		/** MME paints the slot red: the character cannot use the item, or a two-hander meets an off-hand. */
+		flagged?: boolean;
 	} = $props();
 
 	const LIMIT = 100;
@@ -81,7 +84,8 @@
 		}}
 		onkeydown={onKey}
 		data-testid={testid}
-		class={inputCls}
+		data-flagged={flagged}
+		class="{inputCls} {flagged ? 'border-destructive text-destructive' : ''}"
 	/>
 	{#if open}
 		<ul
