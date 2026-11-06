@@ -41,6 +41,7 @@ mod paste_char;
 mod paste_party;
 mod pipeline;
 mod quicksilver_backstab;
+mod quicksilver_cells;
 mod quicksilver_balance;
 mod quicksilver_exphr;
 mod quicksilver_identity;
