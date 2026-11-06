@@ -6,6 +6,7 @@ mod common;
 mod detail;
 mod equip;
 mod evaluate;
+mod find_best;
 mod item_manager;
 mod monster_sim;
 mod monsters;

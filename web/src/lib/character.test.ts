@@ -231,3 +231,50 @@ describe("mmec import and export", () => {
     });
   });
 });
+
+describe("find best menu", () => {
+  it("lists MME's entries in the designer's order", async () => {
+    const { FIND_BEST_MENU, findBestLabel, toggleExcluded } =
+      await import("./character");
+    expect(FIND_BEST_MENU.map((g) => g.label)).toEqual([
+      "Armour",
+      "Attacking",
+      "Attributes",
+      "Resistances",
+      "Stats",
+    ]);
+    const all = FIND_BEST_MENU.flatMap((g) => [
+      ...g.entries,
+      ...(g.sub?.entries ?? []),
+    ]);
+    // 45 entries in MME's menu, minus the GreaterMUD-only VileWard
+    expect(all).toHaveLength(44);
+    expect(all[0]).toMatchObject({
+      label: "AC/DR Combo",
+      criterion: 0,
+      index: 0,
+    });
+    expect(findBestLabel({ index: 5, criterion: 4 })).toBe(
+      "Mystic Attacks: Punch DMG",
+    );
+    expect(findBestLabel({ index: 6, criterion: 0 })).toBe("");
+    expect(toggleExcluded(null, 5)).toEqual([5]);
+    expect(toggleExcluded([5, 6], 5)).toEqual([6]);
+  });
+
+  it("posts a find best to the server", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ ok: 1 })),
+    );
+    const c = createCharacterClient(fetchMock as unknown as typeof fetch);
+    await c.findBest({
+      character: newCharacter("A"),
+      next: true,
+      excluded: null,
+      last: { index: 0, criterion: 0 },
+    });
+    const first = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(first[0]).toBe("/api/character/find-best");
+    expect(JSON.parse(first[1].body as string).next).toBe(true);
+  });
+});

@@ -64,6 +64,17 @@ the orchestrator writes each card when its dependencies are close to merged.
 | P4-17 | EQ tab on MME's slot rules | #67 |
 | P4-20 | Character tab, character API and persistence | #54 |
 | P4-24/25 | .mmec import and export | #65 |
+| P3-27 | Row evaluator: monsters | #77 |
+| P3-30 | List filters: spells and monsters | #83 |
+| P3-31 | Reference rows (GetLocations) | #76 |
+| P3-32..34 | Monster detail pane rules | #82 |
+| P3-35/36 | Item detail and compare text | #80 |
+| P3-37 | Spell, shop, class, race and NPC-command detail | #79 |
+| P4-19 | Item Manager | #78 |
+| P4-21 | Global filter | #75 |
+| P4-22/23 | Combat setup dialog | #74 |
+| P4-28b | Monster Attack Simulator window | #73 |
+| P4-DP | Detail panes in the explorers | #81 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -76,25 +87,21 @@ the orchestrator writes each card when its dependencies are close to merged.
 
 | Card | Title | State |
 |---|---|---|
-| P3-27 | Row evaluator: monsters (computed Monsters columns, exp/hr) | agent |
-| P3-31 | Reference rows (GetLocations) | agent |
+| P4-08/09 | Monsters explorer: rows, monster filters, detail pane | agent |
+| P4-18 | Find Best | agent |
 
 ## Next
 
 | Card | Title | Depends |
 |---|---|---|
-| P3-30 | List filters: spells and monsters | P3-27 |
-| P4-08/09 | Monsters explorer, detail pane, monster filters | P3-27, P3-30, P3-32..34 |
-| P3-32..34 | Monster detail I–III | P3-31 |
-| P3-35..37 | Item, spell, shop, class, race detail | P3-31 |
-| P4-10..13 | Shops, items, class/race builder, rooms explorers | P3-31, P3-37 |
+| P4-10..13 | Class/race builder, rooms explorer | P3-31, P3-37 |
 | P4-14..16 | Compare panes, context menus | explorers |
-| P4-18, P4-19 | Find Best, Item Manager | P4-17 |
-| P4-21..23 | Global filter, combat setup dialog | P4-20 |
-| P4-28b | Monster Attack Simulator window | P3-14b |
 | T-016 | Textblock script parser for T-014's remaining derived fields | T-014 |
+| P3-04b | `pull_spell_eq` Long handling | P3-04 |
 
 ## Follow-ups noted
 
 - Show monster names in spell "Cast by".
 - One shared `RoundUp` helper.
+- Monster reachability data behind the `Reachability` / `ReachRows` traits (P3-30, P3-32).
+- GreaterMUD/Paramud branches of the `Pull*` detail procedures (P3-32).
