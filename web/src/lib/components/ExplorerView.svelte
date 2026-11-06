@@ -1,15 +1,17 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
-	import { api, type AbilityTable, type Spell, type TableName, type TableTypes } from '$lib/api';
+	import { api, type AbilityTable, type Item, type Spell, type TableName, type TableTypes } from '$lib/api';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
-	import ShopPrices from '$lib/components/ShopPrices.svelte';
+	import ShopControls from '$lib/components/ShopControls.svelte';
 	import SpellEffect from '$lib/components/SpellEffect.svelte';
 	import SplitPane from '$lib/components/SplitPane.svelte';
 	import { getCharacterStore, openLastCharacter } from '$lib/character.svelte';
+	import { linkFor, paneBody, paneClient, paneKind, type Pane, type RefRow } from '$lib/detail';
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
-	import { selection } from '$lib/explorer-state.svelte';
+	import { selection, shopView } from '$lib/explorer-state.svelte';
 	import {
 		buildLookups,
 		listRows,
@@ -94,9 +96,9 @@
 		if (computedTab) return table?.find((r) => String(explorer.rowId(r)) === String(selectedId));
 		return rows.find((r) => String(explorer.rowId(r)) === String(selectedId));
 	});
-	const ABILITY_TABLES: readonly string[] = ['items', 'spells', 'races', 'classes', 'monsters'];
+	const ABILITY_TABLES: readonly string[] = ['monsters'];
 
-	// MME's ability text and a monster's max damage come from the server for the selected record.
+	// A monster's ability text and max damage come from the server for the selected record.
 	let extra = $state.raw<DetailExtra>({});
 	let extraTicket = 0;
 	$effect(() => {
@@ -117,6 +119,60 @@
 				.catch(() => {});
 	});
 	const groups = $derived(selected ? explorer.detail(selected, lookups ?? { nmr }, extra) : []);
+
+	// The record's pane as MME builds it (PullItemDetail and friends) for the current character and
+	// global filter. Shop prices follow the charm box; edits re-fetch after a short pause.
+	const kind = $derived(paneKind(slug));
+	const isShops = $derived(slug === 'shops');
+	let pane = $state.raw<Pane>();
+	let paneError = $state<string>();
+	let compare = $state(true);
+	$effect(() => {
+		const k = kind;
+		const id = selectedId === undefined ? undefined : Number(selectedId);
+		if (!k || id === undefined) {
+			pane = undefined;
+			return;
+		}
+		const showSell = isShops && shopView.selling;
+		const charm = isShops ? (shopView.buying || shopView.selling ? shopView.charm : 0) : undefined;
+		const body = paneBody($state.snapshot(store.doc), $state.snapshot(bar.filter), { charm, showSell });
+		const ctl = new AbortController();
+		const timer = setTimeout(
+			async () => {
+				try {
+					const p = await paneClient.pane(k, id, body, ctl.signal);
+					pane = p;
+					paneError = undefined;
+				} catch (e) {
+					if (!ctl.signal.aborted) paneError = e instanceof Error ? e.message : String(e);
+				}
+			},
+			untrack(() => pane) ? 150 : 0
+		);
+		return () => {
+			clearTimeout(timer);
+			ctl.abort();
+		};
+	});
+	// A pane for another record would flash while the new one loads.
+	const livePane = $derived(pane && pane.kind === kind && pane.number === Number(selectedId) ? pane : undefined);
+
+	let itemIndex = $state.raw<Map<number, Item>>();
+	async function follow(r: RefRow) {
+		if (!r.target) return;
+		let items = itemIndex;
+		if (r.target.table === 'items' && !items) {
+			items = itemIndex = new Map((await api.table('items')).map((i) => [i.number, i]));
+		}
+		const to = linkFor(r.target, items);
+		if (!to) return;
+		selection.set(to.slug, to.id);
+		void goto(`/${to.slug}`);
+	}
+	const shopNote = $derived(
+		!isShops || !livePane?.charm_label ? '' : livePane.charm_label
+	);
 </script>
 
 <div class="flex h-full min-h-0 flex-col gap-2">
@@ -186,10 +242,18 @@
 				{/snippet}
 				{#snippet right()}
 					{#if selected}
-						<DetailPane {groups}>
-							{#if slug === 'shops'}
-								<ShopPrices shop={Number(explorer.rowId(selected))} />
-							{:else if slug === 'spells'}
+						<DetailPane
+							{groups}
+							pane={livePane}
+							error={paneError}
+							bind:compare
+							canCompare={slug === 'weapons' || slug === 'armour'}
+							onLink={follow}
+						>
+							{#snippet before()}
+								{#if isShops}<ShopControls note={shopNote} />{/if}
+							{/snippet}
+							{#if slug === 'spells'}
 								{#key selectedId}
 									<SpellEffect number={Number(explorer.rowId(selected))} reqLevel={(selected as Spell).req_level} />
 								{/key}
