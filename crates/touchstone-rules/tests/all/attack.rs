@@ -213,8 +213,8 @@ fn is_missing(v: &Value) -> bool {
     v["t"] == "missing"
 }
 
-#[test]
-fn attack_fixture() {
+/// Runs every attack fixture case under `profile`; the layer-1 identity harness reuses it.
+pub(crate) fn check_fixture(prof: Profile) {
     let fx = fixture::load("attack");
     let table = &fx.cases[0]["inputs"];
     assert_eq!(fx.cases[0]["id"], "table");
@@ -241,7 +241,7 @@ fn attack_fixture() {
     let tbs = Textblocks::from_table(&table["textblocks"]);
     // The real text port over the fixture's tables, with MME's start-up globals.
     let text = AbilityEnv {
-        profile: Profile::Stock,
+        profile: prof,
         names: &names,
         textblocks: &tbs,
         spells: &spells,
@@ -314,8 +314,7 @@ fn attack_fixture() {
                     bs_defense: int(&args[12]),
                 };
                 let mut casts = args[8]["value"].as_str().unwrap().to_string();
-                let got =
-                    calculate_attack(Profile::Stock, &env, &profile(&args[0]), &req, &mut casts);
+                let got = calculate_attack(prof, &env, &profile(&args[0]), &req, &mut casts);
                 let want = AttackDamage {
                     min_dmg: int(&out["nmindmg"]),
                     max_dmg: int(&out["nmaxdmg"]),
@@ -477,4 +476,9 @@ fn check_cur(
         (Ok(v), false) if v.scaled() == cur(out) => None,
         (r, _) => Some(format!("got {r:?}, want {out}")),
     }
+}
+
+#[test]
+fn attack_fixture() {
+    check_fixture(Profile::Stock);
 }
