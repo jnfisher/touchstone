@@ -875,17 +875,20 @@ def msgbox_result(buttons):
 
 
 class DictionaryShim(ExtObject):
-    """Scripting.Dictionary: insertion-ordered, binary (case-sensitive) text keys, numeric keys by value.
-    Only what MME's lair code touches: Exists, Add, Count, Keys, Item (read and write)."""
+    """Scripting.Dictionary: insertion-ordered, binary (case-sensitive) text keys unless CompareMode is set to
+    vbTextCompare (1), numeric keys by value. Only what MME's lair code touches: Exists, Add, Count, Keys,
+    Item (read and write), CompareMode (write)."""
 
     vb_typename = "Dictionary"
 
     def __init__(self):
         self.items = {}
+        self.text_compare = False
 
-    @staticmethod
-    def _k(v):
-        return v if isinstance(v, str) else V.as_float(v)
+    def _k(self, v):
+        if isinstance(v, str):
+            return v.lower() if self.text_compare else v
+        return V.as_float(v)
 
     def vb_get(self, name, args):
         n = name.lower()
@@ -906,6 +909,11 @@ class DictionaryShim(ExtObject):
         raise VBError(438)
 
     def vb_set(self, name, args, value):
+        if name.lower() == "comparemode":
+            if self.items:
+                raise VBError(5, "Invalid procedure call or argument")      # only an empty dictionary may change mode
+            self.text_compare = int(V.as_float(value)) == 1
+            return
         if name.lower() in ("", "item"):
             k = self._k(args[0])
             self.items[k] = (self.items[k][0] if k in self.items else args[0], value)
