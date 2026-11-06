@@ -477,3 +477,33 @@ Under `Profile::Quicksilver` with rest and meditate mana on (R10: a balance whos
 - No engine figure exists for a whole exp/hr (the balance tool reports damage bands only). The vectors cross-check
   the recovery component from the engine's own ticks: exact for mana over a 210-second cycle, within one slow tick
   plus one rest tick (51 seconds) and the 20- versus 21-second rest period (5 percent) for the time to restore both bars.
+
+## Quicksilver: end-to-end cells (Q-016)
+
+Under `Profile::Quicksilver` only. `fixtures/quicksilver/cells.json` holds 45 whole characters from Quicksilver's balance
+tool (15 classes at levels 10, 30 and 60, races rotating) with the tool's melee damage a round against the band's
+reference monster. `tests/all/quicksilver_cells.rs` rebuilds each through `refresh_all` and `get_damage_output`. 35 of the
+43 cells that deal damage agree within 7%; the median ratio is 1.00. Layer 3 guards against gross error and wiring, not
+formula detail; the structural differences below are why the tolerance is not tighter.
+
+- **Steady state against a simulation.** The tool plays 200,000 rounds of a target that never dies and averages the
+  damage; touchstone gives MME's expectation (hit chance times the average blow, crits and the opportunist and weave as
+  expectations). A killing blow is not modelled by either side here (the tool tops the target up every round), so it does
+  not appear as a difference in these cells; it matters only for kills and Model D (Q-014).
+- **The energy floor of 200 and the cap of 1000.** The engine floors a blow at 200 energy; MME has no floor. With
+  both at 200 or more the swings agree to the hundredth in every cell. The engine also holds a blow to the round's 1000;
+  MME's swings fall below one for a very slow weapon (a level 10 bash at 1,100 to 1,200 energy gives 0.8 to 0.9
+  swings). Those cells (Warrior L10, Cleric L10) come out 12 to 16% low in touchstone.
+- **Alter Energy Usage (ability 87) on a standing buff.** The tool's hunting buffs include hasten-type spells that
+  cut a blow's energy to 85% (and a Mystic's buff list the same); MME gives the character no such stat (only the item
+  detail applies a fixed 85%), so `refresh_all` ignores the ability and the character swings less. Warlock L30 and L60,
+  Bard L60 and Mystic L10 are 17 to 20% low; the effect is hidden where the energy is already at the floor. Applying it
+  needs a new stat slot in gear aggregation, which is wider than this card (follow-up).
+- **Weapons that cast.** The tool plays every cast of a weapon's One Time Cast spells at the character's level; MME prices
+  them from the spell text with the weapon's Auto-use chance. The Cleric L60 cell is 10% low.
+- **Cannot hit.** A weapon that does not meet the monster's magic requirement does nothing in the tool (damage 0); MME
+  reports it as `-9998`. The Mage and Druid L60 cells agree in meaning, not in number.
+- **Hit points.** For a few casters touchstone's maximum hit points are 25 under the tool's (a Quicksilver bonus
+  that is not an item or spell stat in MME's tables); damage does not read them.
+- Not modelled in the comparison: the tool's per-class training ladder is taken as given (the trained stats are in the
+  cell), the kit is the tool's, and every cell is one move (the tool's best by damage).
