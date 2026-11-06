@@ -15,6 +15,7 @@ mod game_text;
 mod gear;
 mod item_value;
 mod monster_sim;
+mod pipeline;
 mod spell_cast;
 mod spells;
 mod stats;
