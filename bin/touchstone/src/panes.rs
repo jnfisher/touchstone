@@ -1,5 +1,5 @@
-//! `GET/POST /api/detail/{items|spells|shops|classes|races}/{n}`: what MME shows in the detail box
-//! and reference list when an explorer row is clicked. Card P4-DP.
+//! `GET/POST /api/detail/{items|spells|shops|classes|races|monsters}/{n}`: what MME shows in the detail box
+//! and reference list when an explorer row is clicked. Cards P4-DP and P4-08 (monsters).
 //!
 //! The text and rows come from `touchstone_rules::detail`; this module resolves the character and
 //! global filter as `/api/evaluate` does, fills the frmMain controls those procedures read, puts
@@ -13,13 +13,18 @@ use serde::{Deserialize, Serialize};
 use touchstone_model::World;
 use touchstone_rules::Profile;
 use touchstone_rules::ability_text::AbilityEnv;
+use touchstone_rules::character::set_char_defense_description;
 use touchstone_rules::detail::class_race::{pull_class_detail, pull_race_detail};
 use touchstone_rules::detail::item::{
     DetailKind as ItemKind, ItemDetailEnv, ItemDetailOptions, pull_item_detail,
 };
+use touchstone_rules::detail::monster::{
+    DamageCaches, MonsterDetailInputs, MonsterRow, NoReach, pull_monster_detail,
+};
 use touchstone_rules::detail::shop::{ShopDetailOptions, pull_shop_detail};
 use touchstone_rules::detail::spell::{SpellDetailOptions, pull_spell_detail};
 use touchstone_rules::detail::{DetailKind, DetailRow};
+use touchstone_rules::exp_per_hour::ExpPerHourSettings;
 use touchstone_rules::lairs::{LairCache, LairInfo};
 use touchstone_rules::locations::{
     LocationKind, LocationLairs, LocationList, LocationOptions, LocationRow,
@@ -29,7 +34,9 @@ use touchstone_vb6::val;
 use crate::calc::{ApiResult, Body, bad, json, not_found};
 use crate::character::CharacterDto;
 use crate::detail::WorldNames;
-use crate::evaluate::{Ctx, EvaluateBody, GlobalFilterBody, Options, prepare};
+use crate::evaluate::{
+    Ctx, EvaluateBody, GlobalFilterBody, Options, prepare, run_settings, with_monster_env,
+};
 use crate::state::AppState;
 
 /// The panes this endpoint serves.
@@ -40,6 +47,7 @@ enum Pane {
     Shops,
     Classes,
     Races,
+    Monsters,
 }
 
 impl Pane {
@@ -50,6 +58,7 @@ impl Pane {
             "shops" => Self::Shops,
             "classes" => Self::Classes,
             "races" => Self::Races,
+            "monsters" => Self::Monsters,
             _ => return None,
         })
     }
@@ -127,6 +136,34 @@ pub struct CompareJson {
     pub text: String,
 }
 
+/// A sub-item of a monster pane line (MME's `ListSubItems`).
+#[derive(Debug, Serialize, PartialEq)]
+pub struct LineCellJson {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// The VB `ForeColor` MME gave the cell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<i32>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
+}
+
+/// A line of the monster pane: MME's `lvMonsterDetail` item with its label, colour, bold flag and cells.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct LineJson {
+    pub label: String,
+    /// The ListItem's `Tag`, lower case (`item`, `spell`, `monster`, `room`, `greet_text`, ...); `plain` where MME gave none.
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<i32>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
+    pub cells: Vec<LineCellJson>,
+    /// The record the line stands for, so the page can link to it.
+    pub target: Option<Target>,
+}
+
 #[derive(Debug, Serialize)]
 struct PaneJson {
     kind: &'static str,
@@ -136,6 +173,9 @@ struct PaneJson {
     rows: Vec<RowJson>,
     /// The reference list, in the order MME's ListView holds it after its sorts.
     references: Vec<RefJson>,
+    /// Monsters: the pane's list, line by line (the other panes use `rows` and `references`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    lines: Vec<LineJson>,
     /// Items: the "Compared to ..." blocks, apart from `rows` so a page can offer them as a toggle.
     compare: Vec<CompareJson>,
     /// Shops: the charm the prices use; the label MME shows beside it.
@@ -354,6 +394,7 @@ fn empty(kind: &'static str, number: i32) -> PaneJson {
         text: String::new(),
         rows: Vec::new(),
         references: Vec::new(),
+        lines: Vec::new(),
         compare: Vec::new(),
         charm: None,
         charm_label: None,
@@ -517,11 +558,134 @@ fn class_race_pane(world: &World, ctx: &Ctx, pane: Pane, number: i32) -> PaneJso
     out
 }
 
+// ---------- monsters ----------
+
+/// The record a monster pane line stands for: the line's tag names the table, the first cell's tag the record.
+fn line_target(world: &World, row: &MonsterRow) -> Option<Target> {
+    let kind = row.tag.as_deref()?.to_ascii_lowercase();
+    let tag = row.cells.first()?.tag.as_deref()?;
+    // a spell cell's tag can carry the level after an `@`
+    let number = || {
+        let digits: String = tag
+            .trim()
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        digits.parse::<i32>().ok().filter(|n| *n > 0)
+    };
+    let table = |table: &'static str| {
+        number().map(|number| Target {
+            table,
+            number,
+            key: None,
+        })
+    };
+    match kind.as_str() {
+        "item" => table("items"),
+        "spell" => table("spells"),
+        "monster" => table("monsters").filter(|t| world.get_monster(t.number).is_some()),
+        "room" if tag.contains('/') => Some(Target {
+            table: "rooms",
+            number: 0,
+            key: Some(tag.trim().to_owned()),
+        }),
+        "room"
+            if row
+                .label
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("shop") =>
+        {
+            table("shops")
+        }
+        _ => None,
+    }
+}
+
+fn line_json(world: &World, r: &MonsterRow) -> LineJson {
+    LineJson {
+        label: r.label.clone(),
+        kind: r
+            .tag
+            .as_deref()
+            .map_or_else(|| "plain".to_owned(), str::to_ascii_lowercase),
+        color: r.fore_color,
+        bold: r.bold,
+        cells: r
+            .cells
+            .iter()
+            .map(|c| LineCellJson {
+                text: c.text.clone(),
+                tag: c.tag.clone(),
+                color: c.fore_color,
+                bold: c.bold,
+            })
+            .collect(),
+        target: line_target(world, r),
+    }
+}
+
+/// `PullMonsterDetail` for the current character and the lair/party boxes. The damage arrays are the ones MME
+/// starts with (nothing calculated), rebuilt per request: no endpoint calculates monster damage, so nothing could
+/// have written them.
+fn monster_pane(
+    world: &World,
+    sh: &Shared,
+    number: i32,
+    exp: &ExpPerHourSettings,
+    sim_rounds: i32,
+) -> Result<PaneJson, (StatusCode, String)> {
+    let ctx = sh.ctx;
+    let controls = &sh.body.options.monsters;
+    let mut ab = AbilityEnv::for_world(world, Profile::Stock);
+    ab.hide_record_numbers = sh.body.hide_record_numbers;
+    ab.avg_level_max_all_stats = ctx.avg;
+    if ctx.state.is_some() {
+        ab.global_level_text = Some(&ctx.level_text);
+    }
+    let rows = with_monster_env(ctx, controls, exp, sim_rounds, &ab, |env, s| {
+        let defense_desc = set_char_defense_description(s.cctx, &s.state.character, "")
+            .map_or_else(String::new, |d| d.description);
+        let sim_chr = s.state.sim_inputs();
+        let charm = touchstone_vb6::cstr(s.state.stats.stat_with_bonus[5]);
+        let inputs = MonsterDetailInputs {
+            use_exp_multi: true,
+            auto_calc_mon_damage: false,
+            dont_lookup_mon_regen: false,
+            print_char_damage_out_first: false,
+            hide_record_numbers: sh.body.hide_record_numbers,
+            sim_rounds: s.sim_rounds,
+            settings: s.settings,
+            possy: &s.possy,
+            spawn_chance: &s.spawn_chance,
+            vs_char_defense_config: "",
+            char_defense_description: &defense_desc,
+            party_damage_calculated: false,
+            dont_prompt_calc_party: false,
+            bless_caption: s.state.bless_mana.unwrap_or(0.0),
+            charm_tag: &charm,
+            sim_chr: &sim_chr,
+            reach: &NoReach,
+        };
+        let mut caches = DamageCaches {
+            vs_party: env.callouts.vs_party.to_vec(),
+            vs_char: env.callouts.vs_char.to_vec(),
+        };
+        // nLookupLimit
+        pull_monster_detail(env, &ab, &inputs, &mut caches, number, 100)
+    })?;
+    let mut out = empty("monsters", number);
+    out.lines = rows.iter().map(|r| line_json(world, r)).collect();
+    Ok(out)
+}
+
 fn build(
     loaded: &crate::state::Loaded,
     pane: Pane,
     number: i32,
     body: DetailBody,
+    exp: &ExpPerHourSettings,
+    sim_rounds: i32,
 ) -> Result<PaneJson, (StatusCode, String)> {
     let world = &loaded.world;
     let eval = EvaluateBody {
@@ -569,6 +733,12 @@ fn build(
             world.get_race(number).ok_or_else(|| missing("race"))?;
             class_race_pane(world, &ctx, pane, number)
         }
+        Pane::Monsters => {
+            world
+                .get_monster(number)
+                .ok_or_else(|| missing("monster"))?;
+            monster_pane(world, &sh, number, exp, sim_rounds)?
+        }
     })
 }
 
@@ -577,10 +747,12 @@ async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) 
         return Err(not_found(format!("no detail pane called {kind:?}")));
     };
     let loaded = state.current();
+    let (exp, sim_rounds) = run_settings(&state, body.character.as_ref());
     // The lair cache is built on first use and the item pane can be long: keep it off the reactor.
-    let out = tokio::task::spawn_blocking(move || build(&loaded, pane, number, body))
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    let out =
+        tokio::task::spawn_blocking(move || build(&loaded, pane, number, body, &exp, sim_rounds))
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
     json(&out)
 }
 

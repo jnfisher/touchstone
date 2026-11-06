@@ -29,8 +29,9 @@ use touchstone_rules::character::{
 use touchstone_rules::exp_per_hour::ExpPerHourSettings;
 use touchstone_rules::filters::{
     AbilityFilter, AllReachable, Answer, ArmourFilter, DamagePrompts, FilterEnv, MonsterAdd,
-    MonsterFilter, MonsterFilterInputs, ProfileRequest, SpellFilter, SpellFilterEnv, WeaponEntry,
-    WeaponFilter, filter_armour, filter_monsters, filter_spells, filter_sundry, filter_weapons,
+    MonsterExtras, MonsterFilter, MonsterFilterInputs, ProfileRequest, SpellFilter, SpellFilterEnv,
+    WeaponEntry, WeaponFilter, filter_armour, filter_monsters, filter_spells, filter_sundry,
+    filter_weapons,
 };
 use touchstone_rules::gear::Character as GlobalChar;
 use touchstone_rules::lairs::{
@@ -52,6 +53,7 @@ use touchstone_vb6::{Currency, Rnd};
 use crate::calc::{ApiResult, Body, bad, not_found};
 use crate::character::CharacterDto;
 use crate::detail::nmr_ver;
+use crate::settings::CharacterBlock;
 use crate::state::AppState;
 
 /// The tabs this endpoint lists.
@@ -139,6 +141,169 @@ pub struct Options {
     pub anti_magic: bool,
     /// `txtSpellOptions(0)`: the target's magic resistance.
     pub vs_mr: BoxText,
+    /// The Monsters tab's filter boxes, lair/party mode and the extra filters. The Monsters list and
+    /// pane read them; the other tabs ignore them.
+    pub monsters: MonsterControls,
+}
+
+/// The Monsters tab's controls (card P4-08): frmMain's filter boxes, `optMonsterFilter`, the lair/party
+/// boxes and the "Monster Filters" window. `Default` is what MME starts with.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct MonsterControls {
+    /// `optMonsterFilter(1)`: filter by lair (and, with a party size above one, for a party).
+    pub lair: bool,
+    /// `cmbMonsterRegen.ListIndex`: 0 regen at most the box, 1 at least.
+    pub regen_op: i32,
+    /// `txtMonsterRegen`.
+    pub regen: BoxText,
+    /// `txtMonsterHP`.
+    pub hp: BoxText,
+    /// `txtMonsterEXP`; a trailing K or M multiplies.
+    pub exp: BoxText,
+    /// `txtMonsterDamage`.
+    pub damage: BoxText,
+    /// `chkMonMagic`.
+    pub magic: bool,
+    /// `txtMonMagic`.
+    pub magic_value: BoxText,
+    /// `txtMonsterLairFilter(0..9)` and `txtMonsterDamageOUT(0..1)`.
+    pub party: PartyBoxes,
+    pub extras: ExtrasBody,
+}
+
+/// The lair/party frame: `txtMonsterLairFilter(0..9)` and the two damage-output boxes.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PartyBoxes {
+    /// `# Party`.
+    pub size: BoxText,
+    pub ac: BoxText,
+    pub dr: BoxText,
+    pub mr: BoxText,
+    pub dodge: BoxText,
+    /// Average max HP.
+    pub hp: BoxText,
+    /// Anti-magic players.
+    pub anti_magic: BoxText,
+    /// `RestHP`.
+    pub rest_hp: BoxText,
+    pub accuracy: BoxText,
+    pub swings: BoxText,
+    /// `txtMonsterDamageOUT(0)` and `(1)`.
+    pub damage_out_physical: BoxText,
+    pub damage_out_magic: BoxText,
+}
+
+impl PartialEq for BoxText {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+fn boxed(s: &str) -> BoxText {
+    BoxText(s.to_owned())
+}
+
+impl Default for PartyBoxes {
+    fn default() -> Self {
+        Self {
+            size: boxed("1"),
+            ac: boxed("60"),
+            dr: boxed("20"),
+            mr: boxed("50"),
+            dodge: boxed("50"),
+            hp: boxed("400"),
+            anti_magic: boxed("0"),
+            rest_hp: boxed("12"),
+            accuracy: boxed("250"),
+            swings: boxed("1"),
+            damage_out_physical: boxed("99999"),
+            damage_out_magic: boxed("99999"),
+        }
+    }
+}
+
+impl Default for MonsterControls {
+    /// The values `RemoveFilters` writes into the boxes.
+    fn default() -> Self {
+        let d = MonsterFilter::default();
+        Self {
+            lair: false,
+            regen_op: d.regen_op,
+            regen: BoxText(d.regen_text),
+            hp: BoxText(d.hp_text),
+            exp: BoxText(d.exp_text),
+            damage: BoxText(d.damage_text),
+            magic: d.magic,
+            magic_value: BoxText(d.magic_text),
+            party: PartyBoxes::default(),
+            extras: ExtrasBody::default(),
+        }
+    }
+}
+
+macro_rules! extras_body {
+    ($($f:ident: $t:ty),* $(,)?) => {
+        /// The "Monster Filters" window (`filter_Monster_*`); a field left out keeps the window's start-up value.
+        #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+        #[serde(default, deny_unknown_fields)]
+        pub struct ExtrasBody { $(pub $f: Option<$t>,)* }
+
+        impl ExtrasBody {
+            fn apply(&self) -> MonsterExtras {
+                let mut e = MonsterExtras::default();
+                $(if let Some(v) = self.$f.clone() { e.$f = v; })*
+                e
+            }
+        }
+    };
+}
+
+extras_body! {
+    enabled: bool, armour_class: i32, damage_resist: i32, magic_res: i32, bs_def: i32, game_limit: i32,
+    avg_lair_exp: f64, atk_accuracy_maj: i32, atk_accuracy_max: i32, dodge: i32, num_lairs: i32,
+    num_mobs_lte: f64, num_mobs_gte: f64, follow_gte: i32, follow_lte: i32, at_least_lairs: i32,
+    abilities: [[i32; 3]; 3], is_undead: bool, non_hostile_vs_evil: bool, non_hostile_vs_ng: bool,
+    reachable_only: bool, at_least_lairs_on: bool, drops_cash: bool, drops_r: bool, drops_p: bool,
+    drops_g: bool, drops_s: bool, atk_no_poison: bool, atk_no_confusion: bool, atk_no_fear: bool,
+    show_all: bool,
+}
+
+impl MonsterControls {
+    /// `optMonsterFilter(1)` and the boxes `PopulateCharacterProfile` and `GetDamageOutput` read.
+    pub(crate) fn party(&self) -> PartyFilter {
+        let p = &self.party;
+        PartyFilter {
+            lair_mode: self.lair,
+            lair_text: [
+                &p.size,
+                &p.ac,
+                &p.dr,
+                &p.mr,
+                &p.dodge,
+                &p.hp,
+                &p.anti_magic,
+                &p.rest_hp,
+                &p.accuracy,
+            ]
+            .map(|b| b.0.clone()),
+            monster_damage_text: self.damage.0.clone(),
+        }
+    }
+
+    fn filter(&self) -> MonsterFilter {
+        MonsterFilter {
+            regen_op: self.regen_op,
+            regen_text: self.regen.0.clone(),
+            hp_text: self.hp.0.clone(),
+            exp_text: self.exp.0.clone(),
+            damage_text: self.damage.0.clone(),
+            magic: self.magic,
+            magic_text: self.magic_value.0.clone(),
+            extras: self.extras.apply(),
+        }
+    }
 }
 
 /// The global filter bar (card P4-21): `chkGlobalFilter` and the boxes of its frame.
@@ -269,6 +434,9 @@ pub struct RowJson {
 pub struct Table {
     pub columns: Vec<Column>,
     pub rows: Vec<RowJson>,
+    /// Monsters: some record was filtered out, so MME's caption reads "*Monsters*".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub filtered: bool,
 }
 
 fn sort_number(n: f64) -> SortKey {
@@ -418,6 +586,8 @@ struct Built {
     ability_numeric: bool,
     /// The data version, for the Monsters columns (the set depends on it).
     nmr: f64,
+    /// Some monster was filtered out: MME's "*Monsters*" caption.
+    filtered: bool,
 }
 
 /// The Monsters list's `ColumnHeaders.Add` texts by data version. Most cells carry the number MME sorts by in their tag.
@@ -492,7 +662,8 @@ fn to_table(tab: Tab, built: Built) -> Table {
             cells.push(CellJson {
                 text: r.text.clone(),
                 sort: sort_number(f64::from(number)),
-                color: None,
+                // a row MME greys (the filter's "show all") has the colour on its ListItem too
+                color: r.fore_color,
             });
             for (k, c) in cols.iter().enumerate().skip(1) {
                 let cell = r.cells.get(k - 1);
@@ -518,6 +689,7 @@ fn to_table(tab: Tab, built: Built) -> Table {
     Table {
         columns: columns_json,
         rows,
+        filtered: built.filtered,
     }
 }
 
@@ -650,6 +822,7 @@ fn weapons(ctx: &Ctx, opts: &Options) -> Built {
         headers: Vec::new(),
         ability_numeric: list.numeric_ability_sort,
         nmr: 0.0,
+        filtered: false,
     }
 }
 
@@ -669,6 +842,7 @@ fn armour(ctx: &Ctx, opts: &Options) -> Built {
         headers: Vec::new(),
         ability_numeric: false,
         nmr: 0.0,
+        filtered: false,
     }
 }
 
@@ -746,6 +920,7 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
         headers,
         ability_numeric: false,
         nmr: 0.0,
+        filtered: false,
     }
 }
 
@@ -767,10 +942,32 @@ fn uncalculated(world: &World) -> Vec<Currency> {
     vec![Currency::from_scaled(-10_000); usize::try_from(top).unwrap_or(0) + 1]
 }
 
-/// FilterMonsters with MME's default controls (solo, no extra filters), `AddMonster2LV` for every monster it lists.
-/// Without a character the list is made for "no character" (the global filter off); the placeholder pipeline state
-/// behind it only supplies the plumbing the damage environment needs.
-fn monsters(ctx: &Ctx) -> Result<Built, ApiError> {
+/// What the Monsters list and the monster pane share once the lair environment stands: the character
+/// state (a placeholder without a character), the profile of the list, and the start-up lair averages.
+pub(crate) struct MonsterSetup<'a> {
+    pub state: &'a CharacterState,
+    /// The combat context the state was built with.
+    pub cctx: &'a touchstone_rules::character::Context<'a>,
+    /// `PopulateCharacterProfile(tChar)`.
+    pub t_char: CharacterProfile,
+    /// `nMonsterPossy` and `nMonsterSpawnChance`, filled by `CalculateAverageLairs` as MME does while starting.
+    pub possy: Vec<Currency>,
+    pub spawn_chance: Vec<Currency>,
+    pub settings: &'a ExpPerHourSettings,
+    pub sim_rounds: i32,
+}
+
+/// Build the lair environment the Monsters list and pane run in and hand it to `f`. Without a character the list is
+/// made for "no character" (the global filter off); the placeholder pipeline state behind it only supplies the
+/// plumbing the damage environment needs. `controls` supplies the lair/party boxes.
+pub(crate) fn with_monster_env<R>(
+    ctx: &Ctx,
+    controls: &MonsterControls,
+    settings: &ExpPerHourSettings,
+    sim_rounds: i32,
+    cast: &dyn touchstone_rules::attack::CastText,
+    f: impl FnOnce(&mut CharLairEnv<'_>, &MonsterSetup<'_>) -> R,
+) -> Result<R, ApiError> {
     let world = ctx.world;
     let unprocessable = |m: String| (StatusCode::UNPROCESSABLE_ENTITY, m);
     let placeholder;
@@ -791,19 +988,24 @@ fn monsters(ctx: &Ctx) -> Result<Built, ApiError> {
             dat_ver_caption: world.info.dat_file_version.clone(),
             nmr_ver: ctx.nmr,
             avg_level_max_all_stats: ctx.avg,
+            party: controls.party(),
             ..PipelineOptions::default()
         };
         placeholder = refresh_all(Profile::Stock, world, &ch, &opts)
             .map_err(|e| unprocessable(format!("cannot evaluate the default character: {e}")))?;
         &placeholder
     };
-    let party = PartyFilter {
-        lair_mode: false,
-        lair_text: ["1", "60", "20", "50", "50", "400", "0", "12", "250"].map(str::to_owned),
-        monster_damage_text: "99999".to_owned(),
-    };
-    let cenv = state.env(["99999".to_owned(), "99999".to_owned()], "1".to_owned());
-    let cctx = cenv.context(world);
+    let party = controls.party();
+    let p = &controls.party;
+    let cenv = state.env(
+        [
+            p.damage_out_physical.0.clone(),
+            p.damage_out_magic.0.clone(),
+        ],
+        p.swings.0.clone(),
+    );
+    let mut cctx = cenv.context(world);
+    cctx.recovery_only = settings.recovery_only;
     let key = set_current_attack_type_config(&cctx, &state.character, "");
     let mut t_char = CharacterProfile::default();
     populate_character_profile(
@@ -830,8 +1032,6 @@ fn monsters(ctx: &Ctx) -> Result<Built, ApiError> {
     let mut sim = MonsterSimInput::default();
     let mut rnd = Rnd::from_state(327_680);
     let use_character = state.character.global_filter;
-    let cast = NoCastText;
-    let settings = ExpPerHourSettings::default();
     // CalculateAverageLairs runs while MME starts (bStartup), when GetLairInfo answers from its cache
     {
         let mut env = CharLairEnv {
@@ -845,11 +1045,11 @@ fn monsters(ctx: &Ctx) -> Result<Built, ApiError> {
             },
             callouts: CharCallouts {
                 world,
-                damage: cenv.damage_env(world, &cctx, &state.character, &cast),
+                damage: cenv.damage_env(world, &cctx, &state.character, cast),
                 vs_party: &vs_party,
                 vs_char: &vs_char,
                 vs_default: &vs_default,
-                sim_rounds: 1000,
+                sim_rounds,
                 sim: &mut sim,
                 rnd: &mut rnd,
             },
@@ -872,55 +1072,89 @@ fn monsters(ctx: &Ctx) -> Result<Built, ApiError> {
         },
         callouts: CharCallouts {
             world,
-            damage: cenv.damage_env(world, &cctx, &state.character, &cast),
+            damage: cenv.damage_env(world, &cctx, &state.character, cast),
             vs_party: &vs_party,
             vs_char: &vs_char,
             vs_default: &vs_default,
-            sim_rounds: 1000,
+            sim_rounds,
             sim: &mut sim,
             rnd: &mut rnd,
         },
     };
-    let filter_inputs = MonsterFilterInputs {
-        only_in_game: true,
-        use_exp_multi: true,
-        settings: &settings,
-        possy: &possy,
-        global_level: f64::from(ctx.who.level),
-        reach: &AllReachable,
-        prompts: DamagePrompts::default(),
+    let setup = MonsterSetup {
+        state,
+        cctx: &cctx,
+        t_char,
+        possy,
+        spawn_chance,
+        settings,
+        sim_rounds,
     };
-    let row_inputs = MonsterRowInputs {
-        use_exp_multi: true,
-        is_main_list: true,
-        settings: &settings,
-        possy: &possy,
-        spawn_chance: &spawn_chance,
-        backstab_attack: backstab_attack(state.attack_config()),
-    };
-    let mut rows: Vec<Row> = Vec::new();
-    let mut add = |env: &mut CharLairEnv<'_>, a: &MonsterAdd| {
-        let mut t = t_char.clone();
-        t.hp = a.hp;
-        t.hp_regen = a.hp_regen;
-        rows.extend(add_monster_row(env, &row_inputs, &t, a.number, &a.args));
-    };
-    // no question is asked with the default prompt state; a Yes would be the right answer anyway
-    let _ = filter_monsters(
-        &mut env,
-        &filter_inputs,
-        &MonsterFilter::default(),
-        &t_char,
-        false,
-        &mut |_| Answer::Yes,
-        &mut add,
-    );
-    Ok(Built {
-        rows,
-        headers: Vec::new(),
-        ability_numeric: false,
-        nmr: ctx.nmr,
-    })
+    Ok(f(&mut env, &setup))
+}
+
+/// FilterMonsters with the tab's controls, `AddMonster2LV` for every monster it lists. No question is asked (the
+/// default prompt state); a Yes would be the right answer anyway, as the damage arrays here are never calculated.
+fn monsters(
+    ctx: &Ctx,
+    controls: &MonsterControls,
+    settings: &ExpPerHourSettings,
+    sim_rounds: i32,
+) -> Result<Built, ApiError> {
+    let filter = controls.filter();
+    with_monster_env(
+        ctx,
+        controls,
+        settings,
+        sim_rounds,
+        &NoCastText,
+        |env, s| {
+            let filter_inputs = MonsterFilterInputs {
+                only_in_game: true,
+                use_exp_multi: true,
+                settings: s.settings,
+                possy: &s.possy,
+                global_level: f64::from(ctx.who.level),
+                reach: &AllReachable,
+                prompts: DamagePrompts::default(),
+            };
+            let row_inputs = MonsterRowInputs {
+                use_exp_multi: true,
+                is_main_list: true,
+                settings: s.settings,
+                possy: &s.possy,
+                spawn_chance: &s.spawn_chance,
+                backstab_attack: backstab_attack(s.state.attack_config()),
+            };
+            let mut rows: Vec<Row> = Vec::new();
+            let mut add = |env: &mut CharLairEnv<'_>, a: &MonsterAdd| {
+                let mut t = s.t_char.clone();
+                t.hp = a.hp;
+                t.hp_regen = a.hp_regen;
+                rows.extend(add_monster_row(env, &row_inputs, &t, a.number, &a.args));
+            };
+            let list = filter_monsters(
+                env,
+                &filter_inputs,
+                &filter,
+                &s.t_char,
+                false,
+                &mut |_| Answer::Yes,
+                &mut add,
+            );
+            // FilterMonsters renames columns 11 and 12 (1-based) for the data version and mode
+            let headers = list
+                .headers
+                .map_or_else(Vec::new, |(a, b)| vec![(10, a), (11, b)]);
+            Built {
+                rows,
+                headers,
+                ability_numeric: false,
+                nmr: ctx.nmr,
+                filtered: list.filtered && !list.cancelled,
+            }
+        },
+    )
 }
 
 fn sundry(ctx: &Ctx, opts: &Options) -> Built {
@@ -939,6 +1173,7 @@ fn plain(rows: Vec<Row>) -> Built {
         headers: Vec::new(),
         ability_numeric: false,
         nmr: 0.0,
+        filtered: false,
     }
 }
 
@@ -1005,6 +1240,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
                 dat_ver_caption: world.info.dat_file_version.clone(),
                 nmr_ver: nmr,
                 avg_level_max_all_stats: avg,
+                party: req.options.monsters.party(),
                 ..PipelineOptions::default()
             };
             let st = refresh_all(Profile::Stock, world, &ch, &opts).map_err(|e| {
@@ -1048,12 +1284,28 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
 /// # Errors
 /// As [`prepare`].
 pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, ApiError> {
+    let exp = ExpPerHourSettings::default();
+    evaluate_with(world, tab, req, &exp, crate::settings::SIM_ROUNDS_DEFAULT)
+}
+
+/// [`evaluate`] with the exp/hr block and the monster simulation rounds the request runs with
+/// ([`run_settings`]); only the Monsters list reads them.
+///
+/// # Errors
+/// As [`prepare`].
+pub fn evaluate_with(
+    world: &World,
+    tab: Tab,
+    req: &EvaluateBody,
+    exp: &ExpPerHourSettings,
+    sim_rounds: i32,
+) -> Result<Table, ApiError> {
     let ctx = prepare(world, req)?;
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),
         Tab::Spells => spells(&ctx, &req.options),
-        Tab::Monsters => monsters(&ctx)?,
+        Tab::Monsters => monsters(&ctx, &req.options.monsters, exp, sim_rounds)?,
         Tab::Items => sundry(&ctx, &req.options),
         Tab::Races => {
             let equipped = EquippedGlobals::default();
@@ -1091,6 +1343,23 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
 
 // ---------- the route ----------
 
+/// The exp/hr block and the monster simulation rounds a request runs with: `settings.json`, and the open
+/// character's own block when "by character" is on. A damaged settings file reads as the defaults.
+pub(crate) fn run_settings(
+    state: &AppState,
+    character: Option<&CharacterDto>,
+) -> (ExpPerHourSettings, i32) {
+    let settings = state.settings().unwrap_or_default();
+    let block = match character {
+        None => CharacterBlock::NoCharacter,
+        Some(c) => c.exp_hr.map_or(CharacterBlock::Unset, CharacterBlock::Own),
+    };
+    (
+        settings.effective_exp_per_hour(block),
+        settings.monster_sim_rounds,
+    )
+}
+
 pub async fn evaluate_route(
     State(state): State<Arc<AppState>>,
     Path(tab_name): Path<String>,
@@ -1103,13 +1372,14 @@ pub async fn evaluate_route(
     req.options.validate()?;
     let loaded = state.current();
     // serde_json keeps object keys sorted, so equal requests give equal keys
-    let key = format!("{tab_name}|{raw}");
+    let (exp, rounds) = run_settings(&state, req.character.as_ref());
+    let key = format!("{tab_name}|{raw}|{exp:?}|{rounds}");
     let load = loaded.info.load_count;
     let body = if let Some(hit) = state.evaluate_cache_get(&key, load) {
         hit
     } else {
         let job = tokio::task::spawn_blocking(move || {
-            evaluate(&loaded.world, tab, &req).and_then(|t| {
+            evaluate_with(&loaded.world, tab, &req, &exp, rounds).and_then(|t| {
                 serde_json::to_vec(&t)
                     .map(Bytes::from)
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
