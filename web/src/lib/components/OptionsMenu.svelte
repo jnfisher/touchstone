@@ -24,7 +24,7 @@
 			<Button {...props} variant="outline" size="sm">Options</Button>
 		{/snippet}
 	</DropdownMenu.Trigger>
-	<DropdownMenu.Content align="end" class="min-w-64">
+	<DropdownMenu.Content align="end" class="min-w-80">
 		<DropdownMenu.Item data-testid="opt-paste" onSelect={() => opts.pasteCharacter()}>Paste Character</DropdownMenu.Item>
 		<DropdownMenu.Item data-testid="opt-reach" disabled={opts.reachBusy} onSelect={() => void opts.calculateReachability()}>
 			Calculate Reachability

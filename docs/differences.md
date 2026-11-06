@@ -213,8 +213,7 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   column filters. MME's `FilterAll(False)` resets its own per-tab controls (armour types, weapon speed, the ability
   filters, ...), which the web lists do not have; it leaves the global filter alone.
 - The two checked items are stored in `settings.json` (`jump_to_compare`, `shops_first`, off when absent as in
-  `LoadSettings`). "Jump to Equip/Lists on Add" opens the Compare tab on the list that was added to; MME also jumps to
-  the EQ tab for armour, which has no counterpart.
+  `LoadSettings`). "Jump to Equip/Lists on Add" opens the Compare tab on the list that was added to.
 - The menu shortcuts (Ctrl+P, Ctrl+D, Ctrl+J, Ctrl+F2, Ctrl+F5) are not bound: the browser owns most of them.
 - Back/forward history keeps the tab and the record selected on it. MME keeps only a back stack of 50 tabs (mouse
   back button); the port adds a forward direction, Alt+Left/Alt+Right and toolbar buttons. A move replaces the browser
