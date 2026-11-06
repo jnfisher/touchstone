@@ -7,7 +7,7 @@ use axum::extract::{Path, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use serde_json::json;
 
 use crate::state::AppState;
@@ -17,6 +17,11 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/info", get(info))
         .route("/api/exp", get(calc::exp_table))
+        .route("/api/calc/exp", post(calc::calc_exp))
+        .route("/api/calc/coin", post(calc::calc_coin))
+        .route("/api/calc/swing", post(calc::calc_swing))
+        .route("/api/calc/backstab", post(calc::calc_backstab))
+        .route("/api/calc/hit", post(calc::calc_hit))
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
         .route("/api/spells/{number}/effect", get(detail::spell_effect))
