@@ -314,6 +314,8 @@ class Env:
                 refs.append(cell)
             elif isinstance(a, dict) and "udt" in a:
                 args.append(self.make_udt(a))
+            elif isinstance(a, dict) and "obj" in a:
+                args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:
                 args.append(decode(a))
         if "." in target:
@@ -369,6 +371,9 @@ class Env:
         try:
             for name, spec in (case.get("objects") or {}).items():
                 objs[name] = self.make_object(spec)
+                if spec.get("global"):
+                    # The instance also stands in for an (unset) object-typed module global.
+                    self.it.global_cell(spec["global"]).v = objs[name]
             for st in steps:
                 if "set" in st:
                     oname, prop = st["set"].split(".", 1)

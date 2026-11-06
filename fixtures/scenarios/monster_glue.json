@@ -1,0 +1,6 @@
+{"family":"monster_glue","database":true,"description":"t","tolerance":{"default":0},
+"cases":[
+{"id":"a","globals":{"nNMRVer":1.83},"objects":{"sim":{"class":"clsMonsterAttackSim","global":"clsMonAtkSim"}},"steps":[{"call":"CalculateMonsterAvgDmg","args":[100,500],"as":"r"}],"read":{"atk":"sim.nAtkMin[0..4]","nm":"sim.sAtkName[0..4]"}},
+{"id":"b","globals":{"nNMRVer":1.83},"proc":"GetMonsterAttackSummary","args":[100,true,true]},
+{"id":"c","globals":{"nNMRVer":1.83},"objects":{"sim":{"class":"clsMonsterAttackSim"}},"steps":[{"call":"PopulateMonsterDataToAttackSim","args":[100,{"obj":"sim"}]}],"read":{"atk":"sim.nAtkMin[0..4]","nm":"sim.sAtkName[0..4]"}}
+]}
