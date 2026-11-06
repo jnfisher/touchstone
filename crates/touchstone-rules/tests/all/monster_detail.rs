@@ -398,7 +398,7 @@ fn row_json(r: &DetailRow) -> Value {
     json!([r.label, r.tag, r.fore_color, r.bold, cells])
 }
 
-fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
+fn run_case(prof: Profile, world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
     let id = case["id"].as_str().unwrap();
     assert!(case.get("error").is_none(), "{id}: the oracle raised");
     assert!(
@@ -419,7 +419,7 @@ fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
     let mut opts = inp.options();
     opts.party = party.clone();
     opts.nmr_ver = nmr;
-    let state = refresh_all(Profile::Stock, world, &inp.character(), &opts)
+    let state = refresh_all(prof, world, &inp.character(), &opts)
         .unwrap_or_else(|e| panic!("{id}: refresh_all: {e}"));
     let cenv = state.env(
         [
@@ -445,18 +445,18 @@ fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
         .as_bool()
         .unwrap_or(false);
     let level_text = text_of(&inp, "txtGlobalLevel", 0);
-    let mut ab = AbilityEnv::for_world(world, Profile::Stock);
+    let mut ab = AbilityEnv::for_world(world, prof);
     ab.hide_record_numbers = hide;
     if state.character.global_filter {
         ab.global_level_text = Some(&level_text);
     }
-    let mut cache = LairCache::load(world, Profile::Stock, nmr);
+    let mut cache = LairCache::load(world, prof, nmr);
     let mut sim = MonsterSimInput::default();
     let mut rnd = Rnd::from_state(327_680);
     let mut env = CharLairEnv {
         cache: &mut cache,
         query: LairQuery {
-            profile: Profile::Stock,
+            profile: prof,
             startup: false,
             use_character: state.character.global_filter,
             party: &party,
@@ -561,6 +561,11 @@ fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
 // Expected values: fixtures/rules/monster_detail.json (MME's PullMonsterDetail, run by the oracle).
 #[test]
 fn monster_detail_fixture() {
+    check_fixture(Profile::Stock);
+}
+
+/// Runs every monster-detail case under `prof`; the layer-1 identity harness reuses it.
+pub(crate) fn check_fixture(prof: Profile) {
     let fx = load("monster_detail");
     let pipe = load("pipeline");
     let world = build_world(&pipe.header["data"], &fx.header["data"]["table"]);
@@ -573,7 +578,7 @@ fn monster_detail_fixture() {
             .values()
             .map(|v| v.as_array().map_or(0, Vec::len))
             .sum::<usize>();
-        bad.extend(run_case(&world, &fx, case));
+        bad.extend(run_case(prof, &world, &fx, case));
     }
     eprintln!(
         "monster_detail: {} cases, {panes} panes, {} mismatches",

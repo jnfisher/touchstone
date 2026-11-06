@@ -149,6 +149,9 @@ pub struct CombatRoundInfo {
 /// A VB6 error (Long overflow of the regenerated HP) returns the partly filled result.
 #[must_use]
 pub fn calc_combat_rounds(profile: Profile, a: &CombatRoundsArgs) -> CombatRoundInfo {
+    // Quicksilver (R2) needs no branch here: its surprise figure already holds the whole opening
+    // round (the stab and the blows after it), and the credit below counts that round once, as the
+    // one it replaces. Stock's stab was the whole round.
     let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     let mut r = CombatRoundInfo::default();
     let _ = combat_rounds_steps(a, &mut r);
@@ -587,12 +590,8 @@ pub fn get_damage_output(env: &DamageEnv, req: &DamageRequest) -> DamageOutput {
 }
 
 /// Calls `calculate_attack` for the profile `t` with the arguments `GetDamageOutput` always uses.
-pub(crate) fn attack_with(
-    env: &DamageEnv,
-    t: &crate::character::CharacterProfile,
-    ar: &AttackRequest,
-) -> attack::AttackDamage {
-    let ae = AttackEnv {
+pub(crate) fn attack_env<'a>(env: &'a DamageEnv) -> AttackEnv<'a> {
+    AttackEnv {
         items: env.ctx.items,
         classes: env.ctx.classes,
         races: env.races,
@@ -601,9 +600,65 @@ pub(crate) fn attack_with(
         dat_ver_caption: env.dat_ver_caption,
         avg_level_max_all_stats: env.ctx.avg_level_max_all_stats,
         accuracy_tag: env.accuracy_tag,
-    };
+    }
+}
+
+pub(crate) fn attack_with(
+    env: &DamageEnv,
+    t: &crate::character::CharacterProfile,
+    ar: &AttackRequest,
+) -> attack::AttackDamage {
     let mut casts = String::new();
-    calculate_attack(env.ctx.profile, &ae, &attack_profile(t), ar, &mut casts)
+    calculate_attack(
+        env.ctx.profile,
+        &attack_env(env),
+        &attack_profile(t),
+        ar,
+        &mut casts,
+    )
+}
+
+/// The opening round of a stab, as `GetDamageOutput` and the monster pane report it.
+pub(crate) struct SurpriseRound {
+    /// `nSurpriseDamage`: the stab's average hit plus its weapon's cast damage; under Quicksilver
+    /// (R2) also the normal blows the rest of the round pays for.
+    pub damage: i32,
+    /// `nSurpriseMinDamage`, with the same addition.
+    pub min_damage: i32,
+    pub hit_chance: i16,
+    /// The stab's detail line, naming the follow-up blows under Quicksilver.
+    pub detail: String,
+}
+
+/// The stab (attack type 4) of `ar` and, under Quicksilver, the blows that follow it in the same
+/// round (R2). MME's surprise figure is the stab alone, because in stock the stab ended the round.
+pub(crate) fn surprise_round(
+    env: &DamageEnv,
+    t: &crate::character::CharacterProfile,
+    ar: &AttackRequest,
+) -> Result<SurpriseRound, Vb6Error> {
+    let bs = attack_with(env, t, ar);
+    let mut damage = vb::add_i32(bs.avg_hit, bs.avg_extra_hit)?;
+    let mut min_damage = vb::add_i32(bs.min_dmg, bs.avg_extra_swing)?;
+    let mut detail = bs.attack_detail;
+    if let Some(open) =
+        attack::calc_stab_opener(env.ctx.profile, &attack_env(env), &attack_profile(t), ar)
+    {
+        damage = vb::add_i32(damage, open.follow_damage)?;
+        min_damage = vb::add_i32(min_damage, open.follow_min_damage)?;
+        if !detail.is_empty() {
+            if !detail.ends_with(' ') {
+                detail.push(' ');
+            }
+            detail.push_str(&format!("+ {}", open.text()));
+        }
+    }
+    Ok(SurpriseRound {
+        damage,
+        min_damage,
+        hit_chance: bs.hit_chance,
+        detail,
+    })
 }
 
 pub(crate) fn populate(
@@ -790,7 +845,7 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
             }
 
             if i32::from(vs_magic_lvl) <= bs_magic {
-                let bs = attack_with(
+                let bs = surprise_round(
                     env,
                     &t,
                     &AttackRequest {
@@ -803,9 +858,9 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
                         bs_defense: i32::from(vs_bs_defense),
                         ..AttackRequest::default()
                     },
-                );
-                surprise = cur_long(vb::add_i32(bs.avg_hit, bs.avg_extra_hit)?);
-                surprise_min = cur_long(vb::add_i32(bs.min_dmg, bs.avg_extra_swing)?);
+                )?;
+                surprise = cur_long(bs.damage);
+                surprise_min = cur_long(bs.min_damage);
                 surprise_chance = bs.hit_chance;
                 if swings_out < 1.0 {
                     swings_out = 1.0;

@@ -465,8 +465,38 @@ fn describe_rounds(r: &CombatRoundInfo) -> Value {
     })
 }
 
+/// One fixture case run under a profile: the port's answer, MME's, and the damage output for
+/// `GetDamageOutput` cases.
+pub(crate) struct Ran {
+    pub id: String,
+    pub got: Value,
+    pub want: Value,
+    pub damage: Option<DamageOutput>,
+}
+
 #[test]
 fn combat_fixture() {
+    check_fixture(Profile::Stock);
+}
+
+/// Runs every combat fixture case under `prof`; the layer-1 identity harness reuses it.
+pub(crate) fn check_fixture(prof: Profile) {
+    let ran = run_cases(prof);
+    let run = ran.len();
+    let bad: Vec<String> = ran
+        .iter()
+        .filter(|r| r.got != r.want)
+        .map(|r| format!("{}:\n  got  {}\n  want {}", r.id, r.got, r.want))
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "{} of {run} cases differ; first:\n{}",
+        bad.len(),
+        bad.iter().take(6).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+pub(crate) fn run_cases(prof: Profile) -> Vec<Ran> {
     let fx = fixture::load("combat");
     let table = fx
         .cases
@@ -479,19 +509,18 @@ fn combat_fixture() {
     let classes = class_table(table);
     let races = race_table(table);
     let monsters = monster_table(table);
-    let mut bad = Vec::new();
-    let mut run = 0;
+    let mut ran = Vec::new();
     for case in &fx.cases {
         let id = case["id"].as_str().unwrap();
         if id == "table" {
             continue;
         }
-        run += 1;
         let inp = &case["inputs"];
         let proc = inp["proc"].as_str().unwrap();
         let args = inp["args"].as_array().unwrap();
         let out = &case["outputs"]["result"];
         let f = |k: usize| num(&args[k]);
+        let mut damage = None;
         let (got, want): (Value, Value) = match proc {
             "GetDamageOutput" => {
                 let forms = &inp["forms"];
@@ -499,7 +528,7 @@ fn combat_fixture() {
                 let stats = char_stats(forms, g);
                 let party = party(forms);
                 let ctx = Context {
-                    profile: Profile::Stock,
+                    profile: prof,
                     nmr_ver: g_f64(g, "nNMRVer"),
                     avg_level_max_all_stats: g_f64(g, "gAvgLevelMaxAllStats"),
                     hide_record_numbers: false,
@@ -552,6 +581,7 @@ fn combat_fixture() {
                 r.vs_water = n(15).unwrap_or(0) as i16;
                 r.force_character = arg(args, 16).is_some_and(|v| v.as_bool().unwrap());
                 let d = get_damage_output(&env, &r);
+                damage = Some(d);
                 (describe_damage(&d), expected_damage(out))
             }
             "CalcCombatRounds" => {
@@ -566,7 +596,7 @@ fn combat_fixture() {
                     surprise_damage_out: f(7),
                     first_round_damage_out: i(&args[8]) as i32,
                 };
-                let r = calc_combat_rounds(Profile::Stock, &d);
+                let r = calc_combat_rounds(prof, &d);
                 (
                     describe_rounds(&r),
                     serde_json::json!({
@@ -577,7 +607,7 @@ fn combat_fixture() {
             }
             "IsMobKillable" => (
                 serde_json::json!(is_mob_killable(
-                    Profile::Stock,
+                    prof,
                     f(0),
                     i(&args[1]) as i32,
                     f(2),
@@ -610,14 +640,12 @@ fn combat_fixture() {
             "ccr_Max" => (serde_json::json!(ccr_max(f(0), f(1))), out.clone()),
             other => panic!("unknown proc {other} in {id}"),
         };
-        if got != want {
-            bad.push(format!("{id}:\n  got  {got}\n  want {want}"));
-        }
+        ran.push(Ran {
+            id: id.to_string(),
+            got,
+            want,
+            damage,
+        });
     }
-    assert!(
-        bad.is_empty(),
-        "{} of {run} cases differ; first:\n{}",
-        bad.len(),
-        bad.iter().take(6).cloned().collect::<Vec<_>>().join("\n")
-    );
+    ran
 }

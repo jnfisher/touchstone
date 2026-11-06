@@ -299,7 +299,7 @@ pub(crate) fn row_json(r: &Row) -> Value {
     Value::Array(out)
 }
 
-fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
+fn run_case(prof: Profile, world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
     let caches = &caches(fx, case);
     let id = case["id"].as_str().unwrap();
     assert!(case.get("error").is_none(), "{id}: the oracle raised");
@@ -316,7 +316,7 @@ fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
     let mut opts = inp.options();
     opts.party = party.clone();
     opts.nmr_ver = nmr;
-    let state = refresh_all(Profile::Stock, world, &inp.character(), &opts)
+    let state = refresh_all(prof, world, &inp.character(), &opts)
         .unwrap_or_else(|e| panic!("{id}: refresh_all: {e}"));
     let cenv = state.env(
         [
@@ -338,13 +338,13 @@ fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
         0,
         false,
     );
-    let mut cache = LairCache::load(world, Profile::Stock, nmr);
+    let mut cache = LairCache::load(world, prof, nmr);
     let mut sim = MonsterSimInput::default();
     let mut rnd = Rnd::from_state(327_680);
     let mut env = CharLairEnv {
         cache: &mut cache,
         query: LairQuery {
-            profile: Profile::Stock,
+            profile: prof,
             startup: false,
             use_character: state.character.global_filter,
             party: &party,
@@ -423,6 +423,11 @@ pub(crate) fn caches(fx: &Fixture, case: &Value) -> Caches {
 // Expected values: fixtures/rules/monster_rows.json (MME's AddMonster2LV, run by the oracle).
 #[test]
 fn monster_rows_fixture() {
+    check_fixture(Profile::Stock);
+}
+
+/// Runs every monster-row case under `prof`; the layer-1 identity harness reuses it.
+pub(crate) fn check_fixture(prof: Profile) {
     let fx = load("monster_rows");
     let pipe = load("pipeline");
     let world = build_world(&pipe.header["data"], &fx.header["data"]["table"]);
@@ -435,7 +440,7 @@ fn monster_rows_fixture() {
             .values()
             .map(|v| v.as_array().map_or(0, Vec::len))
             .sum::<usize>();
-        bad.extend(run_case(&world, &fx, case));
+        bad.extend(run_case(prof, &world, &fx, case));
     }
     eprintln!(
         "monster_rows: {} cases, {rows} rows, {} mismatches",

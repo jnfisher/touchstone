@@ -277,7 +277,8 @@ impl Default for RankWeights {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Balance {
-    /// A stab costs this percentage of a normal blow's energy.
+    /// A stab costs this percentage of a normal blow's energy, at most the round's 1000; the rest of the
+    /// round is normal blows.
     pub backstab_energy_pct: u32,
     /// Stealth adds `stealth / backstab_stealth_div` to a stab. At least 1.
     pub backstab_stealth_div: u32,
@@ -357,9 +358,10 @@ impl Balance {
     /// answers as MME does (layer 1 of `docs/quicksilver-profile.md` part 4): crit knee 40,
     /// stealth divisor 10, level percentage 100, the other knees out of reach, class shares 100,
     /// opportunist and weave chances 0, area cut 0, rest and meditate multiples 1, no
-    /// casting-stat bonus, no scale cap and no stab crit (`backstab_crit_max_pct` 0 reads as off
-    /// in touchstone; MME's stab never crits). Keys with no stock counterpart (stab energy, weave
-    /// sizing, targeting, guard) keep their 1.20.0 values. The soft-cap keys are floor 0 and
+    /// casting-stat bonus, no scale cap, no stab crit (`backstab_crit_max_pct` 0 reads as off
+    /// in touchstone; MME's stab never crits) and a stab that fills the round (`backstab_energy_pct`
+    /// 100000: the energy is capped at the round's, so no blow follows the stab). Keys with no stock
+    /// counterpart (weave sizing, targeting, guard) keep their 1.20.0 values. The soft-cap keys are floor 0 and
     /// 10 a point in every band, the nearest the type comes to MME's ladder (equal up to the race
     /// maximum; Q-007 decides above it).
     pub const NEUTRAL: Self = v120::NEUTRAL;

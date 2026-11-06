@@ -234,6 +234,9 @@ pub(super) const BALANCE: Balance = Balance {
 pub(super) const NEUTRAL: Balance = Balance {
     backstab_stealth_div: 10,
     backstab_level_pct: 100,
+    // R2: a stab that costs 1000 times a normal blow fills the round whatever the blow costs (the
+    // energy is capped at the round's), which is MME's stab: it ends the round.
+    backstab_energy_pct: 100_000,
     // 0 turns the stab crit off (R3), the nearest the type comes to MME, where a stab never crits.
     backstab_crit_max_pct: 0,
     opportunist_pct: 0,
