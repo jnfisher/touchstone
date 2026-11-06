@@ -113,6 +113,7 @@ def base_forms():
 
 
 READ = {
+    "accuracy_tag": "%c.lblInvenCharStat(10).Tag",
     "weapons": "%lvn.lvWeapons", "armour": "%lvn.lvArmour", "sundry": "%lvn.lvOtherItems",
     "equip": "%list.cmbEquip[0..19]",
     "nav": "%c.cmdNav(0).Caption", "nav_armour": "%c.cmdNav(1).Caption", "nav_sundry": "%c.cmdNav(7).Caption",
@@ -236,8 +237,10 @@ def merged(*parts):
     return f
 
 
-R_W = {"weapons": READ["weapons"], "nav": READ["nav"]}
-R_A = {"armour": READ["armour"], "nav_armour": READ["nav_armour"]}
+# SetupClass (RefreshAll) ticks the non-magic boxes for an anti-magic class, so the boxes are read back
+R_W = {"weapons": READ["weapons"], "nav": READ["nav"], "accuracy_tag": READ["accuracy_tag"],
+       "nonmagic_w": "%c.chkWeaponOptions(0).Value"}
+R_A = {"armour": READ["armour"], "nav_armour": READ["nav_armour"], "nonmagic_a": "%c.chkArmourNonMagic.Value"}
 R_S = {"sundry": READ["sundry"], "nav_sundry": READ["nav_sundry"]}
 R_E = {"equip": READ["equip"], "nav_eq": READ["nav_eq"], "prompt_save": READ["prompt_save"]}
 
@@ -361,6 +364,8 @@ def char_forms(base, **more):
     cf = copy.deepcopy(PC[base]["forms"]["frmMain"])
     for k, v in cf.items():
         f[k] = v
+    for name in ("cmbGlobalClass", "cmbGlobalRace"):
+        f[name]["$array"]["0"]["ListCount"] = 16        # GetClassStealth(0) only reads the box when it has entries
     ce = f["cmbEquip"]["$array"]
     for k in range(20):
         ce.setdefault(str(k), {})
@@ -411,7 +416,7 @@ for base, full in (("ladder-c1-l50", True), ("ladder-c12-l50", True), ("ladder-c
               **merged(wopt(limit=0, speed=1200, handed=[0, 0, 1, 1]), aopt(nolimit=1, worn=5)))
 
 # ---------------------------------------------------------------------------------- data for the Rust test
-# Every item with the fields the filters read; the weapons also with what CalculateAttack and the weapon row read. The
+# Every item with the fields the filters read; weapons and armour also with what the character pipeline and CalculateAttack read. The
 # other tables (spells, classes, races, names, textblocks) the Rust test takes from the rows fixture's data.
 ITEM_FIELDS = ["Number", "Name", "Limit", "ItemType", "WeaponType", "ArmourType", "Worn", "StrReq", "Speed", "In Game"]
 WEAPON_FIELDS = ["Encum", "Min", "Max", "ArmourClass", "DamageResist", "Accy"]
@@ -424,15 +429,17 @@ def item_row(n):
         row[1] = "x" if r["Name"] else ""      # armour and sundry rows only need to know whether the name is empty
     row += [[r["ClassRest-%d" % k] for k in range(10) if r["ClassRest-%d" % k]],
             [r["NegateSpell-%d" % k] for k in range(10) if r["NegateSpell-%d" % k]], ab(r, 20)]
-    row.append([r[k] for k in WEAPON_FIELDS] if r["ItemType"] == 1 else None)
+    row.append([r[k] for k in WEAPON_FIELDS] if r["ItemType"] in (0, 1) else None)   # gear feeds RefreshAll too
     return row
 
 
 DATA = {
-    "item_fields": ITEM_FIELDS + ["ClassRest(nonzero)", "NegateSpell(nonzero)", "Abilities(ability,value)", "WeaponExtra" + str(WEAPON_FIELDS)],
+    "item_fields": ITEM_FIELDS + ["ClassRest(nonzero)", "NegateSpell(nonzero)", "Abilities(ability,value)", "GearExtra" + str(WEAPON_FIELDS)],
     "items": [item_row(n) for n in sorted(items)],
 }
 
+if os.environ.get("FILTERS_ONLY"):       # debugging: only the cases whose id contains this text
+    cases[:] = [c for c in cases if os.environ["FILTERS_ONLY"] in c["id"]]
 scn = {
     "family": "filters",
     "description": "List filters: FilterWeapons, FilterArmour, FilterSundry, FilterInvenItems, FilterAll",
@@ -447,7 +454,7 @@ scn = {
         "is true unless a case says otherwise. msgbox lists the answers to MME's MsgBox calls in order (6 yes, 7 no, 2 cancel).",
         "Stubbed: LV_RefreshSort / LV_Sort_ColumnClick and the *_ItemClick handlers (UI after the list is built), FilterSpells "
         "and cmbGlobalClass_Click (FilterAll's other callees, P3-30 and the UI), ExpandCombo and the picture loads.",
-        "data holds every item with the fields the filters read (weapons in full); the spells, classes, races, names and "
+        "data holds every item with the fields the filters read (weapons and armour in full); the spells, classes, races, names and "
         "textblocks the weapon rows need are the rows fixture's data.",
     ],
     "database": True,
