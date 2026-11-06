@@ -191,6 +191,23 @@ fn spells_fixture() {
                     bad(format!("got {got:?}, want {want}"));
                 }
             }
+            // The text lookups the cases above print through, checked on their own as well.
+            "GetAbilityStats" | "GetSpellName" | "GetMonsterName" => {
+                let env = env_for(&spells, &text, inp, avg);
+                let got = match proc {
+                    "GetAbilityStats" => env.ability_stats(
+                        arg(a, 0) as i16,
+                        arg(a, 1) as i16,
+                        flag(a, 3),
+                        flag(a, 2),
+                    ),
+                    "GetSpellName" => env.spell_name(n),
+                    _ => env.monster_name(n),
+                };
+                if *want != got.as_str() {
+                    bad(format!("got {got:?}, want {want}"));
+                }
+            }
             other => panic!("{id}: unknown proc {other}"),
         }
     }
