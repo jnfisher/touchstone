@@ -84,8 +84,8 @@ pub struct DetailBody {
     pub show_sell: bool,
     /// Items: `mnuShopsFirst.Checked`.
     pub shops_first: bool,
-    /// `bHideRecordNumbers`.
-    pub hide_record_numbers: bool,
+    /// `bHideRecordNumbers`. Left out, the `hide_record_numbers` setting decides; a value here overrides it.
+    pub hide_record_numbers: Option<bool>,
     /// Items: the optional `nAttackTypeMUD` argument (the list row's tag); 0 is omitted.
     pub attack_type: i32,
     /// Items: the optional `bFullDetails` argument.
@@ -384,6 +384,8 @@ impl LocationLairs for StoredLairs<'_> {
 // ---------- the panes ----------
 
 struct Shared<'a> {
+    /// `bHideRecordNumbers` as resolved for this request.
+    hide: bool,
     ctx: &'a Ctx<'a>,
     body: &'a DetailBody,
     charm_tag: String,
@@ -399,7 +401,7 @@ impl Shared<'_> {
     fn location_options(&self, charm_tag: &str) -> LocationOptions {
         LocationOptions {
             nmr_ver: self.ctx.nmr,
-            hide_record_numbers: self.body.hide_record_numbers,
+            hide_record_numbers: self.hide,
             global_filter: self.ctx.state.is_some(),
             charm_tag: charm_tag.to_owned(),
             attack_type: self.attack_type_mme,
@@ -440,7 +442,7 @@ fn item_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -
         shops_first: sh.body.shops_first,
         equipped: ctx.equipped_items,
         nmr_ver: ctx.nmr,
-        hide_record_numbers: sh.body.hide_record_numbers,
+        hide_record_numbers: sh.hide,
         quick_spell: false,
         global_level_text: ctx.level_text.clone(),
         avg_level_max_all_stats: ctx.avg,
@@ -504,7 +506,7 @@ fn spell_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) 
         nmr_ver: ctx.nmr,
         only_in_game: true,
         disable_kai_autolearn: world.info.disable_kai,
-        hide_record_numbers: sh.body.hide_record_numbers,
+        hide_record_numbers: sh.hide,
         avg_level_max_all_stats: ctx.avg,
         locations: sh.location_options(&sh.charm_tag),
     };
@@ -659,7 +661,7 @@ fn monster_pane(
     let ctx = sh.ctx;
     let controls = &sh.body.options.monsters;
     let mut ab = AbilityEnv::for_world(world, Profile::Stock);
-    ab.hide_record_numbers = sh.body.hide_record_numbers;
+    ab.hide_record_numbers = sh.hide;
     ab.avg_level_max_all_stats = ctx.avg;
     if ctx.state.is_some() {
         ab.global_level_text = Some(&ctx.level_text);
@@ -678,7 +680,7 @@ fn monster_pane(
             } else {
                 touchstone_vb6::val(&ctx.level_text) as i32
             },
-            hide_record_numbers: sh.body.hide_record_numbers,
+            hide_record_numbers: sh.hide,
             waypoint_interval,
         },
         names: &names,
@@ -692,7 +694,7 @@ fn monster_pane(
             auto_calc_mon_damage: sh.body.auto_calc_damage,
             dont_lookup_mon_regen: sh.body.dont_lookup_regen,
             print_char_damage_out_first: sh.body.print_char_damage_out_first,
-            hide_record_numbers: sh.body.hide_record_numbers,
+            hide_record_numbers: sh.hide,
             sim_rounds: s.sim_rounds,
             settings: s.settings,
             possy: &s.possy,
@@ -752,6 +754,7 @@ fn build(
         None => ("0".to_owned(), "0".to_owned(), 0),
     };
     let sh = Shared {
+        hide: body.hide_record_numbers.unwrap_or(false),
         ctx: &ctx,
         body: &body,
         charm_tag,
@@ -806,6 +809,11 @@ async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) 
         return Err(not_found(format!("no detail pane called {kind:?}")));
     };
     let loaded = state.current();
+    let mut body = body;
+    body.hide_record_numbers = Some(
+        body.hide_record_numbers
+            .unwrap_or_else(|| state.hide_record_numbers()),
+    );
     let (exp, sim_rounds) = run_settings(&state, body.character.as_ref());
     let waypoint_interval = state.settings().map_or(25, |s| s.route_waypoint_interval);
     let damage = state

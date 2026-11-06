@@ -30,7 +30,7 @@ export interface EvalRow {
 export interface EvalTable {
 	columns: EvalColumn[];
 	rows: EvalRow[];
-	/** Monsters: some record was filtered out, so MME's caption reads "*Monsters*". */
+	/** Monsters, Spells: some record was filtered out, so MME's caption reads "*Monsters*" or "*Spells*". */
 	filtered?: boolean;
 	/**
 	 * Monsters in lair mode: MME would ask whether to calculate the monster damage first and stopped there, so

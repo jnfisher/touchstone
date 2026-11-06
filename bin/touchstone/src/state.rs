@@ -187,6 +187,11 @@ impl AppState {
             .clone()
     }
 
+    /// `bHideRecordNumbers`; a damaged settings file reads as the default (off).
+    pub fn hide_record_numbers(&self) -> bool {
+        self.settings().is_ok_and(|s| s.hide_record_numbers)
+    }
+
     /// Writes `next` (already normalised) and makes it current. The lock is held across the
     /// write so two saves cannot land out of order. A damaged file is moved aside, not lost.
     pub fn put_settings(&self, next: Settings) -> Result<Settings, String> {

@@ -144,6 +144,8 @@ pub struct Options {
     pub anti_magic: bool,
     /// `txtSpellOptions(0)`: the target's magic resistance.
     pub vs_mr: BoxText,
+    /// The Spells tab's filter boxes (card P4-33).
+    pub spells: SpellControls,
     /// The Monsters tab's filter boxes, lair/party mode and the extra filters. The Monsters list and
     /// pane read them; the other tabs ignore them.
     pub monsters: MonsterControls,
@@ -152,6 +154,72 @@ pub struct Options {
     /// `AddMonster2LV` straight from the record, so a compare row is the explorer's row for the same record.
     /// Weapons, armour, spells and monsters read it; a record that does not exist adds no row.
     pub numbers: Option<Vec<i32>>,
+}
+
+/// The Spells tab's filter boxes (`cmbSpellMagery` and the rest). `Default` is what `ResetFilterOptions` leaves in them,
+/// so a request without `spells` filters nothing.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct SpellControls {
+    /// `cmbSpellMagery.ListIndex`: 0 any, else the magery number.
+    pub magery: i32,
+    /// `cmbSpellMageryLevel.ListIndex`: 0 any, else the least magery level.
+    pub magery_level: i32,
+    /// `chkSpellOptions(1)`: only spells a character can learn.
+    pub learnable_only: bool,
+    /// `cmbSpellAttackType.ListIndex`: 0 any, else the spell's attack type plus one.
+    pub attack_type: i32,
+    /// `cmbSpellTarget.ListIndex`: 0 any, 1 self, 2 user, 3 monster, 4 party, 5 room.
+    pub target: i32,
+    /// `cmbSpellContainsAbil` item data: 0 (or less) any, else an ability number.
+    pub contains_ability: i32,
+}
+
+impl Default for SpellControls {
+    fn default() -> Self {
+        let d = SpellFilter::default();
+        Self {
+            magery: d.magery,
+            magery_level: d.magery_level,
+            learnable_only: d.learnable_only,
+            attack_type: d.attack_type,
+            target: d.target,
+            contains_ability: d.contains_ability,
+        }
+    }
+}
+
+impl SpellControls {
+    fn filter(&self) -> SpellFilter {
+        SpellFilter {
+            magery: self.magery,
+            magery_level: self.magery_level,
+            learnable_only: self.learnable_only,
+            attack_type: self.attack_type,
+            target: self.target,
+            contains_ability: self.contains_ability,
+        }
+    }
+
+    fn validate(&self) -> Result<(), (StatusCode, String)> {
+        let list = 0..=i32::from(i16::MAX);
+        for (name, v) in [
+            ("magery", self.magery),
+            ("magery_level", self.magery_level),
+            ("attack_type", self.attack_type),
+            ("target", self.target),
+        ] {
+            if !list.contains(&v) {
+                return Err(bad(format!(
+                    "spells.{name} must be a list index (0 or more)"
+                )));
+            }
+        }
+        if self.contains_ability > i32::from(i16::MAX) {
+            return Err(bad("spells.contains_ability must be an ability number"));
+        }
+        Ok(())
+    }
 }
 
 /// Entries one compare request may carry (MME saves 101 per list; the cap only bounds the work).
@@ -413,6 +481,7 @@ impl Options {
         {
             return Err(bad(format!("numbers has more than {MAX_NUMBERS} entries")));
         }
+        self.spells.validate()?;
         Ok(())
     }
 }
@@ -454,7 +523,7 @@ pub struct RowJson {
 pub struct Table {
     pub columns: Vec<Column>,
     pub rows: Vec<RowJson>,
-    /// Monsters: some record was filtered out, so MME's caption reads "*Monsters*".
+    /// Monsters, Spells: some record was filtered out, so MME's caption reads "*Monsters*" or "*Spells*".
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub filtered: bool,
     /// Monsters in lair mode with `ask_damage`: MME would ask whether to calculate the monster damage first and
@@ -794,6 +863,8 @@ pub(crate) struct Ctx<'a> {
     pub(crate) attack: Option<touchstone_rules::character::AttackConfig>,
     /// The load's reachability, for "Reachable only" (computed when that filter asks, as `ReachIsMonsterOK` does).
     pub(crate) reach: Option<&'a crate::reach::ReachSlot>,
+    /// `bHideRecordNumbers`, from the settings (set by the caller after `prepare`).
+    pub(crate) hide_record_numbers: bool,
 }
 
 impl Ctx<'_> {
@@ -984,7 +1055,7 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
             .collect();
         return plain(rows);
     }
-    // FilterSpells with MME's default controls; the global filter (the character's, or the bar's own values) decides
+    // FilterSpells with the tab's controls; the global filter (the character's, or the bar's own values) decides
     // which spells the class, level and alignment can use
     let t_char = if ctx.filter_on {
         CharacterProfile {
@@ -1013,7 +1084,7 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
             global_class: ctx.who.class,
             global_level: vb::val(&header_level),
         },
-        &SpellFilter::default(),
+        &opts.spells.filter(),
         &t_char,
         false,
     );
@@ -1035,7 +1106,7 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
         headers,
         ability_numeric: false,
         nmr: 0.0,
-        filtered: false,
+        filtered: list.filtered && !list.cancelled,
         prompt: None,
     }
 }
@@ -1366,6 +1437,7 @@ fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
     env.avg_level_max_all_stats = ctx.avg;
     env.accuracy_tag = &ctx.accuracy_tag;
     env.global_level_text = ctx.state.is_some().then_some(ctx.level_text.as_str());
+    env.hide_record_numbers = ctx.hide_record_numbers;
     env
 }
 
@@ -1463,6 +1535,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
         equipped_items,
         attack,
         reach: None,
+        hide_record_numbers: false,
     })
 }
 
@@ -1472,7 +1545,14 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
 /// As [`prepare`].
 pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, ApiError> {
     let exp = ExpPerHourSettings::default();
-    evaluate_with(world, tab, req, &exp, crate::settings::SIM_ROUNDS_DEFAULT)
+    evaluate_with(
+        world,
+        tab,
+        req,
+        &exp,
+        crate::settings::SIM_ROUNDS_DEFAULT,
+        false,
+    )
 }
 
 /// [`evaluate`] with the exp/hr block and the monster simulation rounds the request runs with
@@ -1486,6 +1566,7 @@ pub fn evaluate_with(
     req: &EvaluateBody,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
+    hide_record_numbers: bool,
 ) -> Result<Table, ApiError> {
     evaluate_with_damage(
         world,
@@ -1493,6 +1574,7 @@ pub fn evaluate_with(
         req,
         exp,
         sim_rounds,
+        hide_record_numbers,
         &Snapshot::uncalculated(world),
         None,
     )
@@ -1509,11 +1591,13 @@ pub fn evaluate_with_damage(
     req: &EvaluateBody,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
+    hide_record_numbers: bool,
     damage: &Snapshot,
     reach: Option<&crate::reach::ReachSlot>,
 ) -> Result<Table, ApiError> {
     let mut ctx = prepare(world, req)?;
     ctx.reach = reach;
+    ctx.hide_record_numbers = hide_record_numbers;
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),
@@ -1596,7 +1680,11 @@ pub async fn evaluate_route(
     let load = loaded.info.load_count;
     // the calculated monster damage changes the Monsters list (and nothing else), so its counter is part of the key
     let damage = state.monster_damage().snapshot(load, &loaded.world);
-    let key = format!("{tab_name}|{raw}|{exp:?}|{rounds}|{}", damage.generation);
+    let hide = state.hide_record_numbers();
+    let key = format!(
+        "{tab_name}|{raw}|{exp:?}|{rounds}|{hide}|{}",
+        damage.generation
+    );
     let body = if let Some(hit) = state.evaluate_cache_get(&key, load) {
         hit
     } else {
@@ -1607,6 +1695,7 @@ pub async fn evaluate_route(
                 &req,
                 &exp,
                 rounds,
+                hide,
                 &damage,
                 Some(&loaded.reach),
             )

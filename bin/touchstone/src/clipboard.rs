@@ -217,7 +217,7 @@ pub fn shop_clip(
         show_sell: req.show_sell,
         locations: LocationOptions {
             nmr_ver: 0.0,
-            hide_record_numbers: false,
+            hide_record_numbers: state.hide_record_numbers(),
             global_filter: false,
             charm_tag: req.charm.to_string(),
             attack_type: 0,

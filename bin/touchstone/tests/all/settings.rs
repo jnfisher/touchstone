@@ -85,6 +85,8 @@ async fn defaults_are_what_mme_runs_with() {
     assert_eq!(v["monster_sim_rounds"], 500);
     assert_eq!(v["route_waypoint_interval"], 25);
     assert_eq!(v["auto_load_last_char"], true);
+    // frmMain Form_Load: bHideRecordNumbers is true only for a HideRecordNumbers key of "1"
+    assert_eq!(v["hide_record_numbers"], false);
 }
 
 #[tokio::test]
