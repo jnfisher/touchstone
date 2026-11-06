@@ -11,6 +11,7 @@ pub mod calculators;
 pub mod char_panel;
 pub mod character;
 pub mod combat;
+pub mod equip;
 pub mod exp;
 pub mod exp_per_hour;
 pub mod game_text;
