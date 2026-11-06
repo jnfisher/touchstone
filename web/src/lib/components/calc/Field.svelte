@@ -8,7 +8,8 @@
 		testid,
 		note = '',
 		disabled = false,
-		hint = ''
+		hint = '',
+		oninput
 	}: {
 		label: string;
 		value: string;
@@ -17,6 +18,8 @@
 		note?: string;
 		disabled?: boolean;
 		hint?: string;
+		/** Runs after the box changes (typing, not a rewrite from outside). */
+		oninput?: () => void;
 	} = $props();
 </script>
 
@@ -30,6 +33,7 @@
 		inputmode="decimal"
 		autocomplete="off"
 		bind:value
+		{oninput}
 		{disabled}
 		data-testid={testid}
 		class="{inputCls} disabled:opacity-50"
