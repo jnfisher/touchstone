@@ -9,6 +9,7 @@ mod attack;
 mod calculators;
 mod char_panel;
 mod character;
+mod class_race_builder;
 mod combat;
 mod equip;
 mod exp;
