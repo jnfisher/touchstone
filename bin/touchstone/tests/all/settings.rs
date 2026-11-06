@@ -225,7 +225,10 @@ async fn effective_block_follows_by_character() {
     assert_eq!(v["effective"]["model_d"], false);
     assert_eq!(v["effective"]["knob_move"], 3.0);
 
-    // A character without its own block, or one not saved yet, uses the global block.
+    // MME reads a missing per-character key as the default (not the global value); with no saved
+    // character open the global block applies.
+    let global = json!({"exp_per_hour": {"by_character": true, "global": {"knob_move": 2.0}}});
+    call(&app, "PUT", "/api/settings", Some(&global)).await;
     call(
         &app,
         "PUT",
@@ -233,11 +236,10 @@ async fn effective_block_follows_by_character() {
         Some(&json!({"name": "Amy"})),
     )
     .await;
-    for who in ["Amy", "Nobody"] {
-        let (st, v) = call(&app, "GET", &format!("/api/settings?character={who}"), None).await;
-        assert_eq!(st, StatusCode::OK);
-        assert_eq!(v["effective"]["model_d"], true, "{who}");
-    }
+    let (_, v) = call(&app, "GET", "/api/settings?character=Amy", None).await;
+    assert_eq!(v["effective"]["knob_move"], 1.0);
+    let (_, v) = call(&app, "GET", "/api/settings?character=Nobody", None).await;
+    assert_eq!(v["effective"]["knob_move"], 2.0);
     let (st, _) = call(&app, "GET", "/api/settings?character=a/b", None).await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
     // Without the query there is no effective block.

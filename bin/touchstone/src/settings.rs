@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use touchstone_rules::exp_per_hour::{ExpPerHourKnobs, ExpPerHourSettings, clamp_knob};
 
 use crate::calc::{ApiResult, Body, bad, json};
-use crate::character::CharacterDto;
 use crate::state::AppState;
 
 pub const FILE_NAME: &str = "settings.json";
@@ -153,15 +152,31 @@ impl Settings {
         self
     }
 
-    /// The block exp/hr runs with: the character's own when "by character" is on and it has one
-    /// (`LoadExpPerHourKnobs` reading the character file), else the global one.
+    /// The block exp/hr runs with. With "by character" on and a character open, `LoadExpPerHourKnobs`
+    /// reads that character's file: its own keys, and for a missing key the default (all models on,
+    /// knobs 1), not the global value. Otherwise the global block.
     #[must_use]
-    pub fn effective_exp_per_hour(&self, character: Option<&ExpHrBlock>) -> ExpPerHourSettings {
+    pub fn effective_exp_per_hour(&self, character: CharacterBlock) -> ExpPerHourSettings {
         match character {
-            Some(own) if self.exp_per_hour.by_character => own.normalized().to_rules(),
+            CharacterBlock::Own(own) if self.exp_per_hour.by_character => {
+                own.normalized().to_rules()
+            }
+            CharacterBlock::Unset if self.exp_per_hour.by_character => {
+                ExpHrBlock::default().to_rules()
+            }
             _ => self.exp_per_hour.global.to_rules(),
         }
     }
+}
+
+/// What a calculation knows about the open character's exp/hr block.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CharacterBlock {
+    /// No saved character is open.
+    NoCharacter,
+    /// A saved character that has no block of its own.
+    Unset,
+    Own(ExpHrBlock),
 }
 
 /// Reads `<dir>/settings.json`: defaults when it is missing, an error text when it is unreadable
@@ -227,10 +242,11 @@ pub async fn get(State(state): State<Arc<AppState>>, Query(q): Query<CharacterQu
         None => None,
         Some(name) => {
             crate::character::validate_name(&name).map_err(bad)?;
-            let own = crate::character::read_dto_opt(&state, &name)
-                .await?
-                .and_then(|c: CharacterDto| c.exp_hr);
-            Some(settings.effective_exp_per_hour(own.as_ref()).into())
+            let block = match crate::character::read_dto_opt(&state, &name).await? {
+                None => CharacterBlock::NoCharacter,
+                Some(c) => c.exp_hr.map_or(CharacterBlock::Unset, CharacterBlock::Own),
+            };
+            Some(settings.effective_exp_per_hour(block).into())
         }
     };
     json(&SettingsReply {

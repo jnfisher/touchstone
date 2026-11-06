@@ -33,10 +33,10 @@ in browser storage. P4-30's job (which settings.ini options survive and where) i
 
 ## Do
 1. Server `settings.rs`: `Settings { exp_per_hour, monster_sim_rounds, route_waypoint_interval,
-   auto_load_last_char }`, `ExpHrSettings` (four models, recovery_only, show_all, four knobs,
-   by_character). `PUT` applies the rules `cmdSave_Click` applies rather than rejecting: knobs
+   auto_load_last_char }`, `ExpHrSettings { global: ExpHrBlock, by_character }` (`ExpHrBlock`: four models, recovery_only,
+   show_all, four knobs). `PUT` applies the rules `cmdSave_Click` applies rather than rejecting: knobs
    `clamp_knob` (rounded to 2 places, 0.01 to 10), sim rounds 100 to 10000, waypoint interval below 1
-   becomes 25 and above 1000 becomes 1000, no model ticked turns A, B and C on (`normalized`). 
+   becomes 25 and above 1000 becomes 1000, no model ticked turns A, B and C on (`normalized`). A
    malformed body or unknown field is a 400. The reply is what was stored. Defaults are MME's code
    behaviour: all four models on, knobs 1, 500 rounds, interval 25, auto-load on. Atomic write
    (temp file + rename) to `<data_dir>/settings.json`; a missing file means defaults, a corrupt one is
