@@ -39,6 +39,8 @@ pub const STOCK_MOB_HPREGEN_ROUNDS: f64 = 18.0;
 // ccr_* helpers (Private in MME; public here so the fixture can pin their edges)
 
 /// Port of modMMudFunc ccr_Saturate: clamp to 0..=1.
+// `f64::clamp` would keep -0.0 where MME returns 0.
+#[allow(clippy::manual_clamp)]
 #[must_use]
 pub fn ccr_saturate(x: f64) -> f64 {
     if x <= 0.0 {
@@ -672,12 +674,7 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
     if ctx.party.lair_mode {
         party = vb::cint(vb::val(&ctx.party.lair_text[0]))?;
     }
-    if party < 1 {
-        party = 1;
-    }
-    if party > 6 {
-        party = 6;
-    }
+    party = party.clamp(1, 6);
     if req.force_character {
         party = 1;
     }
@@ -696,12 +693,7 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
             dmg_spell = vb::val(env.damage_out_text[1]);
             accy = vb::clng(vb::val(&ctx.party.lair_text[8]))?;
             party_swings = vb::val(env.party_swings_text);
-            if party_swings < 1.0 {
-                party_swings = 1.0;
-            }
-            if party_swings > 6.0 {
-                party_swings = 6.0;
-            }
+            party_swings = party_swings.clamp(1.0, 6.0);
         } else if a.attack_type == AttackType::OneShot {
             average = cur_long(9_999_999);
             min_round = cur_long(9_999_999);
