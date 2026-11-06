@@ -1069,6 +1069,19 @@ class _FakeFields(ExtObject):
         return _field(self.row, args[0])
 
 
+class DbShim(ExtObject):
+    """`DB` over the stock database: OpenRecordset("Items") opens another table-type recordset (item detail's
+    tabItems1 / tabItems2)."""
+
+    def __init__(self, db):
+        self.db = db
+
+    def vb_get(self, name, args):
+        if name.lower() == "openrecordset":
+            return self.db.open_recordset(V.c_str(args[0]))
+        raise VBError(438)
+
+
 class FakeDB(ExtObject):
     """`DB` for CalculateAverageLairs: OpenRecordset of its Monsters query answers with the case's
     invented rows, filtered the way the query's Like "*(lair)*" does (Jet: case-insensitive)."""

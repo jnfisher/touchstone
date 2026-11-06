@@ -233,19 +233,19 @@ fn ac_dr_text(ac: i32, dr: i32) -> String {
     )
 }
 
-fn weapon_type_text(code: i32) -> String {
+pub(crate) fn weapon_type_text(code: i32) -> String {
     labelled(code, touchstone_model::WeaponType::from_code(code), |v| {
         v.label()
     })
 }
 
-fn armour_type_text(code: i32) -> String {
+pub(crate) fn armour_type_text(code: i32) -> String {
     labelled(code, touchstone_model::ArmourType::from_code(code), |v| {
         v.label()
     })
 }
 
-fn worn_text(code: i32) -> String {
+pub(crate) fn worn_text(code: i32) -> String {
     labelled(code, touchstone_model::WornSlot::from_code(code), |v| {
         v.label()
     })

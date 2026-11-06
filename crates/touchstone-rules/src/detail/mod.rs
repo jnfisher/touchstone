@@ -1,11 +1,13 @@
-//! Detail panes of the spell, shop, class and race explorers and the NPC command references of the
-//! map list (FAM-20, stock only). Card P3-37.
+//! Detail panes (FAM-20, stock only): items and compare text (card P3-35, its own row types in
+//! [`item`]), and the spell, shop, class and race explorers and the map list's NPC command
+//! references (card P3-37).
 //!
 //! MME fills text boxes and ListViews; each port returns what MME writes into them, exactly (the
 //! `text` fields and row cells are what the oracle fixture records), plus [`DetailRow`]s, the same
 //! content as (label, value, kind) triples for a UI that does not want to parse the text.
 
 pub mod class_race;
+pub mod item;
 pub mod shop;
 pub mod spell;
 

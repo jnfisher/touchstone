@@ -186,6 +186,7 @@ class Env:
         for tn in ("scripting.dictionary", "dictionary"):
             it.new_hooks[tn] = shims.DictionaryShim
         self.lair_env = None
+        self.db_open = False        # scenario "db_open": `DB.OpenRecordset(table)` works (item detail's second recordsets)
         self.shared_lairs = {}
         it.intrinsic_hooks["inputbox"] = self._inputbox
         if paste_procs:
@@ -321,6 +322,21 @@ class Env:
             rec.add("sort_listview", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
                     data_type=V.int_value(kind), ascending=bool(ascending))
         it.bind_proc("SortListView", sort_listview)
+
+        def refresh_sort(shops_first):
+            # LV_RefreshSort / LV_RefreshSort_ShopsFirst (item detail, P3-35): the same skipped feature; only the request
+            # is recorded: rows held, column, data type, by tag, ascending (their optional defaults differ per procedure).
+            defaults = (1, 1, True, False) if shops_first else (1, 0, False, True)
+
+            def f(it_, lv, col=V.MISSING, dtype=V.MISSING, by_tag=V.MISSING, asc=V.MISSING):
+                got = [d if a is V.MISSING else a for a, d in zip((col, dtype, by_tag, asc), defaults)]
+                rec.add("lv_refresh_sort", shops_first=shops_first, rows=len(getattr(lv, "rows", [])),
+                        column=V.int_value(got[0]), data_type=V.int_value(got[1]), by_tag=bool(got[2]), ascending=bool(got[3]))
+            return f
+        # a family that stubs them itself (filters) keeps its stub
+        for n, sf in (("LV_RefreshSort", False), ("LV_RefreshSort_ShopsFirst", True)):
+            if n.lower() not in it.ext_procs:
+                it.bind_proc(n, refresh_sort(sf))
         for n, v in (("lvwcolumnleft", 0), ("lvwcolumnright", 1), ("lvwcolumncenter", 2)):     # ColumnHeaders.Add alignment
             it.bind(n, V.I32(v))
         for n, v in (("ldtstring", 0), ("ldtnumber", 1), ("ldtDateTime", 2)):     # modListViewExt's ListDataType
@@ -408,6 +424,8 @@ class Env:
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
         it.bind("Forms", shims.FormsCollection(self.loaded_forms))
+        if self.db and self.db_open and "db" in self.it.globals:
+            self.it.global_cell("DB").v = shims.DbShim(self.db)
         for g, table in shims.RECORDSET_GLOBALS.items():
             cell = it.globals.get(g.lower())
             if cell is not None:
@@ -603,7 +621,7 @@ class Env:
         if spec.get("watch"):
             wname, widx = re.match(r"(\w+)\((\d+)\)$", spec["watch"]).groups()
             watch = self.it.externals["frmmain"].vb_get(wname, [V.I16(int(widx))])
-        per, seen = [], []
+        per, seen, captured = [], [], []
         for key in spec["keys"]:
             rs.vb_get("seek", ["=", decode(key)])
             lv = lv_shared or shims.RecordingListViewShim()
@@ -611,8 +629,19 @@ class Env:
                 lv.props["hwnd"] = V.I32(spec["hwnd"])   # a list that is not frmMain's own (its hWnd reads 0)
             before = len(watch.items.get("list", {})) if watch else 0
             args = self.build_args(st.get("args", []), objs, [], lv)
+            n_events = len(self.rec.events)
             self.invoke(objs, st["call"], args)
-            if not shared:
+            if spec.get("capture"):
+                # `capture`: {"name": "%c.txtDetail.Text"}: read expressions evaluated after each key; with `events` the
+                # recorded events of that key move from the case's event list into the capture
+                cap = {k: self.read(objs, expr) for k, expr in spec["capture"].items()}
+                if spec.get("all_rows"):
+                    cap["rows"] = lv.dump(encode)       # every row of this key's ListView (the plain output keeps the first)
+                if spec.get("events"):
+                    cap["events"] = self.rec.events[n_events:]
+                    del self.rec.events[n_events:]
+                captured.append(cap)
+            if not shared and not spec.get("all_rows"):
                 rows = lv.dump(encode)
                 per.append(rows[0] if rows else None)
             if watch is not None:
@@ -629,6 +658,8 @@ class Env:
             results[name + ".post"] = post
         if watch is not None:
             results[name + ".watch"] = seen
+        if spec.get("capture"):
+            results[name + ".capture"] = captured
 
     _READ = re.compile(r"^(?P<obj>[A-Za-z_]\w*)\.(?P<prop>\w+)(?:\[(?P<idx>[^\]]*)\])?$")
 
@@ -814,6 +845,7 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     database = db_path() if scn.get("database") else None
     env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
               paste_procs=bool(scn.get("paste_procs")))
+    env.db_open = bool(scn.get("db_open"))
     if "lairs" in scn.get("shims", []):
         env.enable_lair_shims()
         env.shared_lairs = (scn.get("data") or {}).get("lairs") or {}
