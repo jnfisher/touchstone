@@ -101,6 +101,11 @@ the orchestrator writes each card when its dependencies are close to merged.
 | Q-013a | Quicksilver weave: pick and volley expectation | #110 |
 | T-016 | Textblock script parser for the remaining derived fields | #109 |
 | F-001 | Follow-ups bundle (route to room, hide record numbers, damage cancel, QS stat range, key map) | #111 |
+| Q-013b | Quicksilver weave in the round | #113 |
+| Q-014 | Exp/hr under Quicksilver (Model D) | #114 |
+| Q-015 | Show the rules profile in the web UI | #115 |
+| Q-016 | End-to-end cells against the Quicksilver balance tool | #117 |
+| F-002 | Follow-ups bundle 2 (header fit, live profile, reach row, party damage) | #116 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -113,17 +118,17 @@ the orchestrator writes each card when its dependencies are close to merged.
 
 | Card | Title | State |
 |---|---|---|
-| Q-013b | Quicksilver weave in the round | agent |
+| M-001 | Map layout engine (MapStartMapping / MapActivateCell / MapDrawOnRoom) | agent |
+| Q-017 | Alter Energy Usage (ability 87) under Quicksilver | agent |
 
 ## Next
 
+Phase 6: John chose the graphical map (2026-11-06). The results tree, NMR import/export and notepad are not planned.
+
 | Card | Title | Depends |
 |---|---|---|
-| Q-014 | Exp/hr under Quicksilver (Model D) | Q-008, Q-010, Q-013b |
-| Q-015 | Web: show the profile | Q-004, Q-014 |
-| Q-016 | End-to-end cells against the balance tool | Q-013b, Q-014 |
+| M-002 | Web map view (grid, walking, legend, presets, pop-out window) | M-001 |
 | P3-04b | `pull_spell_eq` Long handling | P3-04 |
-| (opt) | Results tree window, graphical map, NMR import/export, notepad | phase 6 |
 
 ## Follow-ups noted
 
@@ -139,3 +144,5 @@ the orchestrator writes each card when its dependencies are close to merged.
 - T-016: nested `Item #n(p%)` chest chances and silvermere's 26 extra rooms keep `obtained_from` at 87.5% parity.
 - Monster pane "double-click to compute" reach row has no click handler; party monster damage without a character (F-001).
 - Fixture tests for item_detail, hit_calc, lair_info, monster_glue and class_race_builder hard-code Stock, so the identity harness doesn't cover them (Q-011).
+- Quicksilver cells (Q-016): leftover Warlock/Bard damage gap beyond ability 87; Cleric L60 weapon-cast pricing.
+- `/api/info` polling every 30 s could use an ETag (F-002); vs Party is offered for any party size, MME needs two or more (F-002).
