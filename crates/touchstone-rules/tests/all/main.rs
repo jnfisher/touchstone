@@ -9,6 +9,7 @@ mod attack;
 mod calculators;
 mod char_panel;
 mod character;
+mod combat;
 mod exp;
 mod exp_per_hour;
 mod game_text;

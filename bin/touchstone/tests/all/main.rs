@@ -1,5 +1,6 @@
 mod api;
 mod calc;
+mod character;
 mod common;
 mod detail;
 
