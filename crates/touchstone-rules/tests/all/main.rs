@@ -17,6 +17,7 @@ mod gear;
 mod hit_calc;
 mod item_match;
 mod item_value;
+mod lairs;
 mod mega_stat;
 mod monster_glue;
 mod monster_glue_char;
