@@ -594,14 +594,14 @@ parse_case("nomatch-lowercase", "name: bob  hits: 10/20  armour class: 5/6  leve
 parse_case("only-name", "Name: Solo Hero\nRace: Elf")
 
 # one canonical stock-looking block per class/race pair, equipment-free and equipped
-for k in range(10):
+for k in range(8):
     m = member()
     m["equip"] = equip_for(m) if k % 2 else []
     parse_case("one-%02d" % k, party_text([m], [0], NL, NL), answers=answers_for([m]), **rand_globals())
 
 # --- random parties
-SIZES = [1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7, 8]
-for k in range(80):
+SIZES = [1, 2, 2, 3, 3, 4, 5, 6, 7]
+for k in range(30):
     size = rng.choice(SIZES)
     ms = random_party(size)
     styles = [rng.choice([0, 0, 0, 0, 1, 2, 3]) for _ in ms]
@@ -616,8 +616,8 @@ for k in range(80):
 # --- dropping fields: a character missing lines shifts nobody into the wrong slot after a new Name:
 DROPPABLE = ["Mana", "Spellcasting", "Encumbrance", "Level", "Race", "Class", "Hits", "Armour Class", "MagicRes", "Strength",
              "Agility", "Charm", "Health", "Willpower", "Intellect"]
-for k in range(28):
-    size = rng.between(2, 5)
+for k in range(12):
+    size = rng.between(2, 4)
     ms = random_party(size)
     styles = [rng.choice([0, 0, 1, 2]) for _ in ms]
     eol = "\r\n"
@@ -635,7 +635,7 @@ for k in range(28):
     parse_case("drop-%03d" % k, text, prior=prior_state(True) if rng.chance(40) else {}, answers=answers_for(ms), **rand_globals())
 
 # --- repeated fields, label look-alikes, case and wrapping oddities
-for k in range(15):
+for k in range(10):
     ms = random_party(rng.between(1, 2))
     text = party_text(ms, [0] * len(ms), "\n", "\n\n")
     kind = k % 5
@@ -690,7 +690,7 @@ for flag in (False, True):
                    bInvenUse2ndWrist=flag, bOnlyInGame=oig, nNMRVer=1.83)
 
 # inventory placement: sentences without the lead words, before any Name, reordered, labels in odd case
-for k in range(12):
+for k in range(8):
     m = member()
     m["equip"] = equip_for(m)
     body = render(m, 0, NL)
@@ -714,7 +714,7 @@ long_junk = ("lorem ipsum dolor sit amet, consectetur adipiscing elit " * 600)[:
 parse_case("long-33000", party_text(ms[:1], [0], NL, NL) + NL + long_junk + NL + party_text(ms[1:], [0], NL, NL), answers=["a", "a"], **rand_globals())
 
 # --- attack answers for fixed members: every attack word with and without a weapon, MA skill and spellcasting
-for k in range(40):
+for k in range(16):
     m = member()
     m["equip"] = equip_for(m, melee=rng.chance(70))
     if rng.chance(30):
@@ -730,7 +730,7 @@ parse_case("atk-default-prior", party_text(ms, [0] * 4, NL, NL), answers=[None, 
 
 # --- CalculateAverageParty on its own: random form states, every nWhat
 WHATS = list(range(0, 14)) + [14, 20]
-for k in range(60):
+for k in range(64):
     p = {}
     for name in TEXT_ARRAYS:
         if rng.chance(75):

@@ -16,6 +16,7 @@ mod gear;
 mod item_value;
 mod monster_glue;
 mod monster_sim;
+mod paste_party;
 mod spell_cast;
 mod spells;
 mod stats;

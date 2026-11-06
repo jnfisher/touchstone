@@ -14,6 +14,13 @@
 //! Stock only. Weapons that cast are fine as long as the supplied text tables are empty, which
 //! they are here: the cast text of a weapon is not part of this card.
 
+// Slots are indexed 1 to 6 as in MME; iterator forms would hide that.
+#![allow(
+    clippy::needless_range_loop,
+    clippy::collapsible_match,
+    clippy::collapsible_if
+)]
+
 use touchstone_model::{AbilitySlot, Class, Item, Race, Spell};
 use touchstone_vb6 as vb;
 use touchstone_vb6::{Currency, Vb6Error};
@@ -234,7 +241,12 @@ fn digits(t: &[char], p: usize) -> usize {
 fn keyword(t: &[char], p: usize, words: &[&str]) -> Option<(usize, String)> {
     for w in words {
         let n = w.chars().count();
-        if p + n <= t.len() && t[p..p + n].iter().zip(w.chars()).all(|(a, b)| a.eq_ignore_ascii_case(&b)) {
+        if p + n <= t.len()
+            && t[p..p + n]
+                .iter()
+                .zip(w.chars())
+                .all(|(a, b)| a.eq_ignore_ascii_case(&b))
+        {
             return Some((p + n, t[p..p + n].iter().collect()));
         }
     }
@@ -252,7 +264,14 @@ fn after_star(t: &[char], p: usize) -> usize {
 
 const WORDS_PAIR: [&str; 4] = ["Armour Class", "Hits", "Mana", "Encumbrance"];
 const WORDS_NUM: [&str; 9] = [
-    "MagicRes", "Level", "Spellcasting", "Strength", "Agility", "Willpower", "Charm", "Intellect",
+    "MagicRes",
+    "Level",
+    "Spellcasting",
+    "Strength",
+    "Agility",
+    "Willpower",
+    "Charm",
+    "Intellect",
     "Health",
 ];
 const WORDS_TEXT: [&str; 3] = ["Name", "Race", "Class"];
@@ -356,7 +375,11 @@ fn parse_int(s: &str) -> Res<i128> {
     if body.len() > 20 {
         return Err(Vb6Error::Overflow);
     }
-    let v: i128 = if body.is_empty() { 0 } else { body.parse().map_err(|_| Vb6Error::Overflow)? };
+    let v: i128 = if body.is_empty() {
+        0
+    } else {
+        body.parse().map_err(|_| Vb6Error::Overflow)?
+    };
     Ok(if neg { -v } else { v })
 }
 
@@ -413,7 +436,10 @@ impl SpellText for NoText {
     }
 }
 
-fn slots_of<'a>(rows: impl Iterator<Item = (i32, &'a [AbilitySlot])>, number: i32) -> Option<&'a [AbilitySlot]> {
+fn slots_of<'a>(
+    rows: impl Iterator<Item = (i32, &'a [AbilitySlot])>,
+    number: i32,
+) -> Option<&'a [AbilitySlot]> {
     let mut found = None;
     for (n, s) in rows {
         if n == number {
@@ -425,7 +451,10 @@ fn slots_of<'a>(rows: impl Iterator<Item = (i32, &'a [AbilitySlot])>, number: i3
 }
 
 fn class_ability(env: &PasteEnv, class: i32, ability: i16) -> i32 {
-    let s = slots_of(env.classes.iter().map(|c| (c.number, &c.abilities[..])), class);
+    let s = slots_of(
+        env.classes.iter().map(|c| (c.number, &c.abilities[..])),
+        class,
+    );
     class_has_ability(env.profile, s, class, ability)
 }
 
@@ -465,7 +494,8 @@ pub fn parse_paste_party(env: &PasteEnv, input: &PasteInput, form: &mut PartyFor
                 return out;
             }
         } else {
-            out.messages.push("No data, returning to previous screen.".to_string());
+            out.messages
+                .push("No data, returning to previous screen.".to_string());
         }
         out.status = PasteStatus::Done;
         finish(form);
@@ -620,11 +650,7 @@ fn contains_lower(s: &str, needle: &str) -> bool {
 }
 
 /// Walk the pasted text collecting equipment per character: `sEquipLoc` and `sWorn`.
-fn walk_equipment(
-    units: &[u16],
-    members: &mut [Member; SLOTS],
-    st: &mut State,
-) -> Res<()> {
+fn walk_equipment(units: &[u16], members: &mut [Member; SLOTS], st: &mut State) -> Res<()> {
     let len = units.len() as i64;
     let mut x: i16 = 1;
     let mut y: i16 = 1;
@@ -647,8 +673,13 @@ fn walk_equipment(
             if contains_lower(&text, "name:") {
                 st.name_count = fits_i16(i64::from(st.name_count) + 1)?;
                 clear = true;
-            } else if contains_lower(&text, "equippedwith:") || contains_lower(&text, "arecarrying") {
-                i_char = if st.name_count > 0 { st.name_count } else { fits_i16(i64::from(i_char) + 1)? };
+            } else if contains_lower(&text, "equippedwith:") || contains_lower(&text, "arecarrying")
+            {
+                i_char = if st.name_count > 0 {
+                    st.name_count
+                } else {
+                    fits_i16(i64::from(i_char) + 1)?
+                };
                 clear = true;
             } else {
                 match c {
@@ -825,7 +856,7 @@ fn spell_by_short(env: &PasteEnv, short: &str, class: i32) -> i32 {
     0
 }
 
-fn find_class(env: &PasteEnv, n: i32) -> Option<&Class> {
+fn find_class<'a>(env: &PasteEnv<'a>, n: i32) -> Option<&'a Class> {
     env.classes.iter().find(|c| c.number == n)
 }
 
@@ -945,7 +976,14 @@ fn run(
         let cur_enc = p.cur_enc.v[i];
         let max_enc = p.max_enc.v[i];
         if level > 0 && agi > 0 && cha > 0 {
-            let d = calc_dodge(level, agi, cha, f64::from(plus_dodge), f64::from(cur_enc), f64::from(max_enc));
+            let d = calc_dodge(
+                level,
+                agi,
+                cha,
+                f64::from(plus_dodge),
+                f64::from(cur_enc),
+                f64::from(max_enc),
+            );
             form.dodge[i] = d.to_string();
             out.members[i].dodge = vb::cint(vb::val(&form.dodge[i]))?;
         }
@@ -963,7 +1001,15 @@ fn run(
             out.members[i].encum_pct = 100;
         }
         if n_class > 0 && level > 0 {
-            let acc = accuracy(env, out.members[i].clone(), n_class, level, p.strength.v[i], agi, out.members[i].encum_pct)?;
+            let acc = accuracy(
+                env,
+                out.members[i].clone(),
+                n_class,
+                level,
+                p.strength.v[i],
+                agi,
+                out.members[i].encum_pct,
+            )?;
             form.accy[i] = acc.to_string();
             out.members[i].accuracy = vb::val(&form.accy[i]);
         }
@@ -1085,7 +1131,11 @@ fn attack_prompts(
             } else {
                 "a"
             };
-            out.prompts.push(AttackPrompt { member: i, who, default: default.to_string() });
+            out.prompts.push(AttackPrompt {
+                member: i,
+                who,
+                default: default.to_string(),
+            });
             let answer = match input.attack_answers.get(asked) {
                 Some(Some(s)) => s.clone(),
                 Some(None) => default.to_string(),
@@ -1120,12 +1170,14 @@ fn attack_prompts(
             || (attack == KICK && m.ma_skill[1] == 0)
             || (attack == JUMPKICK && m.ma_skill[2] == 0)
         {
-            out.messages.push("Proper MA skill not detected.".to_string());
+            out.messages
+                .push("Proper MA skill not detected.".to_string());
             continue;
         }
         if vb::len(&spell_short) == 4 {
             if m.spellcasting == 0 {
-                out.messages.push("Spellcast rating not detected.".to_string());
+                out.messages
+                    .push("Spellcast rating not detected.".to_string());
             } else {
                 spell_num = spell_by_short(env, &spell_short, m.class);
             }
@@ -1159,7 +1211,11 @@ fn attack_prompts(
                 spell_overhead: 0.0,
                 mana_regen: m.mana_regen,
             };
-            let req = CastRequest { spell: spell_num, cast_level: m.level, ..CastRequest::default() };
+            let req = CastRequest {
+                spell: spell_num,
+                cast_level: m.level,
+                ..CastRequest::default()
+            };
             out.members[i].spell_damage = cast_env.calculate_spell_cast(&who, &req).n_avg_round_dmg;
         } else if attack != NONE {
             let class = out.members[i].class;
@@ -1185,14 +1241,26 @@ fn attack_prompts(
                 })?;
                 st.energy = vb::cint(e.to_f64())?;
             }
-            let bonus = calc_quick_and_deadly_bonus(cur(i64::from(m.agi)), cur(i64::from(st.energy)), m.encum_pct);
+            let bonus = calc_quick_and_deadly_bonus(
+                cur(i64::from(m.agi)),
+                cur(i64::from(st.energy)),
+                m.encum_pct,
+            );
             let crit = vb::cint(f64::from(m.crit) + bonus.to_f64())?;
             out.members[i].crit = crit;
 
             if attack == BASH || attack == SMASH {
                 let m = out.members[i].clone();
                 let class16 = fits_i16(i64::from(m.class))?;
-                let acc = accuracy(env, m.clone(), class16, fits_i16(i64::from(m.level))?, m.str_, m.agi, m.encum_pct)?;
+                let acc = accuracy(
+                    env,
+                    m.clone(),
+                    class16,
+                    fits_i16(i64::from(m.level))?,
+                    m.str_,
+                    m.agi,
+                    m.encum_pct,
+                )?;
                 form.accy[i] = acc.to_string();
                 out.members[i].accuracy = vb::val(&form.accy[i]);
             }
@@ -1226,7 +1294,11 @@ fn attack_prompts(
                 encum_max: 0,
                 spell_dmg_bonus: 0,
             };
-            let req = AttackRequest { attack_type: attack, weapon_number: m.weapon_num, ..AttackRequest::default() };
+            let req = AttackRequest {
+                attack_type: attack,
+                weapon_number: m.weapon_num,
+                ..AttackRequest::default()
+            };
             let mut casts = String::new();
             let dmg = calculate_attack(env.profile, &attack_env, &profile, &req, &mut casts);
             out.members[i].phys_damage = dmg.round_total;
@@ -1304,7 +1376,10 @@ fn avg_plain(col: &[String; SLOTS]) -> Res<Option<String>> {
         }
     }
     if count > 0 {
-        return Ok(Some(text_of(vb::round(vb::div(f64::from(total), f64::from(count))?, 0)?)));
+        return Ok(Some(text_of(vb::round(
+            vb::div(f64::from(total), f64::from(count))?,
+            0,
+        )?)));
     }
     Ok(None)
 }
@@ -1395,7 +1470,8 @@ fn sections(form: &mut PartyForm, what: i32, first: usize, atk_last: bool) -> Re
                     }
                 }
                 if count > 0 {
-                    form.swings[0] = text_of(vb::round(vb::div(f64::from(total), f64::from(count))?, 1)?);
+                    form.swings[0] =
+                        text_of(vb::round(vb::div(f64::from(total), f64::from(count))?, 1)?);
                 }
             }
             _ => {}
@@ -1414,8 +1490,18 @@ fn recount(form: &mut PartyForm, atk_last: bool) {
     for x in 1..=6 {
         let any = form.anti_magic[x] == 1
             || [
-                &form.ac, &form.dr, &form.mr, &form.dodge, &form.hitpoints, &form.rest_hp,
-                &form.regen_hp, &form.heals, &form.swings, &form.accy, &form.spell_dmg, &form.dmg,
+                &form.ac,
+                &form.dr,
+                &form.mr,
+                &form.dodge,
+                &form.hitpoints,
+                &form.rest_hp,
+                &form.regen_hp,
+                &form.heals,
+                &form.swings,
+                &form.accy,
+                &form.spell_dmg,
+                &form.dmg,
             ]
             .iter()
             .any(|c| !trim(&c[x]).is_empty());
