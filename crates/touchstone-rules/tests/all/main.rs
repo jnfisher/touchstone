@@ -43,6 +43,7 @@ mod pipeline;
 mod quicksilver_backstab;
 mod quicksilver_balance;
 mod quicksilver_identity;
+mod quicksilver_regen;
 mod quicksilver_vectors;
 mod reachability;
 mod rooms;

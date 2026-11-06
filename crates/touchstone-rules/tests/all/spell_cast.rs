@@ -292,6 +292,7 @@ fn spell_cast_fixture() {
             }
             "CalcManaRecoveryRounds" => {
                 let got = calc_mana_recovery_rounds(
+                    Profile::Stock,
                     num(a, 0, 0.0) as i32,
                     num(a, 1, 0.0) as i32,
                     num(a, 2, 0.0) as i32,
