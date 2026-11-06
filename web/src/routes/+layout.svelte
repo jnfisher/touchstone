@@ -47,6 +47,8 @@
 	});
 	const title = $derived(pageTitle(view.options, character.doc.name));
 
+	// the pop-out map (frmMap) is a window of its own: no tabs or header
+	const bare = $derived(page.url.pathname === '/map');
 	const current = $derived(page.params.section ?? '');
 	const calcName = $derived(page.url.pathname.startsWith('/calc/') ? page.params.name : undefined);
 
@@ -72,6 +74,11 @@
 </svelte:head>
 
 <Tooltip.Provider>
+	{#if bare}
+		<main class="h-screen overflow-auto p-3" data-testid="popout-main">
+			{@render children()}
+		</main>
+	{:else}
 	<div class="flex h-screen flex-col">
 		<header class="flex items-center justify-between border-b px-4 py-1.5">
 			<h1 class="text-lg font-semibold">touchstone</h1>
@@ -180,6 +187,7 @@
 			{@render children()}
 		</main>
 	</div>
+	{/if}
 	<MenuDialogs />
 	{#if options.notice}
 		<div role="alert" class="bg-popover text-popover-foreground fixed right-3 bottom-3 z-[70] flex items-center gap-3 rounded-md border px-3 py-2 text-sm shadow-md" data-testid="options-notice">

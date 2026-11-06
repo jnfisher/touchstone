@@ -230,7 +230,7 @@ impl AppState {
             .lock()
             .map_err(|_| "settings lock poisoned".to_owned())?;
         settings::store(&self.data_dir, &next, guard.is_err()).map_err(|e| e.to_string())?;
-        *guard = Ok(next);
+        *guard = Ok(next.clone());
         Ok(next)
     }
 

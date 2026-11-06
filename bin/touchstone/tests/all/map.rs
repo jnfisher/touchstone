@@ -424,3 +424,29 @@ async fn presets_and_legend() {
     let (_, v) = call(&app, "/api/map/legend", None).await;
     assert!(v.as_array().unwrap().len() >= 9);
 }
+
+#[tokio::test]
+async fn edited_presets_are_saved_in_settings_and_merged_over_the_defaults() {
+    let fx = fixture();
+    let app = router(world(&fx["header"]["data"]));
+    let body = json!({"map_presets": [
+        {"index": 2, "name": "Home", "map": 4, "room": 5},
+        // LoadPresets: a zero room takes the default back
+        {"index": 3, "name": "Broken", "map": 4, "room": 0}
+    ]});
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/settings")
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let (_, v) = call(&app, "/api/map/presets", None).await;
+    assert_eq!(v["presets"][2]["name"], "Home");
+    assert_eq!(v["presets"][2]["room"], 5);
+    // expected value: MME's default preset 3, "Aged Titan" 10/271 (LoadPresets)
+    assert_eq!(v["presets"][3]["name"], "Aged Titan");
+    assert_eq!(v["presets"][3]["room"], 271);
+    assert_eq!(v["presets"][0]["name"], "Newhaven");
+}

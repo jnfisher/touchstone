@@ -11,7 +11,7 @@ use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 use touchstone_rules::map::{
     AlsoMark, LeadsHereOptions, MapError, MapOptions, MapRequest, MapSurface, PRESET_COUNT,
-    RoomKey, cmd_move, go_direction, layout, leads_here, legend, presets,
+    RoomKey, SavedPreset, cmd_move, go_direction, layout, leads_here, legend, presets_with,
 };
 use touchstone_rules::rooms::{DIRECTIONS, room_title};
 
@@ -156,11 +156,17 @@ struct PresetsJson {
     presets: Vec<touchstone_rules::map::Preset>,
 }
 
-pub async fn presets_route() -> ApiResult {
+/// `LoadPresets`: the defaults, with the presets saved in settings.json laid over them. A damaged
+/// settings file reads as nothing saved, as the other readers of it do.
+pub async fn presets_route(State(state): State<Arc<AppState>>) -> ApiResult {
+    let saved: Vec<SavedPreset> = state
+        .settings()
+        .map(|s| s.map_presets.iter().map(SavedPreset::from).collect())
+        .unwrap_or_default();
     json(&PresetsJson {
         page_size: 10,
         count: PRESET_COUNT,
-        presets: presets(),
+        presets: presets_with(&saved),
     })
 }
 

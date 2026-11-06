@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 use touchstone_rules::exp_per_hour::{ExpPerHourKnobs, ExpPerHourSettings, clamp_knob};
+use touchstone_rules::map::{PRESET_COUNT, SavedPreset};
 
 use crate::calc::{ApiResult, Body, bad, json};
 use crate::state::AppState;
@@ -115,7 +116,29 @@ pub struct ExpHrSettings {
     pub by_character: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+/// One edited map preset (`EditPreset`; MME keeps these in the registry). Sent and stored as typed:
+/// `presets_with` falls back to the default for a zero map or room or an empty name.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MapPresetDto {
+    pub index: usize,
+    pub name: String,
+    pub map: i32,
+    pub room: i32,
+}
+
+impl From<&MapPresetDto> for SavedPreset {
+    fn from(p: &MapPresetDto) -> Self {
+        Self {
+            index: p.index,
+            name: p.name.clone(),
+            map: p.map,
+            room: p.room,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub exp_per_hour: ExpHrSettings,
@@ -129,6 +152,8 @@ pub struct Settings {
     pub jump_to_compare: bool,
     /// `ShopsFirstInRefs` (Options > Show shops first in item references).
     pub shops_first: bool,
+    /// Edited map presets; an index with no entry keeps MME's default (`LoadPresets`).
+    pub map_presets: Vec<MapPresetDto>,
 }
 
 impl Default for Settings {
@@ -142,6 +167,7 @@ impl Default for Settings {
             // LoadSettings reads a missing key as 0.
             jump_to_compare: false,
             shops_first: false,
+            map_presets: Vec::new(),
         }
     }
 }
@@ -159,6 +185,14 @@ impl Settings {
             self.route_waypoint_interval.min(WAYPOINT_MAX)
         };
         self.exp_per_hour.global = self.exp_per_hour.global.normalized();
+        // one entry per preset button, the last one sent winning, as `presets_with` reads them
+        let mut kept: Vec<MapPresetDto> = Vec::new();
+        for p in self.map_presets.drain(..).filter(|p| p.index < PRESET_COUNT) {
+            kept.retain(|k| k.index != p.index);
+            kept.push(p);
+        }
+        kept.sort_by_key(|p| p.index);
+        self.map_presets = kept;
         self
     }
 
@@ -299,7 +333,7 @@ mod tests {
         s.exp_per_hour.global.knob_dmg = 0.004;
         s.exp_per_hour.global.knob_xp = 12.0;
         s.exp_per_hour.global.knob_mana = 1.234;
-        let n = s.normalized();
+        let n = s.clone().normalized();
         assert_eq!(n.monster_sim_rounds, 100);
         assert_eq!(n.route_waypoint_interval, 25);
         assert!((n.exp_per_hour.global.knob_dmg - 0.01).abs() < 1e-12);
@@ -310,6 +344,22 @@ mod tests {
         let n = s.normalized();
         assert_eq!(n.monster_sim_rounds, 10_000);
         assert_eq!(n.route_waypoint_interval, 1000);
+    }
+
+    #[test]
+    fn map_presets_keep_the_last_entry_per_button_and_drop_the_rest() {
+        let p = |index, name: &str| MapPresetDto {
+            index,
+            name: name.into(),
+            map: 1,
+            room: 2,
+        };
+        let s = Settings {
+            map_presets: vec![p(3, "a"), p(60, "x"), p(3, "b"), p(1, "c")],
+            ..Settings::default()
+        };
+        let n = s.normalized().map_presets;
+        assert_eq!(n, vec![p(1, "c"), p(3, "b")]);
     }
 
     #[test]
