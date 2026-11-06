@@ -52,7 +52,7 @@ untouched.
    - `expected_proc_damage`: exact mean over the spell's roll range of the damage one unresisted-or-resisted
      proc deals, hit by hit and slot by slot, in the order the engine applies them (roll times power, the class
      weave share, the target's element, then the "Alter spell damage" bonus, the casting stat with the weave's share
-     of the bonus and the class spell share, then magic resistance for a slot that ignores armour not), times the
+     of the bonus and the class spell share, then magic resistance for Inflict Damage on Armour only), times the
      chance the one resist roll lets it through. A Bard's proc is one hit of the class share of the budget.
      `expected_per_hit` multiplies by the proc chance.
 2. Spell levels use the engine's integer form (`base + inc * level / lvls`, the level held to the spell cap) so the

@@ -47,6 +47,7 @@ mod quicksilver_melee;
 mod quicksilver_opener;
 mod quicksilver_regen;
 mod quicksilver_vectors;
+mod quicksilver_weave;
 mod reachability;
 mod rooms;
 mod rows;

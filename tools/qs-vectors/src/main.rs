@@ -11,6 +11,7 @@ mod opener;
 mod regen;
 mod spells;
 mod training;
+mod weave;
 
 use std::path::Path;
 
@@ -65,6 +66,7 @@ fn main() {
         regen::family(),
         spells::family(),
         training::family(),
+        weave::family(),
     ] {
         let text = render(&fam, &commit, &version);
         let path = Path::new(&dir).join(format!("{}.json", fam.name));
