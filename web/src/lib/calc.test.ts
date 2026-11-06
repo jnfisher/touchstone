@@ -30,6 +30,9 @@ import {
 	coinIndex,
 	coinTypedRequest,
 	createCalcClient,
+	pctText,
+	SIM_DEFAULTS,
+	simRequest,
 	expRequest,
 	filterWeapons,
 	isCalc,
@@ -236,8 +239,8 @@ describe('hit calculator', () => {
 		errors: []
 	};
 
-	it('is the fifth entry of the calculators menu', () => {
-		expect(CALCULATORS.map((c) => c.slug)).toEqual(['exp', 'coin', 'swing', 'backstab', 'hit']);
+	it('is the sixth entry of the calculators menu', () => {
+		expect(CALCULATORS.map((c) => c.slug)).toEqual(['exp', 'coin', 'swing', 'backstab', 'hit', 'monster-sim']);
 		expect(isCalc('hit')).toBe(true);
 	});
 
@@ -565,5 +568,44 @@ describe('MegaMUD paste', () => {
 		const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
 		expect(url).toBe('/api/calc/mega-stat');
 		expect(JSON.parse(init.body as string)).toEqual({ text: 'Hit: 1%' });
+	});
+});
+
+describe('monster attack simulator', () => {
+	it('opens with the reset defenses and 500 rounds', () => {
+		expect(SIM_DEFAULTS.rounds).toBe('500');
+		expect(SIM_DEFAULTS.boxes).toMatchObject({ ac: '0', mr: '50', anti_magic: false });
+	});
+
+	it('sends the typed boxes and leaves an empty seed to the server', () => {
+		const body = simRequest({ ...SIM_DEFAULTS, monster: 13, classNumber: 2, boxes: { ...SIM_DEFAULTS.boxes, ac: '40' } });
+		expect(body).toMatchObject({
+			monster: 13,
+			rounds: '500',
+			dynamic: false,
+			log_rounds: 100,
+			defender: { ac: '40', mr: '50', class: 2 }
+		});
+		expect(body).not.toHaveProperty('seed');
+	});
+
+	it('sends the character instead of the boxes when one is given', () => {
+		const body = simRequest({ ...SIM_DEFAULTS, monster: 5, seed: '90210', logRounds: '5000' }, { name: 'x' });
+		expect(body.defender).toEqual({ character: { name: 'x' } });
+		expect(body).toMatchObject({ seed: 90210, log_rounds: 1000 });
+	});
+
+	it('shows whole percentages plain and others with one decimal', () => {
+		expect(pctText(100)).toBe('100');
+		expect(pctText(33.3)).toBe('33.3');
+	});
+
+	it('posts to /api/calc/monster-sim', async () => {
+		const fetchFn = vi.fn(async () => new Response('{}'));
+		const client = createCalcClient(fetchFn as unknown as typeof fetch);
+		await client.monsterSim(simRequest({ ...SIM_DEFAULTS, monster: 1 }));
+		await client.monsterSimDefender({ name: 'x' });
+		const urls = fetchFn.mock.calls.map((c) => (c as unknown as [string])[0]);
+		expect(urls).toEqual(['/api/calc/monster-sim', '/api/calc/monster-sim/defender']);
 	});
 });

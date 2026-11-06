@@ -1,5 +1,5 @@
 // Local helper, not run in CI: dark-theme screenshots of the calculators against a running
-// `touchstone serve`.   node web/scripts/calc-shots.cjs [baseUrl] [outDir] [hit|char]
+// `touchstone serve`.   node web/scripts/calc-shots.cjs [baseUrl] [outDir] [hit|char|monster-sim]
 // With `hit` only the Hit Calculator is shot, in the dark and the light theme. With `char` the Swing
 // Calculator is shot using the saved character (the first saved one) and after a MegaMUD paste;
 // the server needs at least one saved character with a class, race and level. The other shots type
@@ -41,6 +41,36 @@ async function hitShots(browser, theme, errors) {
 	console.log(theme, 'boxes', await Promise.all([0, 1, 2, 3, 5].map((i) => page.getByTestId(`hit-box-${i}`).inputValue())));
 	await page.getByTestId('calc-hit').evaluate((el) => el.scrollTo(0, 0));
 	await page.screenshot({ path: path.join(out, theme === 'dark' ? 'hit.png' : 'hit-light.png') });
+	await ctx.close();
+}
+
+/** The Monster Attack Simulator: an adult red dragon against a typed defender (no saved character needed). */
+async function simShots(browser, errors) {
+	const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+	await ctx.addInitScript(() => localStorage.setItem('touchstone.theme', 'dark'));
+	const page = await ctx.newPage();
+	page.on('pageerror', (e) => errors.push(String(e)));
+	page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+	await page.goto(`${base}/weapons`);
+	await page.getByTestId('calc-menu').click();
+	await page.getByTestId('calc-link-monster-sim').click();
+	await page.getByTestId('calc-monster-sim').waitFor();
+	await page.getByTestId('sim-monster').click();
+	await page.getByTestId('sim-monster').fill('adult red dragon');
+	await page.getByRole('option', { name: 'adult red dragon (185)' }).first().click();
+	const toggle = page.getByTestId('use-character-toggle');
+	await page.waitForTimeout(500);
+	if (await toggle.isEnabled() && (await toggle.isChecked())) await toggle.uncheck();
+	await page.getByTestId('sim-ac').fill('60');
+	await page.getByTestId('sim-dr').fill('20');
+	await page.getByTestId('sim-dodge').fill('40');
+	await page.getByTestId('sim-res-fire').fill('25');
+	await page.getByTestId('sim-rounds').fill('2000');
+	await page.getByTestId('sim-log-rounds').fill('8');
+	await page.getByTestId('sim-run').click();
+	await page.getByTestId('sim-summary').waitFor();
+	console.log('summary', await page.getByTestId('sim-summary').innerText().then((t) => t.replace(/\s+/g, ' ')));
+	await page.screenshot({ path: path.join(out, 'monster-sim.png') });
 	await ctx.close();
 }
 
@@ -91,6 +121,15 @@ async function charShots(browser, errors) {
 	const errors = [];
 	if (only === 'char') {
 		await charShots(browser, errors);
+		await browser.close();
+		if (errors.length) {
+			console.error(errors.join('\n'));
+			process.exit(1);
+		}
+		return;
+	}
+	if (only === 'monster-sim') {
+		await simShots(browser, errors);
 		await browser.close();
 		if (errors.length) {
 			console.error(errors.join('\n'));
