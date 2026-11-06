@@ -299,6 +299,7 @@ class ControlShim(ExtObject):
         self.props = {}
         self.items = {}
         self.decode = decode
+        self.radio = None       # the sibling elements of a `$radio` option-button array (VB clears the others)
         for k, v in (props or {}).items():
             self.load(k, v)
 
@@ -339,6 +340,10 @@ class ControlShim(ExtObject):
         else:
             # Caption, Text, Tag and ToolTipText are Strings: a number assigned to one is stored as CStr(x)
             self.props[n] = V.c_str(value) if n in _STRING_PROPS and not isinstance(value, ExtObject) else value
+            if n == "value" and self.radio is not None and value is True:
+                for other in self.radio.values():
+                    if other is not self:
+                        other.props["value"] = False
 
     def vb_default(self, args):
         if args:
@@ -482,6 +487,9 @@ class FormShim(ExtObject):
             nl = name.lower()
             if isinstance(props, dict) and "$array" in props:
                 self.controls[nl] = {int(i): self._make(p, decode) for i, p in props["$array"].items()}
+                if props.get("$radio"):
+                    for c in self.controls[nl].values():
+                        c.radio = self.controls[nl]
             elif isinstance(props, dict) and "$listview" in props:
                 self.controls[nl] = ListViewShim(props["$listview"], decode)
             elif isinstance(props, dict):

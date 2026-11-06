@@ -180,6 +180,8 @@ class Env:
             it.procs.pop(name.lower(), None)
         self._bind_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
+        it.intrinsic_hooks["inputbox"] = self._inputbox
+        self.inputbox_answers = []
         self.class_names = {m.name: m for m in it.modules.values() if m.is_class}
         self.cells = []
         for m in it.modules.values():
@@ -212,6 +214,15 @@ class Env:
         buttons = int(a[1]) if len(a) > 1 and V.is_num(a[1]) else 0
         self.rec.add("msgbox", text=text)
         return shims.msgbox_result(buttons)
+
+    def _inputbox(self, it, prompt=None, title=None, default=None, *rest):
+        """InputBox: answers from the case's "inputbox" list in call order (null accepts the default,
+        an exhausted list cancels, which is an empty string)."""
+        dflt = V.c_str(default) if default is not None and default is not V.MISSING else ""
+        ans = self.inputbox_answers.pop(0) if self.inputbox_answers else ""
+        ans = dflt if ans is None else ans
+        self.rec.add("inputbox", prompt=V.c_str(prompt) if prompt is not None else "", default=dflt, answer=ans)
+        return ans
 
     def _bind_procs(self):
         it = self.it
@@ -438,6 +449,7 @@ class Env:
             for fname, props in (src or {}).items():
                 forms.setdefault(fname, {}).update(props)
         self.set_forms(forms)
+        self.inputbox_answers = list(case.get("inputbox") or [])
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
         objs = {}
