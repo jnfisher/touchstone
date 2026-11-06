@@ -227,4 +227,11 @@
 	:global(.ag-row.ts-row-danger .ag-cell) {
 		color: var(--destructive);
 	}
+	/* MME colours race stat ranges well below / above the average red / green. */
+	:global(.ag-cell.ts-cell-below) {
+		color: var(--destructive);
+	}
+	:global(.ag-cell.ts-cell-above) {
+		color: var(--positive);
+	}
 </style>

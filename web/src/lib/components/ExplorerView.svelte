@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { api, type AbilityTable, type Spell, type TableName, type TableTypes } from '$lib/api';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopPrices from '$lib/components/ShopPrices.svelte';
 	import SpellEffect from '$lib/components/SpellEffect.svelte';
 	import SplitPane from '$lib/components/SplitPane.svelte';
+	import { getCharacterStore, openLastCharacter } from '$lib/character.svelte';
+	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
 	import { selection } from '$lib/explorer-state.svelte';
 	import {
 		buildLookups,
@@ -32,7 +34,9 @@
 
 	// Each table is fetched when its tab first opens (rooms alone is several MB) and cached by the
 	// API client, so coming back to a tab is instant.
+	const store = getCharacterStore();
 	onMount(async () => {
+		void openLastCharacter(store);
 		try {
 			const info = await api.info();
 			nmr = parseNmr(info.version.nmr_version);
@@ -46,13 +50,50 @@
 		}
 	});
 
-	const rows = $derived(table ? listRows(explorer, table, { nmr }) : []);
+	const computedTab = $derived(explorer.computed);
+	const rows = $derived(table && !computedTab ? listRows(explorer, table, { nmr }) : []);
 	const columnDefs = $derived(toColDefs(explorer.columns, explorer.defaultSort));
 	const slug = $derived(explorer.slug);
 	const selectedId = $derived(selection.get(slug));
-	const selected = $derived(
-		selectedId === undefined ? undefined : rows.find((r) => String(explorer.rowId(r)) === String(selectedId))
-	);
+
+	// The server builds these lists (MME's columns and cells for the current character). The
+	// character store is shared with the Character tab; edits re-fetch after a short pause.
+	let useCharacter = $state(true);
+	let evaluated = $state.raw<{ tab: string; table: EvalTable }>();
+	let evalError = $state<string>();
+	const payload = $derived(evaluated && evaluated.tab === computedTab ? evaluated.table : undefined);
+	const evalRows = $derived(payload?.rows ?? []);
+	const evalDefs = $derived(payload ? evalColDefs(payload.columns, explorer.defaultSort) : []);
+	const hasCharacter = $derived(store.doc.class !== null && store.doc.race !== null);
+	$effect(() => {
+		const tab = computedTab;
+		if (!tab) return;
+		const body = evaluateBody($state.snapshot(store.doc), useCharacter);
+		const ctl = new AbortController();
+		const timer = setTimeout(
+			async () => {
+				try {
+					const t = await evaluateClient.evaluate(tab, body, ctl.signal);
+					evaluated = { tab, table: t };
+					evalError = undefined;
+				} catch (e) {
+					if (!ctl.signal.aborted) evalError = e instanceof Error ? e.message : String(e);
+				}
+			},
+			untrack(() => payload) ? 300 : 0
+		);
+		return () => {
+			clearTimeout(timer);
+			ctl.abort();
+		};
+	});
+
+	const total = $derived(computedTab ? evalRows.length : rows.length);
+	const selected = $derived.by(() => {
+		if (selectedId === undefined) return undefined;
+		if (computedTab) return table?.find((r) => String(explorer.rowId(r)) === String(selectedId));
+		return rows.find((r) => String(explorer.rowId(r)) === String(selectedId));
+	});
 	const ABILITY_TABLES: readonly string[] = ['items', 'spells', 'races', 'classes', 'monsters'];
 
 	// MME's ability text and a monster's max damage come from the server for the selected record.
@@ -82,7 +123,7 @@
 	<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 		<h2 class="text-base font-semibold">{title}</h2>
 		<span class="text-muted-foreground text-sm tabular-nums" data-testid="count">
-			{#if table}{shown.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')}{/if}
+			{#if table && (!computedTab || payload)}{shown.toLocaleString('en-US')} of {total.toLocaleString('en-US')}{/if}
 		</span>
 		<input
 			type="search"
@@ -100,6 +141,12 @@
 		>
 			{detailHidden ? 'Show details' : 'Hide details'}
 		</button>
+		{#if computedTab && hasCharacter}
+			<label class="flex items-center gap-1.5 text-sm" data-testid="use-character">
+				<input type="checkbox" bind:checked={useCharacter} />
+				Use character <span class="text-muted-foreground">({store.doc.name || 'unnamed'})</span>
+			</label>
+		{/if}
 		{#if explorer.pending.length}
 			<span class="text-muted-foreground text-xs" data-testid="pending">
 				Needs a character, coming later: {explorer.pending.join(', ')}
@@ -110,11 +157,26 @@
 	<div class="min-h-0 flex-1">
 		{#if error}
 			<p class="text-destructive" role="alert">Could not load {title.toLowerCase()}: {error}</p>
-		{:else if !table}
+		{:else if evalError && !payload}
+			<p class="text-destructive" role="alert">Could not build {title.toLowerCase()}: {evalError}</p>
+		{:else if !table || (computedTab && !payload)}
 			<p class="text-muted-foreground" data-testid="loading">Loading {title.toLowerCase()}...</p>
 		{:else}
 			<SplitPane storageKey="touchstone.split.{slug}" autoWidth={gridWidth} bind:collapsed={detailHidden}>
 				{#snippet left()}
+					{#if computedTab}
+						<DataGrid
+							rows={evalRows}
+							columnDefs={evalDefs}
+							getRowId={(r: EvalRow) => String(r.number)}
+							selectedId={selectedId === undefined ? undefined : String(selectedId)}
+							quickFilter={search}
+							storageKey={slug}
+							onSelect={(r: EvalRow) => selection.set(slug, r.number)}
+							onCount={(n) => (shown = n)}
+							onWidth={(w) => (gridWidth = w)}
+						/>
+					{:else}
 					<DataGrid
 						{rows}
 						{columnDefs}
@@ -126,6 +188,7 @@
 						onCount={(n) => (shown = n)}
 						onWidth={(w) => (gridWidth = w)}
 					/>
+					{/if}
 				{/snippet}
 				{#snippet right()}
 					{#if selected}

@@ -182,6 +182,10 @@ class Env:
             it.procs.pop(name.lower(), None)
         self._bind_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
+        for tn in ("scripting.dictionary", "dictionary"):
+            it.new_hooks[tn] = shims.DictionaryShim
+        self.lair_env = None
+        self.shared_lairs = {}
         it.intrinsic_hooks["inputbox"] = self._inputbox
         if paste_procs:
             self._bind_paste_procs()
@@ -326,6 +330,43 @@ class Env:
                 sm.set((j,), t)
         return arr
 
+    # -- lair shims (scenario key "shims": ["lairs"]): GetLairInfo and GetDamageOutput answer from the
+    # case's "lair_env" table, so the statistics are pinned without P3-16's cache or the combat state.
+    def enable_lair_shims(self):
+        for n in ("GetLairInfo", "GetDamageOutput"):
+            self.it.procs.pop(n.lower(), None)
+            for m in self.it.modules.values():      # callers in the same module resolve there first
+                m.proc_map.pop(n.lower(), None)
+        self.it.bind("dbOpenSnapshot", V.I32(4))     # DAO constant used by CalculateAverageLairs
+        self.it.bind_proc("GetLairInfo", self._get_lair_info)
+        self.it.bind_proc("GetDamageOutput", self._get_damage_output)
+
+    def _get_lair_info(self, it, group_index, max_regen=V.MISSING):
+        gi = V.c_str(group_index)
+        u = it.new_udt("lairinfotype")
+        row = ((self.lair_env or {}).get("lairs") or {}).get(gi)
+        if row is None:
+            row = self.shared_lairs.get(gi)     # scenario "data": {"lairs": ..}, written once for the family
+        if row is None:
+            return u
+        for k, v in row.items():
+            u.set_field(k.lower(), decode(v))
+        regen = V.coerce_to(max_regen, "integer")     # the parameter is an Integer: Overflow past 32767
+        u.set_field("sgroupindex", gi)
+        u.set_field("nmaxregen", regen)
+        u.set_field("nrtk", 1.0)
+        u.set_field("nrtc", float(regen))
+        return u
+
+    def _get_damage_output(self, it, *args):
+        def num(x):
+            return V.int_value(x)
+        self.rec.add("damage_output", args=[num(a) for a in args[1:]])
+        u = it.new_udt("tdamageoutput")
+        for k, v in ((self.lair_env or {}).get("damage_out") or {}).items():
+            u.set_field(k.lower(), decode(v))
+        return u
+
     # -- per-case state
     def reset(self, rnd=None):
         it = self.it
@@ -402,7 +443,7 @@ class Env:
                 u.set_field(name.lower(), decode(val))
         return u
 
-    def build_args(self, spec, objs, refs, lv=None):
+    def build_args(self, spec, objs, refs, lv=None, dicts=None):
         """Call arguments from a step's `args`. Beyond the plain values: `{"ref": ...}` (ByRef), `{"udt": ...}`
         (a Type; `out` makes it ByRef and lands in the step's refs), `{"obj": name}` (an object of the case),
         `{"saved": name}` (the ByRef Type a previous step kept under its `as` name, shared so later calls see
@@ -442,6 +483,15 @@ class Env:
                     u = Var(u, a["udt"].lower())
                     refs.append(u)
                 args.append(u)
+            elif isinstance(a, dict) and "dict" in a:
+                # a Scripting.Dictionary of Long keys and counts, passed by reference; its final
+                # items land in "<as>.dicts"
+                d = shims.DictionaryShim()
+                for k, v in a["dict"]:
+                    d.items[float(k)] = (V.mk_i32(k), V.mk_i32(v))
+                if dicts is not None:
+                    dicts.append(d)
+                args.append(d)
             elif isinstance(a, dict) and "control" in a:
                 args.append(self.it.externals["frmmain"].vb_get(a["control"], []))  # a frmMain control, by reference
             elif isinstance(a, dict) and "obj" in a:
@@ -471,10 +521,14 @@ class Env:
     def call(self, objs, step, results):
         target = step["call"]
         refs = []
-        args = self.build_args(step.get("args", []), objs, refs)
+        dicts = []
+        args = self.build_args(step.get("args", []), objs, refs, dicts=dicts)
         r = self.invoke(objs, target, args)
         if "as" in step:
             results[step["as"]] = encode(r) if r is not None else None
+        if dicts:
+            results[step.get("as", target) + ".dicts"] = [[[encode(k), encode(v)] for k, v in d.items.values()]
+                                                          for d in dicts]
         if refs:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
             self.saved[step.get("as", target)] = refs
@@ -607,6 +661,14 @@ class Env:
         self.inputbox_answers = list(case.get("inputbox") or [])
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
+        self.lair_env = case.get("lair_env")
+        if self.lair_env and "summoned_by" in self.lair_env:
+            sb = self.lair_env["summoned_by"]
+            if sb == "$loc":               # the monster's text is the procedure's own first argument
+                sb = case["args"][0]
+            self.it.global_cell("tabMonsters").v = shims.FakeMonsters({"Summoned By": sb})
+        if self.lair_env and "monsters" in self.lair_env:
+            self.it.global_cell("DB").v = shims.FakeDB(self.lair_env["monsters"])
         objs = {}
         out = {}
         steps = list(case.get("steps", []))
@@ -671,6 +733,9 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     database = db_path() if scn.get("database") else None
     env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
               paste_procs=bool(scn.get("paste_procs")))
+    if "lairs" in scn.get("shims", []):
+        env.enable_lair_shims()
+        env.shared_lairs = (scn.get("data") or {}).get("lairs") or {}
     # "modules": extra MME files a family needs; "frm": procedures cut from a form; "db_extra": invented rows;
     # "paste_procs": stub frmMain's screen/disk procedures and answer InputBox with the default (paste_char)
     setup = {"globals": scn.get("globals", {}), "forms": scn.get("forms", {})}
