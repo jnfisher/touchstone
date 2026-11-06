@@ -135,3 +135,11 @@ Builds never happen on the Pi.
 
 Map / room explorer, MegaMUD pathing, monster reachability and routes, live game state (what is
 spawned now). Decide at the end of phase 4.
+
+## Item Manager (P4-19)
+
+The Item Manager list is the page's: `/api/item-manager/{rows,action,delete,copy,add}` take the rows and the
+selected positions and answer the new rows plus the character with its saved `carried`/`stash` lists rebuilt
+(`SaveCharacter`'s loops, 50 each). Rows live in the paste store so a paste and the panel share one list.
+Questions go through the same stateless prompt loop as the paste dialog. The character's `carried` list feeds
+`refresh_all` (`gear_rows`), which is how CARRIED rows count for abilities and encumbrance.

@@ -48,3 +48,16 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   the user confirms), so its backstab rows for such a class are the forced calculation.
 - `FilterSpells` and `FilterMonsters` are not part of `filter_all` (card P3-30), nor is the `RefreshAll` that
   `FilterAll` ends with.
+
+## Item Manager (P4-19)
+
+- `LV_CopySelectedActionsToClipboard` builds its text in memory; a flag with a quantity near 2 billion would
+  make VB6 run out of memory (error 7) long before it finished. The port returns error 7 past one million
+  commands instead of allocating gigabytes.
+- The Item Manager request takes at most 2000 rows and 64 answers; MME's ListView has no limit but the list
+  holds what one character carries, stashes or sees.
+- `SaveCharacter` keeps the saved quantity in an Integer, so a CARRIED/STASH row with a quantity past 32767 is
+  run-time error 6 there. The Item Manager and paste endpoints leave the saved `carried`/`stash` lists as they
+  were for such a list and say why in `messages`; the rows themselves still change.
+- The selection is the page's state and `lvItemManager_ItemClick` (the detail pane) is not ported: delete reports
+  the row MME selects next.

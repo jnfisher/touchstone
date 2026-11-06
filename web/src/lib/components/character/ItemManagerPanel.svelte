@@ -107,7 +107,7 @@
 	{#if im.note}<p class="text-muted-foreground mb-2 text-xs" data-testid="im-note">{im.note}</p>{/if}
 	{#if im.problem}<p class="text-destructive mb-2 text-xs" data-testid="im-error">{im.problem}</p>{/if}
 
-	<div class="h-80" data-testid="im-grid">
+	<div class="h-[27rem]" data-testid="im-grid">
 		<DataGrid
 			rows={gridRows}
 			{columnDefs}
