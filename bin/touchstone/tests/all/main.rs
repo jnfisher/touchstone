@@ -6,6 +6,7 @@ mod common;
 mod detail;
 mod equip;
 mod evaluate;
+mod monster_sim;
 mod paste;
 mod settings;
 
