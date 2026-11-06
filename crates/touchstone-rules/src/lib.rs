@@ -21,6 +21,7 @@ pub mod hit_calc;
 pub mod item_manager;
 pub mod item_value;
 pub mod lairs;
+pub mod locations;
 pub mod mega_stat;
 pub mod mmec;
 pub mod monster_glue;

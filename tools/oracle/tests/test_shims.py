@@ -301,3 +301,20 @@ End Function
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FormatNumberTest(unittest.TestCase):
+    """FormatNumber (added for GetLocations): US locale, grouped, half away from zero."""
+
+    def run_src(self, expr):
+        it = Interpreter()
+        it.load_source("Option Explicit\nPublic Function F() As String\nF = %s\nEnd Function\n" % expr, "m.bas")
+        it.ensure_ready()
+        return it.call("F")
+
+    def test_grouped_no_decimals(self):
+        self.assertEqual(self.run_src("FormatNumber(1234567.5, 0, , , vbTrue)"), "1,234,568")
+
+    def test_default_two_decimals_and_negative(self):
+        self.assertEqual(self.run_src("FormatNumber(-1234.5)"), "-1,234.50")
+        self.assertEqual(self.run_src("FormatNumber(0.5, 0)"), "1")

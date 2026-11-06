@@ -313,6 +313,15 @@ class Env:
             it.bind_proc(n, zero)
         it.bind_proc("HandleError", handle_error)
         it.procs.pop("handleerror", None)
+
+        def sort_listview(it_, lv, column, kind, ascending):
+            # modListViewExt is not loaded: ListView sorting is left to the grid, so only the request is recorded
+            # (the rows the list held, the column, the data type and the direction).
+            rec.add("sort_listview", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
+                    data_type=V.int_value(kind), ascending=bool(ascending))
+        it.bind_proc("SortListView", sort_listview)
+        for n, v in (("ldtstring", 0), ("ldtnumber", 1), ("ldtDateTime", 2)):     # modListViewExt's ListDataType
+            it.bind(n, V.I32(v))
         # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
         # matching is done here with Python's re (ASCII classes, as in VBScript).
         it.bind_proc("RegExpFindv2", self._regexp_find)
