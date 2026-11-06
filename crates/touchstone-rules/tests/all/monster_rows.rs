@@ -27,16 +27,16 @@ use touchstone_rules::rows::monster::{
 };
 use touchstone_vb6::{Currency, Rnd};
 
-fn i(v: &Value) -> i32 {
+pub(crate) fn i(v: &Value) -> i32 {
     v.as_i64().unwrap_or_else(|| panic!("not an integer: {v}")) as i32
 }
 
-fn f(v: &Value) -> f64 {
+pub(crate) fn f(v: &Value) -> f64 {
     v.as_f64().unwrap_or_else(|| panic!("not a number: {v}"))
 }
 
 // Only damage numbers are used here; a weapon that casts would ask for its spell text.
-struct NoCasts;
+pub(crate) struct NoCasts;
 
 impl CastText for NoCasts {
     fn spell_name(&self, n: i32) -> String {
@@ -47,7 +47,7 @@ impl CastText for NoCasts {
     }
 }
 
-fn pairs<const N: usize>(v: &Value) -> [AbilitySlot; N] {
+pub(crate) fn pairs<const N: usize>(v: &Value) -> [AbilitySlot; N] {
     let mut out = [AbilitySlot::default(); N];
     for (k, p) in v.as_array().unwrap().iter().enumerate() {
         out[k] = AbilitySlot {
@@ -181,7 +181,7 @@ fn build_world(pipe_data: &Value, table: &Value) -> World {
     .unwrap()
 }
 
-fn currency_array(v: &Value) -> Vec<Currency> {
+pub(crate) fn currency_array(v: &Value) -> Vec<Currency> {
     v.as_array()
         .unwrap()
         .iter()
@@ -189,14 +189,14 @@ fn currency_array(v: &Value) -> Vec<Currency> {
         .collect()
 }
 
-fn text_of(inp: &Inputs, name: &str, idx: usize) -> String {
+pub(crate) fn text_of(inp: &Inputs, name: &str, idx: usize) -> String {
     inp.elem(name, idx)["Text"]
         .as_str()
         .unwrap_or("")
         .to_string()
 }
 
-fn party_of(inp: &Inputs) -> PartyFilter {
+pub(crate) fn party_of(inp: &Inputs) -> PartyFilter {
     let mut p = PartyFilter {
         lair_mode: inp.elem("optMonsterFilter", 1)["Value"].as_bool() == Some(true),
         monster_damage_text: inp.ctl("txtMonsterDamage")["Text"]
@@ -212,7 +212,7 @@ fn party_of(inp: &Inputs) -> PartyFilter {
 }
 
 /// A global: the case's value, else the family-wide setup's.
-fn global<'a>(fx: &'a Fixture, case: &'a Value, name: &str) -> &'a Value {
+pub(crate) fn global<'a>(fx: &'a Fixture, case: &'a Value, name: &str) -> &'a Value {
     let v = &case["inputs"]["globals"][name];
     if v.is_null() {
         &fx.header["setup"]["globals"][name]
@@ -221,7 +221,7 @@ fn global<'a>(fx: &'a Fixture, case: &'a Value, name: &str) -> &'a Value {
     }
 }
 
-fn settings(fx: &Fixture, case: &Value) -> ExpPerHourSettings {
+pub(crate) fn settings(fx: &Fixture, case: &Value) -> ExpPerHourSettings {
     let b = |n: &str| global(fx, case, n).as_bool().unwrap_or(false);
     let k = |n: &str| global(fx, case, n).as_f64().unwrap_or(0.0);
     ExpPerHourSettings {
@@ -280,7 +280,7 @@ fn row_args(extra: &[Value]) -> MonsterRowArgs {
 }
 
 /// A row in the shape the oracle's recording ListView dumps it.
-fn row_json(r: &Row) -> Value {
+pub(crate) fn row_json(r: &Row) -> Value {
     let cells: Vec<Value> = r
         .cells
         .iter()
@@ -400,16 +400,16 @@ fn run_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
     bad
 }
 
-struct Caches {
-    party: Vec<Currency>,
-    chr: Vec<Currency>,
-    default: Vec<Currency>,
-    possy: Vec<Currency>,
-    chance: Vec<Currency>,
+pub(crate) struct Caches {
+    pub(crate) party: Vec<Currency>,
+    pub(crate) chr: Vec<Currency>,
+    pub(crate) default: Vec<Currency>,
+    pub(crate) possy: Vec<Currency>,
+    pub(crate) chance: Vec<Currency>,
 }
 
 /// The damage and spawn arrays: the case's own where it sets them, else the family-wide ones.
-fn caches(fx: &Fixture, case: &Value) -> Caches {
+pub(crate) fn caches(fx: &Fixture, case: &Value) -> Caches {
     let g = |n: &str| currency_array(global(fx, case, n));
     Caches {
         party: g("nMonsterDamageVsParty"),

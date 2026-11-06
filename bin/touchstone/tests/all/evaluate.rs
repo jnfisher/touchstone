@@ -705,7 +705,7 @@ async fn ability_filter_and_backstab_punch() {
 async fn bad_requests_are_refused() {
     let fx = fixture();
     let app = router(&fx);
-    let (st, _) = post(&app, "/api/evaluate/monsters", &json!({})).await;
+    let (st, _) = post(&app, "/api/evaluate/nonsense", &json!({})).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
     for body in [
         json!({"options": {"attack": 9, "calc_combat": true}}),
@@ -939,4 +939,36 @@ async fn bad_bar_values_are_refused() {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bar}: {got}");
     }
+}
+
+// FilterMonsters with default controls: the Monsters list has the 1.83 columns, one row per in-game monster the table
+// holds, and the number cell is the record. The values themselves are pinned by the filters_sm and monster_rows fixtures.
+#[tokio::test]
+async fn monsters_are_listed_through_filter_monsters() {
+    let fx = fixture();
+    let app = router(&fx);
+    let (st, body) = post(&app, "/api/evaluate/monsters", &json!({})).await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let columns = body["columns"].as_array().unwrap();
+    assert_eq!(columns.len(), 18);
+    assert_eq!(columns[1]["header"], "Name");
+    assert_eq!(columns[10]["header"], "Exp/(Dmg+HP)");
+    let rows = body["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+    for r in rows {
+        assert_eq!(r["cells"].as_array().unwrap().len(), columns.len());
+        assert_eq!(
+            r["cells"][0]["text"],
+            r["number"].to_string().trim_matches('"')
+        );
+    }
+    // the global filter on a character does not change which monsters the default filters list
+    let (st, with) = post(
+        &app,
+        "/api/evaluate/monsters",
+        &json!({"character": {"race": 1, "class": 1, "level": 10, "global_filter": true}}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{with}");
+    assert_eq!(with["rows"].as_array().unwrap().len(), rows.len());
 }

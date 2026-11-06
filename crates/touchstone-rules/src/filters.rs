@@ -22,6 +22,12 @@
 //! A VB6 run-time error (a box that overflows `CLng`, a division by zero in a martial-arts row) ends the
 //! procedure where it happens with the list built so far, as MME's `Resume out` does (`aborted`).
 
+mod monsters;
+mod spells;
+
+pub use monsters::*;
+pub use spells::*;
+
 use touchstone_model::{Item, World};
 use touchstone_vb6 as vb;
 

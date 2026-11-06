@@ -128,6 +128,11 @@ class ShimTests(unittest.TestCase):
             rs.vb_get("Fields", ["Name"])
         self.assertEqual(e.exception.number, 3021)
 
+    def test_db_only_keeps_the_listed_rows_in_order(self):
+        rs = shims.Database(self.dbp, only={"Items": [30, 10]}).open_recordset("Items")
+        self.assertEqual(int(rs.vb_get("RecordCount", [])), 2)
+        self.assertEqual(int(shims.Database(self.dbp).open_recordset("Items").vb_get("RecordCount", [])), 3)
+
     def test_seek_without_index_and_unknown_field_and_index(self):
         rs = shims.Database(self.dbp).open_recordset("Items")
         with self.assertRaises(VBError) as e:

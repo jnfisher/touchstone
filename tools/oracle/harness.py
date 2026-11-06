@@ -166,10 +166,10 @@ class _Dump:
 # ----------------------------------------------------------------------------- environment
 
 class Env:
-    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False):
+    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False, db_only=None):
         self.mme = mme
         shims.FORM_METHODS.clear()
-        self.db = shims.Database(database, db_extra) if database else None
+        self.db = shims.Database(database, db_extra, db_only) if database else None
         self.rec = shims.Recorder()
         self.msgbox_answers = []
         self.stubbed = []       # scenario stubs that replace a procedure of a loaded module (ExpandCombo)
@@ -853,7 +853,7 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
     env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
-              paste_procs=bool(scn.get("paste_procs")))
+              paste_procs=bool(scn.get("paste_procs")), db_only=scn.get("db_only"))
     env.db_open = bool(scn.get("db_open"))
     if "lairs" in scn.get("shims", []):
         env.enable_lair_shims()
