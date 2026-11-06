@@ -730,6 +730,8 @@ pub(crate) struct Ctx<'a> {
     /// The attack choice of the character that came with the request, used or not: MME keeps its
     /// `nGlobalAttack*` globals whatever `chkGlobalFilter` says, so "Damage vs Mob" follows them.
     pub(crate) attack: Option<touchstone_rules::character::AttackConfig>,
+    /// The load's reachability, for "Reachable only" (computed when that filter asks, as `ReachIsMonsterOK` does).
+    pub(crate) reach: Option<&'a crate::reach::ReachSlot>,
 }
 
 impl Ctx<'_> {
@@ -1186,13 +1188,21 @@ fn monsters(
                     filtered: false,
                 };
             }
+            let computed = if filter.extras.reachable_only {
+                ctx.reach.map(|slot| slot.get_or_compute(ctx.world))
+            } else {
+                None
+            };
             let filter_inputs = MonsterFilterInputs {
                 only_in_game: true,
                 use_exp_multi: true,
                 settings: s.settings,
                 possy: &s.possy,
                 global_level: f64::from(ctx.who.level),
-                reach: &AllReachable,
+                reach: match &computed {
+                    Some(r) => &**r,
+                    None => &AllReachable,
+                },
                 prompts: DamagePrompts::default(),
             };
             let row_inputs = MonsterRowInputs {
@@ -1356,6 +1366,7 @@ pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a
         filter_on,
         equipped_items,
         attack,
+        reach: None,
     })
 }
 
@@ -1380,7 +1391,23 @@ pub fn evaluate_with(
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
 ) -> Result<Table, ApiError> {
-    let ctx = prepare(world, req)?;
+    evaluate_with_reach(world, tab, req, exp, sim_rounds, None)
+}
+
+/// [`evaluate_with`] with the load's reachability slot, which "Reachable only" fills on first use.
+///
+/// # Errors
+/// As [`prepare`].
+pub fn evaluate_with_reach(
+    world: &World,
+    tab: Tab,
+    req: &EvaluateBody,
+    exp: &ExpPerHourSettings,
+    sim_rounds: i32,
+    reach: Option<&crate::reach::ReachSlot>,
+) -> Result<Table, ApiError> {
+    let mut ctx = prepare(world, req)?;
+    ctx.reach = reach;
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),
@@ -1465,11 +1492,12 @@ pub async fn evaluate_route(
         hit
     } else {
         let job = tokio::task::spawn_blocking(move || {
-            evaluate_with(&loaded.world, tab, &req, &exp, rounds).and_then(|t| {
-                serde_json::to_vec(&t)
-                    .map(Bytes::from)
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-            })
+            evaluate_with_reach(&loaded.world, tab, &req, &exp, rounds, Some(&loaded.reach))
+                .and_then(|t| {
+                    serde_json::to_vec(&t)
+                        .map(Bytes::from)
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+                })
         });
         let bytes = job
             .await

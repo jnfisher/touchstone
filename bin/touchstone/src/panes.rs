@@ -19,7 +19,7 @@ use touchstone_rules::detail::item::{
     DetailKind as ItemKind, ItemDetailEnv, ItemDetailOptions, pull_item_detail,
 };
 use touchstone_rules::detail::monster::{
-    DamageCaches, MonsterDetailInputs, MonsterRow, NoReach, pull_monster_detail,
+    DamageCaches, MonsterDetailInputs, MonsterRow, pull_monster_detail,
 };
 use touchstone_rules::detail::shop::{ShopDetailOptions, pull_shop_detail};
 use touchstone_rules::detail::spell::{SpellDetailOptions, pull_spell_detail};
@@ -643,6 +643,8 @@ fn monster_pane(
     number: i32,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
+    loaded_reach: Option<std::sync::Arc<touchstone_rules::reachability::Reach>>,
+    waypoint_interval: i32,
 ) -> Result<PaneJson, (StatusCode, String)> {
     let ctx = sh.ctx;
     let controls = &sh.body.options.monsters;
@@ -652,6 +654,25 @@ fn monster_pane(
     if ctx.state.is_some() {
         ab.global_level_text = Some(&ctx.level_text);
     }
+    let computed = loaded_reach;
+    let names = |m: i32, r: i32| {
+        world
+            .get_room(m, r)
+            .map(|x| x.name.clone().unwrap_or_default())
+    };
+    let pane_reach = touchstone_rules::reachability::PaneReach {
+        reach: computed.as_deref(),
+        opts: touchstone_rules::reachability::ReachRowOptions {
+            level: if ctx.filter_on {
+                ctx.who.level
+            } else {
+                touchstone_vb6::val(&ctx.level_text) as i32
+            },
+            hide_record_numbers: sh.body.hide_record_numbers,
+            waypoint_interval,
+        },
+        names: &names,
+    };
     let rows = with_monster_env(ctx, controls, exp, sim_rounds, &ab, |env, s| {
         let defense_desc = set_char_defense_description(s.cctx, &s.state.character, "")
             .map_or_else(String::new, |d| d.description);
@@ -674,7 +695,7 @@ fn monster_pane(
             bless_caption: s.state.bless_mana.unwrap_or(0.0),
             charm_tag: &charm,
             sim_chr: &sim_chr,
-            reach: &NoReach,
+            reach: &pane_reach,
         };
         let mut caches = DamageCaches {
             vs_party: env.callouts.vs_party.to_vec(),
@@ -699,6 +720,7 @@ fn build(
     body: DetailBody,
     exp: &ExpPerHourSettings,
     sim_rounds: i32,
+    waypoint_interval: i32,
 ) -> Result<PaneJson, (StatusCode, String)> {
     let world = &loaded.world;
     let eval = EvaluateBody {
@@ -750,7 +772,15 @@ fn build(
             world
                 .get_monster(number)
                 .ok_or_else(|| missing("monster"))?;
-            monster_pane(world, &sh, number, exp, sim_rounds)?
+            monster_pane(
+                world,
+                &sh,
+                number,
+                exp,
+                sim_rounds,
+                loaded.reach.get(),
+                waypoint_interval,
+            )?
         }
     })
 }
@@ -761,11 +791,21 @@ async fn run(state: Arc<AppState>, kind: String, number: i32, body: DetailBody) 
     };
     let loaded = state.current();
     let (exp, sim_rounds) = run_settings(&state, body.character.as_ref());
+    let waypoint_interval = state.settings().map_or(25, |s| s.route_waypoint_interval);
     // The lair cache is built on first use and the item pane can be long: keep it off the reactor.
-    let out =
-        tokio::task::spawn_blocking(move || build(&loaded, pane, number, body, &exp, sim_rounds))
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    let out = tokio::task::spawn_blocking(move || {
+        build(
+            &loaded,
+            pane,
+            number,
+            body,
+            &exp,
+            sim_rounds,
+            waypoint_interval,
+        )
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
     json(&out)
 }
 

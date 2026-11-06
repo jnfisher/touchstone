@@ -100,8 +100,11 @@ class Database:
                 rows = [tuple(_vb_value(x, d) for x, d in zip(r, decls))
                         for r in con.execute('SELECT * FROM "%s" ORDER BY rowid' % name)]
                 if name in self.only:
-                    keep = set(self.only[name])
-                    rows = [r for r in rows if r[0] in keep]
+                    keep = set(tuple(k) if isinstance(k, list) else k for k in self.only[name])
+                    if name == "Rooms" and any(isinstance(k, tuple) for k in keep):
+                        rows = [r for r in rows if (r[0], r[1]) in keep]      # [map, room] pairs
+                    else:
+                        rows = [r for r in rows if r[0] in keep]
                 for extra in self.extra.get(name, []):
                     rows.append(tuple(_vb_value(extra.get(c), d) for c, d in zip(cols, decls)))
             finally:

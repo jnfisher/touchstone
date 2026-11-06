@@ -25,6 +25,10 @@ STOCK_MDB_SHA = "eba20f06af8dc08df755eb6dcd9763b023794f12e809cbab6762236d64d7345
 
 # Procedures dropped from a module before it is loaded: modReachability's debug CSV writer uses file I/O statements,
 # which the interpreter does not run (the card skips it).
+# Modules whose private state survives from case to case when a scenario asks (`"persist": true`): a result that is
+# expensive to build and only read afterwards (modReachability).
+PERSISTENT_MODULES = {"modreachability"}
+
 CUT_PROCS = {"modReachability.bas": ["ReachWriteDebugCSV"]}
 
 
@@ -181,7 +185,8 @@ class _Dump:
 # ----------------------------------------------------------------------------- environment
 
 class Env:
-    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False, db_only=None):
+    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False, db_only=None,
+                 persist=False):
         self.mme = mme
         shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra, db_only) if database else None
@@ -218,9 +223,12 @@ class Env:
         self.loaded_forms = []
         self.class_names = {m.name: m for m in it.modules.values() if m.is_class}
         self.cells = []
+        self.pending_setup = []     # scenario "setup_calls": procedures run once, before the first case
         for m in it.modules.values():
             if m.is_class:
                 continue
+            if m.name.lower() in PERSISTENT_MODULES and persist:
+                continue            # the reachability family computes once and queries many times
             for low, cell in m.cells.items():
                 self.cells.append((cell, m.varmap[low], m))
 
@@ -369,6 +377,7 @@ class Env:
         it.procs.pop("regexpfindv2", None)
         for n, v in (("dbOpenSnapshot", 4), ("dbForwardOnly", 8), ("vbModeless", 0)):     # DAO / form constants (modReachability)
             it.bind(n, V.I32(v))
+        it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         it.bind_proc("EnsureDatabaseConnection", false)
         it.procs.pop("ensuredatabaseconnection", None)
 
@@ -591,6 +600,22 @@ class Env:
             r = self.it.call_proc(proc, None, args, [None] * len(args))
         return r
 
+    def each_step(self, objs, step, results):
+        """Step `{"call", "each": [[leading args]..], "args": [trailing args], "as"}`: one call per element, the
+        trailing args (ByRef ones too) built afresh each time; `<as>` holds the results, `<as>.refs` each call's
+        ByRef values."""
+        res, refs_all = [], []
+        for lead in step["each"]:
+            refs = []
+            args = [decode(a) for a in (lead if isinstance(lead, list) else [lead])]
+            args += self.build_args(step.get("args", []), objs, refs)
+            r = self.invoke(objs, step["call"], args)
+            res.append(encode(r) if r is not None else None)
+            refs_all.append([encode(c.v) for c in refs])
+        results[step["as"]] = res
+        if any(refs_all):
+            results[step["as"] + ".refs"] = refs_all
+
     def call(self, objs, step, results):
         target = step["call"]
         refs = []
@@ -762,6 +787,29 @@ class Env:
                 data = ctl.items.get("itemdata", {})
                 out.append([int(V.int_value(data.get(j, 0))) for j in sorted(ctl.items.get("list", {}))])
             return out
+        if expr.startswith("%m."):
+            # a module-level (Private) variable: "%m.modReachability.nEdges"; "name:count" keeps an array's first
+            # `count` elements (count is another variable of the module)
+            _, mod, name = expr.split(".")
+            name, _, cnt = name.partition(":")
+            m = self.it.modules[mod.lower()]
+            v = encode(m.cells[name.lower()].v)
+            return v[:int(V.int_value(m.cells[cnt.lower()].v))] if cnt else v
+        if expr.startswith("%digest."):
+            # FNV-1a (64 bit) of the first n elements of module arrays joined by 0x1f:
+            # "%digest.modReachability.nEdges:eFrom,eTo" -> {name: hex}
+            _, mod, rest = expr.split(".")
+            count, names = rest.split(":")
+            m = self.it.modules[mod.lower()]
+            n = int(V.int_value(m.cells[count.lower()].v))
+            out = {}
+            for nm in names.split(","):
+                data = [str(encode(x)) for x in (m.cells[nm.lower()].v.data or [])][:n]
+                h = 0xcbf29ce484222325
+                for b in "\x1f".join(data).encode("utf-8"):
+                    h = ((h ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+                out[nm] = "%016x" % h
+            return out
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
         if expr.startswith("%gt."):
@@ -801,6 +849,8 @@ class Env:
         self.inputbox_answers = list(case.get("inputbox") or [])
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
+        while self.pending_setup:
+            self.invoke({}, self.pending_setup.pop(0), [])
         self.lair_env = case.get("lair_env")
         if self.lair_env and "summoned_by" in self.lair_env:
             sb = self.lair_env["summoned_by"]
@@ -822,7 +872,9 @@ class Env:
                     # The instance also stands in for an (unset) object-typed module global.
                     self.it.global_cell(spec["global"]).v = objs[name]
             for st in steps:
-                if "rows" in st:
+                if "each" in st:
+                    self.each_step(objs, st, out)
+                elif "rows" in st:
                     self.rows_step(objs, st, out)
                 elif "select" in st:
                     self.select_step(st, out)
@@ -874,7 +926,8 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
     env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
-              paste_procs=bool(scn.get("paste_procs")), db_only=scn.get("db_only"))
+              paste_procs=bool(scn.get("paste_procs")), db_only=scn.get("db_only"), persist=bool(scn.get("persist")))
+    env.pending_setup = list(scn.get("setup_calls", []))
     env.db_open = bool(scn.get("db_open"))
     if "lairs" in scn.get("shims", []):
         env.enable_lair_shims()
@@ -898,6 +951,10 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     }
     if "data" in scn:
         header["data"] = scn["data"]      # tables the Rust test needs once, shared by every case
+    if scn.get("data_from_db"):
+        # the rows of the (db_only) database the family runs on, in the compact form the Rust test reads
+        import reach_data
+        header["data"] = reach_data.rows(database, scn.get("db_only"))
     head = '{"header":' + _Dump.dumps(header) + ','
     out = []
     for i, c in enumerate(cases):

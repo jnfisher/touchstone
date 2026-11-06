@@ -38,6 +38,7 @@ mod monster_sim;
 mod paste_char;
 mod paste_party;
 mod pipeline;
+mod reachability;
 mod rows;
 mod spell_cast;
 mod spells;

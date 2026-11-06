@@ -13,6 +13,7 @@ mod monster_sim;
 mod monsters;
 mod panes;
 mod paste;
+mod reachability;
 mod settings;
 
 mod health {

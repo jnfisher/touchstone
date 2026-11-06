@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_sim, panes, paste, settings,
+    item_manager, monster_sim, panes, paste, reach, settings,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -76,6 +76,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/item-manager/delete", post(item_manager::delete_route))
         .route("/api/item-manager/copy", post(item_manager::copy_route))
         .route("/api/item-manager/add", post(item_manager::add_route))
+        .route("/api/reachability/status", get(reach::status_route))
+        .route("/api/reachability/compute", post(reach::compute_route))
         .route("/api/paste/character", post(paste::character_route))
         .route("/api/paste/party", post(paste::party_route))
         .route(

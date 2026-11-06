@@ -16,6 +16,15 @@
 //! Results never change after [`compute`], so the lazy structures MME builds on first use (reverse and
 //! random-group adjacency, the last `VisitAtLevel` answer) are built eagerly or recomputed per query.
 
+// The ports keep MME's argument lists and 1-based loops, so a few style lints are off for this module.
+#![allow(
+    clippy::too_many_arguments,
+    clippy::wrong_self_convention,
+    clippy::needless_range_loop,
+    clippy::collapsible_if,
+    clippy::if_same_then_else
+)]
+
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
 
@@ -334,7 +343,7 @@ fn thousands(n: i32) -> String {
     let digits = n.unsigned_abs().to_string();
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -2817,7 +2826,7 @@ fn add_route_rows(
     let mut shown = 0;
     let mut more = 0;
     let mut i = interval;
-    while i <= n_steps - 1 {
+    while i < n_steps {
         if shown < 10 {
             let s = &route.steps[i as usize];
             rows.push(room_row(
@@ -2894,7 +2903,11 @@ pub fn reach_not_computed_rows() -> Vec<MonsterRow> {
             "(double-click to compute)".into(),
             Some(SYS_GREY),
         ),
-        row("", None, None, String::new(), None),
+        // a blank row has no sub-item in MME (only its Text is assigned)
+        MonsterRow {
+            label: String::new(),
+            ..MonsterRow::default()
+        },
     ]
 }
 
@@ -3041,4 +3054,28 @@ pub fn monster_reach_rows(
         }
     }
     rows
+}
+
+impl crate::filters::Reachability for Reach {
+    fn is_monster_ok(&self, number: i32, level: i32) -> bool {
+        Reach::is_monster_ok(self, number, level)
+    }
+}
+
+/// The monster pane's reach rows (`AddMonsterReachRows`): the computed result when there is one, else the
+/// "double-click to compute" row.
+pub struct PaneReach<'a> {
+    pub reach: Option<&'a Reach>,
+    pub opts: ReachRowOptions,
+    /// `GetRoomName`'s lookup of a room's `Name`.
+    pub names: &'a dyn Fn(i32, i32) -> Option<String>,
+}
+
+impl crate::detail::monster::ReachRows for PaneReach<'_> {
+    fn rows(&self, monster: i32) -> Vec<MonsterRow> {
+        match self.reach {
+            Some(r) => monster_reach_rows(r, monster, &self.opts, self.names),
+            None => reach_not_computed_rows(),
+        }
+    }
 }

@@ -3,6 +3,7 @@
 	// lair/party boxes and the "Monster Filters" window. The boxes only hold the inputs; the list refetches
 	// and the server runs FilterMonsters.
 	import { Button } from '$lib/components/ui/button';
+	import { api, type ReachabilityStatus } from '$lib/api';
 	import { getMonsterFilterStore } from '$lib/monsters.svelte';
 	import { isFiltering, NO_LIMIT, type ExtraFilters, type PartyBoxes } from '$lib/monsters';
 
@@ -11,6 +12,25 @@
 	const x = $derived(c.extras);
 	const active = $derived(isFiltering(c));
 	let more = $state(false);
+	let reach = $state<ReachabilityStatus>();
+	let reachBusy = $state(false);
+	$effect(() => {
+		void store.reachRev;
+		api.reachabilityStatus().then(
+			(s) => (reach = s),
+			() => {}
+		);
+	});
+	// Options > Calculate Reachability (ReachRecompute): map every monster's level bands for the loaded database.
+	async function calculateReach() {
+		reachBusy = true;
+		try {
+			reach = await api.computeReachability();
+			store.bumpReach();
+		} finally {
+			reachBusy = false;
+		}
+	}
 
 	const field =
 		'bg-background border-input focus-visible:ring-ring/50 h-7 rounded-md border px-2 text-sm tabular-nums outline-none focus-visible:ring-2 disabled:opacity-60';
@@ -69,7 +89,7 @@
 		{
 			key: 'reachable_only',
 			label: 'Reachable only',
-			tip: 'Needs the reachability module, which is not ported yet; the list is unchanged'
+			tip: 'Hide monsters the character cannot reach at its level (computes the map on first use)'
 		},
 		{ key: 'show_all', label: 'Show all (grey out misses)' }
 	];
@@ -157,6 +177,17 @@
 				data-testid="mf-magic-value"
 			/>
 		</label>
+		<Button
+			type="button"
+			variant="outline"
+			size="sm"
+			disabled={reachBusy}
+			onclick={calculateReach}
+			data-testid="mf-reach"
+			title="Options > Calculate Reachability: work out which monsters can be reached at each level"
+		>
+			{reachBusy ? 'Calculating...' : reach?.computed ? 'Recalculate reachability' : 'Calculate reachability'}
+		</Button>
 		<Button type="button" variant="outline" size="sm" onclick={() => store.reset()} data-testid="mf-reset" title="Put the boxes back to their defaults and turn the extra filters off">
 			Reset
 		</Button>
