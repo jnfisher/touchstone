@@ -39,16 +39,12 @@
 	}
 </script>
 
-<ContextMenu.Root
-	bind:open
-	onOpenChange={(o) => {
-		// a right-click on nothing (the headings, a gap) has no menu in MME
-		if (o && items.length === 0) open = false;
-	}}
->
+<ContextMenu.Root bind:open>
 	<ContextMenu.Trigger class="block h-full min-h-0 w-full" oncontextmenucapture={() => onBefore?.()}>
 		{@render children()}
 	</ContextMenu.Trigger>
+	<!-- a right-click on nothing (the headings, a gap) has no menu in MME; the items arrive just after the event opens it -->
+	{#if items.length}
 	<ContextMenu.Content data-testid="row-menu">
 		{#each items as it (it.id)}
 			<div title={it.disabled}>
@@ -58,6 +54,7 @@
 			</div>
 		{/each}
 	</ContextMenu.Content>
+	{/if}
 </ContextMenu.Root>
 
 {#if status}

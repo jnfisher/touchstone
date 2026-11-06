@@ -38,7 +38,7 @@ Decisions:
 - The text builders are ported over plain inputs (strings the form's controls would hold), because MME builds them from
   control state: `char_to_clip` (which also appends `InvenCopytoClipboard`'s equipment block, as MME does), `monster_to_clip`,
   `shop_to_clip`, `lines_to_clip`. A VB6 error (a negative `String()` count when a name is too long, a missing sub-item)
-  is `Err(number)`; MME's handler shows a dialog and leaves the clipboard alone, the server answers 422.
+  is `Clip::error`; MME's handler shows a dialog and the clipboard keeps what an earlier step set. The server answers 200 `{text, error}`.
 - Oracle family `clipboard` runs the four procedures unchanged over a clipboard-recording ListView shim (additive;
   `SetClipboardText` now records, so `Clipboard.GetText` in the append works). Per-row detail text and references of
   `CopyLVLinetoClipboard` (it clicks each row first) are one shared pane in the oracle; the Rust function takes them per row.
