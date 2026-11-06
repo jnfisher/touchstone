@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Item, Monster } from './api';
+import type { ClassRec, Item, Monster } from './api';
+import { newCharacter, type EvalState } from './character';
 import {
 	BACKSTAB_DEFAULTS,
 	CALCULATORS,
@@ -14,7 +15,17 @@ import {
 	EXP_DEFAULTS,
 	afterLabel,
 	SWING_DEFAULTS,
+	backstabFromCharacter,
 	backstabRequest,
+	calcCharacter,
+	captionNumber,
+	classCombat,
+	classHasStealth,
+	coinCharm,
+	hitFromCharacter,
+	megaFromFields,
+	strikeOf,
+	swingFromCharacter,
 	coinButtonRequest,
 	coinIndex,
 	coinTypedRequest,
@@ -126,7 +137,13 @@ describe('request mapping', () => {
 			max_encum: '4800',
 			max_encum_auto: true,
 			speed: '100',
-			speed_option: 1
+			speed_option: 1,
+			hit_pct: '',
+			hit_avg: '',
+			extra_pct: '',
+			extra_avg: '',
+			crit_pct: '',
+			crit_avg: ''
 		});
 	});
 
@@ -313,5 +330,240 @@ describe('hit calculator', () => {
 			'95%'
 		]);
 		expect(captionLines('')).toEqual([]);
+	});
+});
+
+
+// ---------- the current character ----------
+
+const warrior: ClassRec = {
+	number: 1,
+	name: 'Warrior',
+	min_hits: 0,
+	max_hits: 0,
+	exp_table: 0,
+	magery_type: 0,
+	magery_lvl: 0,
+	weapon_type: 0,
+	armour_type: 0,
+	combat_lvl: 6,
+	abilities: []
+};
+const thief: ClassRec = { ...warrior, number: 8, name: 'Thief', combat_lvl: 4, abilities: [{ ability: 103, value: 1 }] };
+
+/** An evaluation with the stat captions and tags the mapping reads. */
+function evaluation(over: { stats?: Record<number, string>; tags?: Record<number, number> } = {}): EvalState {
+	const stats = Array<string>(47).fill('0');
+	for (const [i, v] of Object.entries(over.stats ?? {})) stats[Number(i)] = v;
+	const tags = Array<number>(47).fill(0);
+	for (const [i, v] of Object.entries(over.tags ?? {})) tags[Number(i)] = v;
+	return {
+		stat_values: [120, 60, 60, 90, 100, 70],
+		stats,
+		calc: {
+			stat_tags: tags,
+			shadow_ac: 10,
+			vile_ward: 0,
+			accy_abilities: 2,
+			accy_other: 1,
+			accy_items: 3,
+			attack_accy_adj: -15,
+			weapon_number: 875,
+			weapon_accy: 4,
+			weapon_bs_accy: 5
+		}
+	} as unknown as EvalState;
+}
+
+function loaded(over: Partial<ReturnType<typeof newCharacter>> = {}) {
+	const doc = newCharacter('Brisa');
+	Object.assign(doc, { class: 1, race: 2, level: 50, equipped: doc.equipped.map((v, i) => (i === 16 ? 875 : v)) }, over);
+	return doc;
+}
+
+describe('captionNumber and class helpers', () => {
+	it('reads captions like Val', () => {
+		expect(captionNumber('1,234')).toBe(1234);
+		expect(captionNumber('-10')).toBe(-10);
+		expect(captionNumber('12.5%')).toBe(12.5);
+		expect(captionNumber(undefined)).toBe(0);
+		expect(captionNumber('abc')).toBe(0);
+	});
+	it('ports GetClassCombat and GetClassStealth', () => {
+		expect(classCombat(warrior)).toBe(4);
+		expect(classCombat(undefined)).toBe(1);
+		expect(classHasStealth(thief)).toBe(true);
+		expect(classHasStealth(warrior)).toBe(false);
+	});
+	it('names the strike from the attack choice', () => {
+		expect(strikeOf(1, 0)).toBe('normal');
+		expect(strikeOf(6, 0)).toBe('bash');
+		expect(strikeOf(7, 0)).toBe('smash');
+		expect(strikeOf(4, 2)).toBe('kick');
+		expect(strikeOf(4, 3)).toBe('jumpkick');
+		expect(strikeOf(4, 1)).toBe('normal');
+	});
+});
+
+describe('calcCharacter', () => {
+	const ev = evaluation({
+		stats: { 0: '125', 1: '7,776', 11: '7', 14: '3', 15: '9', 19: '40' },
+		tags: { 2: 12.9, 8: 37, 10: 187, 13: -10, 20: 5 }
+	});
+
+	it('is undefined without class and race or without an evaluation', () => {
+		expect(calcCharacter(newCharacter('x'), ev, [warrior])).toBeUndefined();
+		expect(calcCharacter(loaded(), undefined, [warrior])).toBeUndefined();
+	});
+
+	it('takes stats from the evaluation, not from the typed document', () => {
+		const c = calcCharacter(loaded(), ev, [warrior, thief])!;
+		expect(c).toMatchObject({
+			classNumber: 1,
+			combat: 4,
+			classStealth: false,
+			level: '50',
+			// the stats with bless and gear applied (txtCharStats(i).Tag)
+			strength: '120',
+			agility: '90',
+			charm: 70,
+			encum: '125',
+			maxEncum: '7776',
+			maxDamage: '7',
+			stealth: '40',
+			bsMin: '3',
+			bsMax: '9',
+			accuracy: '187',
+			ac: '12',
+			dodge: '37',
+			protEvil: '5',
+			bsAccuracy: '-10',
+			weapon: 875,
+			bsWeapon: 875,
+			accyAdj: -15,
+			shadowAc: 10,
+			weaponNumber: 875
+		});
+	});
+
+	it('uses the chosen backstab weapon only while Backstab is on', () => {
+		const doc = loaded();
+		doc.attack.backstab_weapon = 68;
+		expect(calcCharacter(doc, ev, [warrior])!.bsWeapon).toBe(875);
+		doc.attack.backstab = true;
+		expect(calcCharacter(doc, ev, [warrior])!.bsWeapon).toBe(68);
+		doc.equipped[16] = 0;
+		doc.attack.backstab = false;
+		expect(calcCharacter(doc, ev, [warrior])!.bsWeapon).toBeNull();
+	});
+
+	it('keeps combat in 1..5, 3 otherwise', () => {
+		const odd: ClassRec = { ...warrior, combat_lvl: 9 };
+		expect(calcCharacter(loaded(), ev, [odd])!.combat).toBe(3);
+	});
+});
+
+describe('filling the calculators', () => {
+	const ev = evaluation({ stats: { 0: '125', 1: '7776', 11: '7', 14: '3', 15: '9', 19: '40' }, tags: { 10: 187 } });
+	const c = calcCharacter(loaded(), ev, [thief].map((t) => ({ ...t, number: 1 })))!;
+
+	it('swing copies what Form_Load copies', () => {
+		const f = swingFromCharacter(c, { ...SWING_DEFAULTS });
+		expect(f).toMatchObject({
+			combat: 2,
+			level: '50',
+			strength: '120',
+			agility: '90',
+			encum: '125',
+			maxEncum: '7776',
+			maxEncumAuto: false,
+			weapon: 875
+		});
+	});
+
+	it('swing keeps a box whose character value is 0 and the weapon when none is equipped', () => {
+		const bare = calcCharacter(loaded({ equipped: Array<number>(20).fill(0) }), evaluation(), [warrior])!;
+		const f = swingFromCharacter(bare, { ...SWING_DEFAULTS, weapon: 7, encum: '1000' });
+		expect(f.encum).toBe('1000');
+		expect(f.maxEncum).toBe(SWING_DEFAULTS.maxEncum);
+		expect(f.maxEncumAuto).toBe(true);
+		expect(f.weapon).toBe(7);
+	});
+
+	it('backstab copies strength, level, damage boxes, class stealth and weapon', () => {
+		const f = backstabFromCharacter(c, { ...BACKSTAB_DEFAULTS });
+		expect(f).toMatchObject({
+			strength: '120',
+			level: '50',
+			maxDmg: '7',
+			stealth: '40',
+			classStealth: true,
+			bsMin: '3',
+			bsMax: '9',
+			weapon: 875
+		});
+	});
+
+	it('hit fills the character section, including what SetHitCalcVals reads from the globals', () => {
+		const h = hitFromCharacter(c, HIT_DEFAULTS.character);
+		expect(h).toMatchObject({
+			accuracy: '187',
+			classNumber: 1,
+			bsWeapon: 875,
+			strike: 'normal',
+			accyAdj: '-15',
+			shadowAc: '10',
+			strength: '120',
+			level: '50',
+			accyAbilities: '2',
+			accyOther: '1',
+			accyItems: '3',
+			weaponAccy: '4',
+			weaponBsAccy: '5'
+		});
+		const body = hitRequest({ ...HIT_DEFAULTS, character: h }, { event: 'refresh' });
+		expect(body.character).toMatchObject({
+			accuracy: '187',
+			class: 1,
+			bs_weapon: 875,
+			accy_adj: -15,
+			shadow_ac: 10,
+			strength: '120',
+			level: '50',
+			accy_abilities: 2,
+			weapon_number: 875
+		});
+	});
+
+	it('coin sends the charm only while the character is used and its global filter is on', () => {
+		expect(coinCharm(undefined)).toBeUndefined();
+		expect(coinCharm({ ...c, globalFilter: false })).toBeUndefined();
+		expect(coinCharm({ ...c, globalFilter: true })).toBe(70);
+	});
+});
+
+describe('MegaMUD paste', () => {
+	it('maps the six fields to the boxes in order', () => {
+		expect(megaFromFields(['43', '34', '12', '6', '5', '55'])).toEqual({
+			hitPct: '43',
+			hitAvg: '34',
+			extraPct: '12',
+			extraAvg: '6',
+			critPct: '5',
+			critAvg: '55'
+		});
+	});
+	it('goes to the swing request', () => {
+		const body = swingRequest({ ...SWING_DEFAULTS, mega: megaFromFields(['43', '34', '0', '0', '5', '55']) });
+		expect(body).toMatchObject({ hit_pct: '43', hit_avg: '34', crit_pct: '5', crit_avg: '55', extra_pct: '0' });
+	});
+	it('posts the text to /api/calc/mega-stat', async () => {
+		const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ok: false, fields: null, message: 'm', error: null })));
+		const client = createCalcClient(fetchFn as unknown as typeof fetch);
+		const r = await client.megaStat('Hit: 1%');
+		expect(r.message).toBe('m');
+		const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url).toBe('/api/calc/mega-stat');
+		expect(JSON.parse(init.body as string)).toEqual({ text: 'Hit: 1%' });
 	});
 });

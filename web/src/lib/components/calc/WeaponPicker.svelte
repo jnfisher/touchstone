@@ -10,6 +10,7 @@
 		noun = 'weapon',
 		testid = 'weapon-input',
 		clearable = false,
+		disabled = false,
 		onchoose
 	}: {
 		choices: WeaponChoice[];
@@ -20,6 +21,8 @@
 		testid?: string;
 		/** Offer "None" first, which sets the value to null. */
 		clearable?: boolean;
+		/** Read-only, as when the current character supplies the value. */
+		disabled?: boolean;
 		/** Called after a pick (not on every change of `value`). */
 		onchoose?: () => void;
 	} = $props();
@@ -86,8 +89,9 @@
 			query = '';
 		}}
 		onkeydown={onKey}
+		{disabled}
 		data-testid={testid}
-		class={inputCls}
+		class="{inputCls} disabled:opacity-60"
 	/>
 	{#if open}
 		<ul

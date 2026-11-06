@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterClient, CharacterDoc } from './character';
-import { createCharacterStore } from './character.svelte';
+import { createCharacterStore, getCharacterStore, openLastCharacter } from './character.svelte';
 
 function fakeClient() {
 	const files = new Map<string, CharacterDoc>();
@@ -97,5 +97,34 @@ describe('character store', () => {
 		expect(files.size).toBe(0);
 		expect(s.doc.name).toBe('');
 		expect(s.saved).toEqual([]);
+	});
+});
+
+
+describe('shared store and opening the last character', () => {
+	it('hands out one store', () => {
+		expect(getCharacterStore()).toBe(getCharacterStore());
+	});
+
+	it('opens the remembered character once, and not over one being edited', async () => {
+		const { client, files, raw } = fakeClient();
+		files.set('Brisa', { name: 'Brisa' } as CharacterDoc);
+		files.set('Cog', { name: 'Cog' } as CharacterDoc);
+		vi.stubGlobal('localStorage', { getItem: () => 'Cog', setItem: () => undefined });
+		try {
+			const s = createCharacterStore(client);
+			const [a, b] = await Promise.all([openLastCharacter(s), openLastCharacter(s)]);
+			expect(a).toBe('Cog');
+			expect(b).toBe('Cog');
+			expect(s.storedName).toBe('Cog');
+			expect(raw.get).toHaveBeenCalledTimes(1);
+
+			const editing = createCharacterStore(client);
+			editing.edit((d) => (d.name = 'Mine'));
+			expect(await openLastCharacter(editing)).toBeUndefined();
+			expect(editing.doc.name).toBe('Mine');
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

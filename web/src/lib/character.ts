@@ -132,6 +132,22 @@ export interface EvalState {
 	stats: string[];
 	heal: { value: number; cost: number; rounds: number; spell_lvl: number };
 	stats_error_text: string | null;
+	/** What the calculator windows read: stat tags and the attack globals. */
+	calc?: CalcInputs;
+}
+
+/** `lblInvenCharStat(i).Tag` (0 while empty) and the globals frmHitCalc reads. */
+export interface CalcInputs {
+	stat_tags: number[];
+	shadow_ac: number;
+	vile_ward: number;
+	accy_abilities: number;
+	accy_other: number;
+	accy_items: number;
+	attack_accy_adj: number;
+	weapon_number: number;
+	weapon_accy: number;
+	weapon_bs_accy: number;
 }
 
 // ---------- tables ----------

@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The Char tab (F10): the saved-character bar on top, then the panels.
 	import { api, type ClassRec, type Item, type Race } from '$lib/api';
-	import { createCharacterStore } from '$lib/character.svelte';
+	import { getCharacterStore, openLastCharacter, rememberLastCharacter } from '$lib/character.svelte';
 	import { cardCls } from '../calc/styles';
 	import BlessPanel from './BlessPanel.svelte';
 	import DerivedPanel from './DerivedPanel.svelte';
@@ -11,12 +11,12 @@
 	import StatsPanel from './StatsPanel.svelte';
 	import VitalsPanel from './VitalsPanel.svelte';
 
-	const store = createCharacterStore();
+	const store = getCharacterStore();
 	let classes = $state.raw<ClassRec[]>([]);
 	let races = $state.raw<Race[]>([]);
 	let items = $state.raw<Item[]>([]);
 	let loadError = $state<string>();
-	let picked = $state('');
+	let picked = $state(store.storedName ?? '');
 
 	$effect(() => {
 		let alive = true;
@@ -36,30 +36,11 @@
 		};
 	});
 
-	const LAST_KEY = 'touchstone.character.last';
-	const remember = (name: string | undefined) => {
-		try {
-			if (name) localStorage.setItem(LAST_KEY, name);
-		} catch {
-			// private window or blocked storage: the tab still works, it just starts empty
-		}
-	};
 	async function openLast() {
-		await store.refreshList();
-		let last: string | null = null;
-		try {
-			last = localStorage.getItem(LAST_KEY);
-		} catch {
-			// see remember()
-		}
-		const names = store.saved.map((s) => s.name);
-		const name = last && names.includes(last) ? last : names[0];
-		if (name && store.doc.name === '' && !store.storedName) {
-			picked = name;
-			await store.load(name);
-		}
+		const name = await openLastCharacter(store);
+		if (name) picked = name;
 	}
-	$effect(() => remember(store.storedName));
+	$effect(() => rememberLastCharacter(store.storedName));
 
 	const statusText = $derived(
 		store.nameProblem && store.doc.name !== ''

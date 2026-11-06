@@ -22,6 +22,7 @@ pub mod monster_glue;
 pub mod monster_sim;
 pub mod paste_party;
 pub mod pipeline;
+pub mod rows;
 pub mod spell_cast;
 pub mod spells;
 pub mod stats;
