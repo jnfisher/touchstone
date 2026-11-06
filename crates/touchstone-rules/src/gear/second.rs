@@ -57,7 +57,7 @@ fn cint_f(x: f64) -> Res<i16> {
 }
 
 fn run(input: &GearInput, q: &SecondHalfInput, s: &mut CharStats) -> Res<()> {
-    let Profile::Stock = input.profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = input.profile;
     let world = input.world;
     let who = &input.character;
     let hide = input.hide_class_race;

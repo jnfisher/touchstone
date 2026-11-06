@@ -316,7 +316,7 @@ fn forced_name(num: i16) -> Option<&'static str> {
 #[must_use]
 pub fn get_ability_name(profile: Profile, num: i16, force_all: bool) -> String {
     match profile {
-        Profile::Stock => {}
+        Profile::Stock | Profile::Quicksilver(_) => {}
     }
     if let Some(s) = plain_name(num) {
         return s.to_string();
@@ -336,7 +336,7 @@ pub fn get_ability_name(profile: Profile, num: i16, force_all: bool) -> String {
 #[must_use]
 pub fn get_ability_list(profile: Profile, hide_record_numbers: bool) -> Vec<String> {
     let n_max: i16 = match profile {
-        Profile::Stock => 200,
+        Profile::Stock | Profile::Quicksilver(_) => 200,
     };
     let mut list = vec![String::new()];
     for x in 1..=n_max {

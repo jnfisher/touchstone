@@ -140,7 +140,7 @@ pub fn refresh_all(
     ch: &Character,
     opts: &PipelineOptions,
 ) -> Result<CharacterState, RulesError> {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     let class = ch
         .class
         .ok_or(RulesError::Unsupported("no class selected"))?;

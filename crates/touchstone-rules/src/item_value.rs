@@ -62,7 +62,7 @@ pub fn get_item_shop_regen_pct(
     shop: Option<&Shop>,
 ) -> R<Currency> {
     match profile {
-        Profile::Stock => {}
+        Profile::Stock | Profile::Quicksilver(_) => {}
     }
     let zero = Currency::from_scaled(0);
     if item_num < 1 || shop_num < 1 {
@@ -207,7 +207,7 @@ pub fn get_item_value(
     no_buy: bool,
 ) -> R<ItemValue> {
     match profile {
-        Profile::Stock => {}
+        Profile::Stock | Profile::Quicksilver(_) => {}
     }
     let mut out = ItemValue {
         friendly_buy: "unknown".to_string(),

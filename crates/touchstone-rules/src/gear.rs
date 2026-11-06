@@ -424,7 +424,7 @@ pub fn item_is_usable_by_char(
     ignore_min_item_level: bool,
     skip_align_check: bool,
 ) -> bool {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     if item_number == 0 || world.items.is_empty() {
         return false;
     }
@@ -666,7 +666,7 @@ pub fn refresh_char_bless(
     slots: &[i32; BLESS_SLOTS],
     worn_armour_type: i32,
 ) -> BlessStats {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     let mut out = BlessStats {
         stats: Box::new([0.0; BLESS_COUNT]),
         spells: [0; BLESS_SLOTS],
@@ -796,7 +796,7 @@ fn bless_one(
 /// # Errors
 /// Never in practice: kept so P3-18 can chain on the same signature.
 pub fn calc_gear_stats(input: &GearInput) -> Result<CharStats, RulesError> {
-    let Profile::Stock = input.profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = input.profile;
     let mut s = CharStats::reset(&input.base_stats);
     if let Err(e) = run(input, &mut s) {
         s.error = Some(i32::try_from(e.code()).unwrap_or(0));

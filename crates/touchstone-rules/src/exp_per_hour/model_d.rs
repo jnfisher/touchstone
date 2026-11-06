@@ -76,7 +76,7 @@ pub fn model_d(
     profile: Profile,
 ) -> Result<ExpPerHourInfo, RulesError> {
     match profile {
-        Profile::Stock => {}
+        Profile::Stock | Profile::Quicksilver(_) => {}
     }
     let mut ret = ExpPerHourInfo::default();
 

@@ -507,7 +507,7 @@ impl UsableEnv<'_> {
     /// cast by something, or listed for a class)?
     #[must_use]
     pub fn spell_is_in_game(&self, number: i32) -> bool {
-        let Profile::Stock = self.profile;
+        let (Profile::Stock | Profile::Quicksilver(_)) = self.profile;
         self.in_game(number)
     }
 
@@ -524,7 +524,7 @@ impl UsableEnv<'_> {
         align: i16,
         and_learnable: bool,
     ) -> bool {
-        let Profile::Stock = self.profile;
+        let (Profile::Stock | Profile::Quicksilver(_)) = self.profile;
         if number < 1 {
             return false;
         }
@@ -735,7 +735,7 @@ impl SpellCastEnv<'_> {
         req: &CastRequest,
         r: &mut SpellCastValues,
     ) -> Res<()> {
-        let Profile::Stock = self.profile;
+        let (Profile::Stock | Profile::Quicksilver(_)) = self.profile;
         if req.spell == 0 {
             return Ok(());
         }

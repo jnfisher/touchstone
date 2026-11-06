@@ -1068,7 +1068,7 @@ impl LairCache {
     /// zero) ends the load there, as MME's handler does: the lairs before it stay.
     #[must_use]
     pub fn load(world: &World, profile: Profile, nmr_ver: f64) -> Self {
-        let Profile::Stock = profile;
+        let (Profile::Stock | Profile::Quicksilver(_)) = profile;
         let mut cache = Self::new();
         let mut carry = AccuracyCarry::default();
         for lair in &world.lairs {
@@ -1178,7 +1178,7 @@ impl LairCache {
         mut max_regen: i16,
         out: &mut LairInfo,
     ) -> Res<()> {
-        let Profile::Stock = q.profile;
+        let (Profile::Stock | Profile::Quicksilver(_)) = q.profile;
         if group_index.chars().count() < 5 {
             return Ok(());
         }

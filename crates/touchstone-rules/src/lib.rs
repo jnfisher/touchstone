@@ -34,6 +34,7 @@ pub mod monster_sim;
 pub mod paste_char;
 pub mod paste_party;
 pub mod pipeline;
+pub mod quicksilver;
 pub mod reachability;
 pub mod rooms;
 pub mod rows;
@@ -46,12 +47,34 @@ pub mod textblock;
 
 /// Which game rules a calculation follows.
 ///
-/// Only `Stock` is ported and fixture-tested: MME's stock (non-GreaterMUD) branches. A
-/// Quicksilver profile is added later; MME's GreaterMUD and Paramud branches are not ported.
+/// `Stock` is MME's stock (non-GreaterMUD) branches, ported and fixture-tested. `Quicksilver` is
+/// stock plus John's server's 1.20 changes, parameterised by a [`quicksilver::Balance`]; until the
+/// Q-006..Q-014 cards port each rule it answers exactly as `Stock` does. MME's GreaterMUD and
+/// Paramud branches are not ported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Profile {
     #[default]
     Stock,
+    /// Quicksilver, with the balance numbers to use (a `static`, or one leaked at startup from a
+    /// config override).
+    Quicksilver(&'static quicksilver::Balance),
+}
+
+impl Profile {
+    /// Quicksilver with the frozen 1.20.0 balance.
+    #[must_use]
+    pub fn quicksilver_v120() -> Self {
+        Self::Quicksilver(&quicksilver::V120_BALANCE)
+    }
+
+    /// The balance of a Quicksilver profile, `None` for `Stock`.
+    #[must_use]
+    pub fn balance(self) -> Option<&'static quicksilver::Balance> {
+        match self {
+            Self::Stock => None,
+            Self::Quicksilver(b) => Some(b),
+        }
+    }
 }
 
 /// Why a rule could not produce an answer.

@@ -145,7 +145,9 @@ pub fn calc_exp_needed_stock(startlevel: i32, exptable: i32) -> R<Currency> {
 /// As [`calc_exp_needed_stock`].
 pub fn calc_exp_needed(profile: Profile, startlevel: i32, exptable: i32) -> R<f64> {
     match profile {
-        Profile::Stock => Ok(calc_exp_needed_stock(startlevel, exptable)?.to_f64()),
+        Profile::Stock | Profile::Quicksilver(_) => {
+            Ok(calc_exp_needed_stock(startlevel, exptable)?.to_f64())
+        }
     }
 }
 

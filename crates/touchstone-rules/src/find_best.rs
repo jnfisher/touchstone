@@ -463,7 +463,7 @@ fn run(
     index: i32,
     next: bool,
 ) -> Result<FindBestResult, RulesError> {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     let mut res = FindBestResult {
         equipped: req.equipped,
         winners: [None; EQUIP_SLOTS],

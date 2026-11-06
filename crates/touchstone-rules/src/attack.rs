@@ -750,7 +750,7 @@ pub fn calculate_attack(
     req: &AttackRequest,
     casts: &mut String,
 ) -> AttackDamage {
-    let Profile::Stock = profile;
+    let (Profile::Stock | Profile::Quicksilver(_)) = profile;
     attack_steps(env, ch, req, casts).unwrap_or_default()
 }
 

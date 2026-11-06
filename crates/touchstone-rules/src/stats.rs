@@ -173,7 +173,7 @@ pub fn cp_cost_for_raise(profile: Profile, delta: i32) -> Result<i32, RulesError
         return Ok(0);
     }
     let cap: i32 = match profile {
-        Profile::Stock => 10,
+        Profile::Stock | Profile::Quicksilver(_) => 10,
     };
     let tens = delta / 10;
     let rem_pts = delta % 10;
@@ -330,7 +330,7 @@ pub fn get_magery_enum(kind: i16, level: i16) -> String {
 #[must_use]
 pub fn calc_movement_speed(profile: Profile, encum_pct: i32, quickness: i32, slowness: i32) -> i32 {
     let mut speed = match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             let mut s = if encum_pct > 66 { 2000 } else { 1000 };
             if slowness > 0 {
                 s *= 2;
@@ -359,7 +359,7 @@ pub fn calc_resting_rate(
 ) -> i32 {
     let run = || -> Result<i32, Vb6Error> {
         let mut regen = match profile {
-            Profile::Stock => {
+            Profile::Stock | Profile::Quicksilver(_) => {
                 let prod = vb::mul_i32(vb::add_i32(level, 20)?, health)?;
                 vb::clng(vb::fix(f64::from(prod) / 750.0))?
             }
@@ -429,7 +429,7 @@ fn mana_regen_steps(
         return Ok(());
     }
     match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             let pct = cur_long(vb::add_i32(i.mp_regen, 100)?);
             let q = pct.checked_mul(*r)?.checked_div(cur_long(100))?;
             *r = fix_cur(q);
@@ -559,7 +559,7 @@ pub fn calc_picklocks(
     intellect: i32,
 ) -> Result<i32, RulesError> {
     match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             let base = if level <= 15 {
                 vb::mul_i32(level, 2).map_err(vb6)?
             } else {
@@ -698,7 +698,7 @@ fn stealth_steps(
     let int = vb::fix(f64::from(i.intellect) / 8.0);
     let chm = vb::fix(f64::from(i.charm) / 6.0);
     match profile {
-        Profile::Stock => {
+        Profile::Stock | Profile::Quicksilver(_) => {
             *st = vb::cint(f64::from(*st) + agl)?;
             *st = vb::cint(f64::from(*st) + int)?;
             *st = vb::cint(f64::from(*st) + chm)?;
