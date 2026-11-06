@@ -33,7 +33,7 @@
 use touchstone_model::World;
 use touchstone_vb6 as vb;
 
-use crate::attack::{self, EquippedGlobals, HandGlobals};
+use crate::attack::{self, CastText, EquippedGlobals, HandGlobals};
 use crate::char_panel::{
     ClassSetup, ClassSetupInput, CpInput, CpPanel, Dodge, EncumLevel, HitPoints, HpInput, Magic,
     MagicInput, Picklocks, StatLabels, bless_mana_per_round, encum_level, main_stat_labels,
@@ -45,6 +45,7 @@ use crate::character::{
     CharacterProfile, Context, PartyFilter, populate_character_profile,
     refresh_combat_healing_values,
 };
+use crate::combat::DamageEnv;
 use crate::gear::{
     self, CharStats, GearInput, ItemManagerRow, STAT_COUNT, SecondHalfInput, calc_character_stats,
     carried_items,
@@ -529,5 +530,85 @@ impl CharacterState {
     #[must_use]
     pub fn attack_config(&self) -> &AttackConfig {
         &self.character.attack
+    }
+}
+
+/// The pieces combat's [`Context`] and [`DamageEnv`] borrow, owned in one place so a caller does not
+/// assemble them by hand (the follow-up P3-16 asked for). Built by [`CharacterState::env`].
+#[derive(Debug, Clone)]
+pub struct CharacterEnv {
+    stats: ProfileStats,
+    equipped: EquippedGlobals,
+    accuracy_tag: String,
+    nmr_ver: f64,
+    avg_level_max_all_stats: f64,
+    /// `frmMain.lblDatVer.Caption`.
+    pub dat_ver_caption: String,
+    /// The lair-mode controls the state was built with.
+    pub party: PartyFilter,
+    /// `txtMonsterDamageOUT(0..1).Text`.
+    pub damage_out_text: [String; 2],
+    /// `txtMonsterLairFilter(9).Text`.
+    pub party_swings_text: String,
+}
+
+impl CharacterEnv {
+    /// The [`Context`] over this character's stats.
+    #[must_use]
+    pub fn context<'a>(&'a self, world: &'a World) -> Context<'a> {
+        Context {
+            profile: Profile::Stock,
+            nmr_ver: self.nmr_ver,
+            avg_level_max_all_stats: self.avg_level_max_all_stats,
+            hide_record_numbers: false,
+            recovery_only: false,
+            classes: &world.classes,
+            items: &world.items,
+            spells: &world.spells,
+            text: &NoSpellText,
+            stats: &self.stats,
+            party: &self.party,
+        }
+    }
+
+    /// What `GetDamageOutput` reads: the context, the character, tables and the party's damage boxes.
+    #[must_use]
+    pub fn damage_env<'a>(
+        &'a self,
+        world: &'a World,
+        ctx: &'a Context<'a>,
+        character: &'a Character,
+        cast_text: &'a dyn CastText,
+    ) -> DamageEnv<'a> {
+        DamageEnv {
+            ctx,
+            character,
+            races: &world.races,
+            monsters: &world.monsters,
+            equipped: &self.equipped,
+            cast_text,
+            dat_ver_caption: &self.dat_ver_caption,
+            accuracy_tag: &self.accuracy_tag,
+            damage_out_text: [&self.damage_out_text[0], &self.damage_out_text[1]],
+            party_swings_text: &self.party_swings_text,
+        }
+    }
+}
+
+impl CharacterState {
+    /// The owned environment for combat calls, with the party controls the state was built with.
+    #[must_use]
+    pub fn env(&self, damage_out_text: [String; 2], party_swings_text: String) -> CharacterEnv {
+        CharacterEnv {
+            stats: self.profile_inputs(),
+            equipped: self.equipped_globals(),
+            accuracy_tag: self.stats.stat_tag[10].map_or_else(String::new, vb::cstr),
+            nmr_ver: self.options.nmr_ver,
+            avg_level_max_all_stats: self.options.avg_level_max_all_stats,
+            dat_ver_caption: self.options.dat_ver_caption.clone(),
+            party: self.options.party.clone(),
+            damage_out_text,
+            party_swings_text,
+        }
     }
 }

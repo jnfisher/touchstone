@@ -639,6 +639,7 @@ class RecItem(ExtObject):
     def __init__(self, text=""):
         self.text = text
         self.tag = None
+        self.fore = None
         self.subs = []
 
     def vb_get(self, name, args):
@@ -647,6 +648,8 @@ class RecItem(ExtObject):
             return self.text
         if n == "tag":
             return "" if self.tag is None else self.tag
+        if n == "forecolor":
+            return V.mk_i32(0) if self.fore is None else self.fore
         if n == "listsubitems":
             if args:
                 return RecSubItems(self).vb_default(args)
@@ -661,6 +664,8 @@ class RecItem(ExtObject):
             self.text = V.c_str(value)
         elif n == "tag":
             self.tag = value
+        elif n == "forecolor":
+            self.fore = value
         elif n == "selected":
             pass
         else:
@@ -723,8 +728,9 @@ class RecordingListViewShim(ControlShim):
         return super().vb_get(name, args)
 
     def dump(self, enc):
-        """[Text, Tag, cells] per row; a cell is its Text alone when its Tag and ForeColor were never assigned,
-        else [Text, Tag, ForeColor] with null for what was not assigned. Tags are CStr of the assigned Variant."""
+        """[Text, Tag, cells] per row (a fourth element, the row's ForeColor, only when it was assigned); a cell is
+        its Text alone when its Tag and ForeColor were never assigned, else [Text, Tag, ForeColor] with null for
+        what was not assigned. Tags are CStr of the assigned Variant."""
         def tag(x):
             return None if x is None else (x if isinstance(x, str) else V.c_str(x))
 
@@ -732,7 +738,8 @@ class RecordingListViewShim(ControlShim):
             if s.tag is None and s.fore is None:
                 return s.text
             return [s.text, tag(s.tag), None if s.fore is None else int(V.int_value(s.fore))]
-        return [[r.text, tag(r.tag), [cell(s) for s in r.subs]] for r in self.rows]
+        return [[r.text, tag(r.tag), [cell(s) for s in r.subs]] + ([int(V.int_value(r.fore))] if r.fore is not None else [])
+                for r in self.rows]
 
 
 class ControlArrayShim(ExtObject):
