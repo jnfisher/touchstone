@@ -268,37 +268,31 @@ export interface SlotDef {
   /** Index into `equipped`. */
   index: number;
   label: string;
-  /** Item `worn` values that fit the slot; empty means any wearable. */
-  worn: readonly number[];
-  /** Weapons fit too (the weapon slot and the off-hand). */
-  weapons?: boolean;
-  /** False for the weapon slot, which takes no armour. */
-  armour?: boolean;
 }
 
-/** `nEquippedItem(0..19)`; 16 is the weapon. */
+/** `nEquippedItem(0..19)`; 16 is the weapon. Which items a slot offers comes from the server. */
 export const EQUIP_SLOTS: readonly SlotDef[] = [
-  { index: 0, label: "Head", worn: [2] },
-  { index: 1, label: "Ears", worn: [15] },
-  { index: 2, label: "Neck", worn: [8] },
-  { index: 3, label: "Back", worn: [7] },
-  { index: 4, label: "Torso", worn: [11] },
-  { index: 5, label: "Arms", worn: [6] },
-  { index: 6, label: "Wrist", worn: [14] },
-  { index: 7, label: "Wrist 2", worn: [14] },
-  { index: 8, label: "Hands", worn: [3] },
-  { index: 9, label: "Finger 1", worn: [4, 13] },
-  { index: 10, label: "Finger 2", worn: [4, 13] },
-  { index: 11, label: "Waist", worn: [10] },
-  { index: 12, label: "Legs", worn: [9] },
-  { index: 13, label: "Feet", worn: [5] },
-  { index: 14, label: "Worn", worn: [] },
-  { index: 15, label: "Off-Hand", worn: [12], weapons: true },
-  { index: 16, label: "Weapon", worn: [], weapons: true, armour: false },
-  { index: 17, label: "Eyes", worn: [15] },
-  { index: 18, label: "Face", worn: [15] },
-  { index: 19, label: "Everywhere", worn: [] },
-];
+  "Head",
+  "Ears",
+  "Neck",
+  "Back",
+  "Torso",
+  "Arms",
+  "Wrist",
+  "Wrist 2",
+  "Hands",
+  "Finger 1",
+  "Finger 2",
+  "Waist",
+  "Legs",
+  "Feet",
+  "Worn",
+  "Off-Hand",
+  "Weapon",
+  "Eyes",
+  "Face",
+  "Everywhere",
+].map((label, index) => ({ index, label }));
 export const WEAPON_SLOT = 16;
 export const BLESS_SLOT_COUNT = 10;
 
@@ -407,6 +401,40 @@ export function saveBody(doc: CharacterDoc): CharacterDoc {
   return doc;
 }
 
+// ---------- equipment ----------
+
+export interface EquipChoice {
+  number: number;
+  /** MME's combo text, "Name (number)". */
+  label: string;
+}
+
+export interface EquipStateDoc {
+  /** Per slot, what MME's combo offers. */
+  choices: EquipChoice[][];
+  /** Slots MME paints red. */
+  flags: boolean[];
+}
+
+export interface EquipResponse {
+  character: CharacterDoc;
+  messages: string[];
+  slot: number | null;
+  changed: boolean;
+  flags: boolean[];
+}
+
+export interface EquipRequest {
+  character: CharacterDoc & { options?: EvalOptions };
+  /** 0 empties `slot`. */
+  item: number;
+  /** Pick this slot's entry instead of letting the item choose. */
+  slot?: number;
+  /** Take the item off when it is already worn. */
+  unequip?: boolean;
+  use_2nd_wrist?: boolean;
+}
+
 // ---------- pickers ----------
 
 export interface ItemChoice {
@@ -415,22 +443,34 @@ export interface ItemChoice {
   label: string;
 }
 
-/** In-game items that fit the slot, by name as MME's combos sort them. */
-export function slotChoices(items: Item[], slot: SlotDef): ItemChoice[] {
+/** A server pick list as combobox rows, by name as MME's sorted combos show them. */
+export function toChoices(list: EquipChoice[]): ItemChoice[] {
+  return list
+    .map((c) => ({ number: c.number, name: c.label, label: c.label }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.number - b.number);
+}
+
+/** In-game armour and weapons that fit some slot, for the "equip anywhere" search. */
+export function equippableChoices(items: Item[]): ItemChoice[] {
   return items
-    .filter((i) => {
-      if (!i.in_game) return false;
-      if (slot.weapons && i.item_type === 1) return true;
-      if (slot.armour === false || i.item_type !== 0) return false;
-      if (slot.worn.length === 0) return i.worn !== 0;
-      return slot.worn.includes(i.worn);
-    })
+    .filter(
+      (i) =>
+        i.in_game && (i.item_type === 1 || (i.item_type === 0 && i.worn !== 0)),
+    )
     .map((i) => ({
       number: i.number,
       name: i.name,
       label: `${i.name} (${i.number})`,
     }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.number - b.number);
+}
+
+/**
+ * Red slots whose item the character cannot use, or whose two-handed weapon meets an off-hand
+ * item; the server decides, this only names them for the caption.
+ */
+export function flaggedSlots(flags: boolean[]): string[] {
+  return EQUIP_SLOTS.filter((s) => flags[s.index]).map((s) => s.label);
 }
 
 /** Every word of the query must appear in the label, in any order. */
@@ -513,6 +553,10 @@ export function createCharacterClient(
       if (inc.length) p.set("include", inc.join(","));
       return call<BlessChoice[]>(`/api/character/bless-spells?${p}`);
     },
+    equip: (body: EquipRequest) =>
+      call<EquipResponse>("/api/character/equip", json("POST", body)),
+    equipState: (body: CharacterDoc & { options?: EvalOptions }) =>
+      call<EquipStateDoc>("/api/character/equip-state", json("POST", body)),
     list: () => call<CharacterSummary[]>("/api/characters"),
     async get(name: string) {
       return fromServer(await call<Partial<CharacterDoc>>(enc(name)));

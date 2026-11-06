@@ -392,6 +392,39 @@ class ControlShim(ExtObject):
         return self.vb_get("value", [])
 
 
+class ComboShim(ControlShim):
+    """A ComboBox whose Click event fires when code changes ListIndex (the event procedure is looked up
+    in FORM_METHODS by `click`, called with this element's index). `Clear` empties the list and leaves
+    nothing selected without raising Click. AddItem appends: the form's Sorted lists only reorder the
+    display, and the selection follows its item, so item numbers and ListIndex-by-ItemData agree."""
+
+    def __init__(self, props=None, decode=_plain, click=None, index=0):
+        super().__init__(props, decode)
+        self.click = click
+        self.index = index
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "clear" and not args:
+            self.items["list"] = {}
+            self.items["itemdata"] = {}
+            self.props["listindex"] = V.I32(-1)
+            return None
+        return super().vb_get(name, args)
+
+    def vb_set(self, name, args, value):
+        if name.lower() == "listindex" and not args:
+            new = V.int_value(value)
+            if new < -1 or new >= len(self.items.get("list", {})):
+                raise VBError(380, "Invalid property value")
+            old = V.int_value(self.props.get("listindex", V.I32(-1)))
+            self.props["listindex"] = V.I32(new)
+            if new != old and self.click is not None:
+                self.click([V.I16(self.index)])
+            return None
+        return super().vb_set(name, args, value)
+
+
 class SubItemShim(ExtObject):
     """A ListSubItem: `Text` and `Tag` (a Variant; Empty until assigned)."""
 
@@ -709,6 +742,8 @@ class ControlArrayShim(ExtObject):
             return V.I32(max(self.members) + 1 if self.members else 0)
         if n == "ubound":
             return V.I16(max(self.members) if self.members else -1)
+        if n == "lbound":
+            return V.I32(min(self.members) if self.members else 0)
         if n == "item":
             i = V.int_value(args[0])
             if i not in self.members:
@@ -775,11 +810,17 @@ class FormShim(ExtObject):
         self.decode = decode
         for name, props in (spec or {}).items():
             nl = name.lower()
-            if isinstance(props, dict) and "$array" in props:
+            if isinstance(props, dict) and "$array" in props and props.get("$combo"):
+                # a ComboBox array: ListIndex changes raise the named Click procedure of the form
+                click = (lambda a, h=str(props["$combo"]).lower(): FORM_METHODS[h](a))
+                self.controls[nl] = {int(i): ComboShim(p, decode, click, int(i)) for i, p in props["$array"].items()}
+            elif isinstance(props, dict) and "$array" in props:
                 self.controls[nl] = {int(i): self._make(p, decode) for i, p in props["$array"].items()}
                 if props.get("$radio"):
                     for c in self.controls[nl].values():
                         c.radio = self.controls[nl]
+            elif isinstance(props, dict) and props.get("$combo"):
+                self.controls[nl] = ComboShim({k: v for k, v in props.items() if k != "$combo"}, decode)
             elif isinstance(props, dict) and "$listview" in props:
                 self.controls[nl] = ListViewShim(props["$listview"], decode)
             elif isinstance(props, dict) and "$recordlv" in props:

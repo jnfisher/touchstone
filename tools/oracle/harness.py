@@ -200,6 +200,15 @@ class Env:
             for low, cell in m.cells.items():
                 self.cells.append((cell, m.varmap[low], m))
 
+    def _find_proc(self, name):
+        """A procedure by name, Private ones of the loaded modules too (event procedures such as cmbEquip_Click)."""
+        proc = self.it.find_proc(name)
+        if proc is None:
+            for m in self.it.modules.values():
+                if not m.is_class and name.lower() in m.proc_map:
+                    return m.proc_map[name.lower()][0]
+        return proc
+
     def _load_form_procs(self, mme, spec):
         """Scenario key "frm": procedures and variables cut out of a form (see frm.py), loaded as one
         module. The form's controls, named bare in that code, forward to the frmMain shim."""
@@ -211,7 +220,7 @@ class Env:
                 # `frmMain.Proc(args)` from another module reaches the form's own procedure
                 for pn in one["procs"]:
                     shims.FORM_METHODS[pn.lower()] = (
-                        lambda args, pn=pn: self.it.call_proc(self.it.find_proc(pn), None, list(args), [None] * len(args)))
+                        lambda args, pn=pn: self.it.call_proc(self._find_proc(pn), None, list(args), [None] * len(args)))
             self.it.load_source(frm_mod.build_source(raw, one), name="frmMainProcs%s" % (k or ""), kind="bas")
             for name in frm_mod.control_names(raw):
                 if name.lower() not in self.it.externals:
@@ -533,6 +542,22 @@ class Env:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
             self.saved[step.get("as", target)] = refs
 
+    def select_step(self, st, results):
+        """Step `{"select": "cmbEquip", "index": 3, "item": 1234, "as": "name"}`: the user picks the list entry whose
+        ItemData is `item` (the first one, as a list search would) in a frmMain ComboBox element, which raises its Click
+        event; `as` records whether such an entry existed (item 0 picks the "(none)" entry)."""
+        ctl = self.it.externals["frmmain"].vb_get(st["select"], [V.I16(st["index"])])
+        data = ctl.items.get("itemdata", {})
+        for k in range(len(ctl.items.get("list", {}))):
+            if int(data.get(k, 0)) == st["item"]:
+                ctl.vb_set("listindex", [], V.I32(k))
+                found = True
+                break
+        else:
+            found = False
+        if "as" in st:
+            results[st["as"]] = found
+
     def rows_step(self, objs, st, results):
         """Step `{"rows": {"table", "index", "keys", "lv": "each"|"shared", "watch"}, "call", "args", "as", "post"}`:
         for each key, seek that record in the table's global recordset and call a ListView-building procedure
@@ -595,6 +620,13 @@ class Env:
             if m["lo"] is not None:
                 return [one([V.I16(i)]) for i in range(int(m["lo"]), int(m["hi"]) + 1)]
             return one([V.I16(int(m["ci"]))] if m["ci"] is not None else [])
+        if expr.startswith("%combos."):
+            # a frmMain ComboBox array after the steps: per element {"sel": ListIndex, "data": [ItemData..]}
+            arr = self.it.externals["frmmain"].controls[expr[8:].lower()]
+            return {str(i): {"sel": int(c.vb_get("listindex", [])),
+                             "data": [encode(c.items.get("itemdata", {}).get(k, V.I32(0)))
+                                      for k in range(len(c.items.get("list", {})))]}
+                    for i, c in sorted(arr.items())}
         if expr.startswith("%f."):
             # a control of another form: "%f.frmMonsterAttackSim.txtUserAC.Text", "%f.frmX.ctl(2).Tag"
             m = re.match(r"^%f\.(\w+)\.(\w+)(?:\((\d+)\))?\.(\w+)$", expr)
@@ -684,6 +716,8 @@ class Env:
             for st in steps:
                 if "rows" in st:
                     self.rows_step(objs, st, out)
+                elif "select" in st:
+                    self.select_step(st, out)
                 elif "set" in st:
                     oname, prop = st["set"].split(".", 1)
                     idx = [decode(i) for i in st.get("index", [])]
