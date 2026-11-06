@@ -12,8 +12,8 @@ use serde_json::json;
 
 use crate::state::AppState;
 use crate::{
-    calc, character, combat_setup, compare, detail, equip, evaluate, item_manager, monster_sim,
-    panes, paste, settings,
+    calc, character, class_race_builder, combat_setup, compare, detail, equip, evaluate,
+    item_manager, monster_sim, panes, paste, settings,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -35,6 +35,18 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/detail/{kind}/{number}",
             get(panes::get_route).post(panes::post_route),
+        )
+        .route(
+            "/api/class-race-builder",
+            get(class_race_builder::build_route),
+        )
+        .route(
+            "/api/class-race-builder/equip",
+            post(class_race_builder::equip_route),
+        )
+        .route(
+            "/api/class-race-builder/spellbook",
+            post(class_race_builder::spellbook_route),
         )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))

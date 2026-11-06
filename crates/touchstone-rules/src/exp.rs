@@ -199,7 +199,7 @@ pub fn get_max_level(avg_level_max_all_stats: f64) -> R<i32> {
 }
 
 /// Port of modSyntaxsFunc `RoundUpTo5`.
-fn round_up_to_5(n: i32) -> R<i32> {
+pub fn round_up_to_5(n: i32) -> R<i32> {
     let r = n % 5;
     if r == 0 {
         Ok(n)

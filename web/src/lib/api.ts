@@ -314,6 +314,37 @@ export function expPath(q: ExpQuery): string {
 	return `/api/exp?${p}`;
 }
 
+/** `GET /api/class-race-builder`: the Build view's text for a class and a race (0 for none). */
+export interface ClassRaceBuild {
+	/** The class and race MME used: a number with no row counts as none (0). */
+	class: number;
+	race: number;
+	/** The text box, CRLF between lines; null when MME's handler ran and the box kept its old text. */
+	text: string | null;
+	lines: string[];
+	levels: number[];
+	error: string | null;
+}
+
+export function builderPath(cls: number, race: number): string {
+	return `/api/class-race-builder?class=${cls}&race=${race}`;
+}
+
+/** The Equip button: the EQ tab's pickers take these when set. */
+export interface BuilderEquip {
+	class: number | null;
+	race: number | null;
+}
+
+/** The Spellbook button: `no_magic` is MME's "No Magic" box, `open` opens the book at level 999. */
+export interface BuilderSpellbook {
+	action: 'nothing' | 'no_magic' | 'open';
+	class: number | null;
+	level: number | null;
+	magery: number | null;
+	magery_level: number | null;
+}
+
 /** `GET /api/abilities/{table}/{n}`: MME's ability text for a record, one line per printed slot. */
 export type AbilityTable = 'items' | 'spells' | 'races' | 'classes' | 'monsters';
 export interface AbilityLine {
@@ -411,6 +442,16 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		return (await res.json()) as T;
 	}
 
+	async function postJson<T>(path: string, body: unknown): Promise<T> {
+		const res = await fetchFn(path, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+		if (!res.ok) throw new ApiError(res.status, path);
+		return (await res.json()) as T;
+	}
+
 	return {
 		async table<T extends TableName>(name: T): Promise<TableTypes[T][]> {
 			const path = `/api/${name}`;
@@ -433,6 +474,15 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 			const res = await fetchFn(path);
 			if (!res.ok) throw new ApiError(res.status, path);
 			return (await res.json()) as ExpTable;
+		},
+		async classRaceBuild(cls: number, race: number): Promise<ClassRaceBuild> {
+			return getJson(builderPath(cls, race));
+		},
+		async builderEquip(cls: number, race: number): Promise<BuilderEquip> {
+			return postJson('/api/class-race-builder/equip', { class: cls, race });
+		},
+		async builderSpellbook(cls: number): Promise<BuilderSpellbook> {
+			return postJson('/api/class-race-builder/spellbook', { class: cls });
 		},
 		async abilities(table: AbilityTable, n: number): Promise<Abilities> {
 			return getJson(abilitiesPath(table, n));

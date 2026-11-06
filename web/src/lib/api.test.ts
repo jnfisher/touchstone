@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { abilitiesPath, ApiError, createApi, expPath, maxDamagePath, spellEffectPath } from './api';
+import { abilitiesPath, ApiError, builderPath, createApi, expPath, maxDamagePath, spellEffectPath } from './api';
 
 function res(status: number, body: unknown, etag?: string) {
 	return new Response(status === 304 ? null : JSON.stringify(body), {
@@ -64,6 +64,16 @@ describe('computed endpoints', () => {
 		expect(expPath({ race: 2, class: 5, from: 1, to: 255, markup: 25 })).toBe(
 			'/api/exp?race=2&class=5&from=1&to=255&markup=25'
 		);
+	});
+
+	it('builds the class/race builder requests', async () => {
+		expect(builderPath(9, 4)).toBe('/api/class-race-builder?class=9&race=4');
+		const f = vi.fn(async (_p: string, _i?: RequestInit) => res(200, { class: 0, race: 0 }));
+		const api = createApi(f as unknown as typeof fetch);
+		await api.builderSpellbook(9);
+		expect(f.mock.calls[0][0]).toBe('/api/class-race-builder/spellbook');
+		expect(f.mock.calls[0][1]?.method).toBe('POST');
+		expect(f.mock.calls[0][1]?.body).toBe('{"class":9}');
 	});
 
 	it('fetches shop prices fresh each time', async () => {
