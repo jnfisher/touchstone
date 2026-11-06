@@ -18,6 +18,7 @@ use touchstone_rules::Profile;
 use touchstone_rules::char_panel::ExpRequired;
 use touchstone_rules::character::{AttackConfig, AttackType, Character, LearnedSpells};
 use touchstone_rules::gear::STAT_COUNT;
+use touchstone_rules::mmec::{self, ExtraEntry, ItemStack, Mmec};
 use touchstone_rules::pipeline::{CharacterState, PipelineOptions, refresh_all};
 use touchstone_rules::spell_cast::UsableEnv;
 use touchstone_rules::spells::spell_is_bless_spell;
@@ -115,10 +116,33 @@ pub struct CharacterDto {
     pub attack: AttackDto,
     pub learned_spells: Vec<i32>,
     pub learned_class: i16,
+    /// Item Manager rows from an imported `.mmec` (`IM_CARRIED`, `IM_STASH`).
+    pub carried: Vec<StackDto>,
+    pub stash: Vec<StackDto>,
+    /// `.mmec` keys touchstone does not model, written back on export.
+    pub extra: Vec<ExtraDto>,
     /// View toggles that are not part of a saved character.
     #[serde(skip_serializing)]
     pub options: EvalOptions,
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StackDto {
+    pub item: i32,
+    pub qty: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExtraDto {
+    pub section: String,
+    pub key: String,
+    pub value: String,
+}
+
+/// Most `.mmec` keys a character keeps beyond the modelled ones (a real file has about 80).
+const MAX_EXTRA: usize = 500;
+/// `SaveCharacter` writes at most this many Item Manager rows per list.
+const MAX_STACKS: usize = 50;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 #[serde(default)]
@@ -215,6 +239,12 @@ impl CharacterDto {
     /// The same character with every list at full length, as it is stored.
     fn normalized(mut self) -> Result<Self, String> {
         self.to_character()?;
+        if self.extra.len() > MAX_EXTRA {
+            return Err(format!("extra has more than {MAX_EXTRA} entries"));
+        }
+        if self.carried.len() > MAX_STACKS || self.stash.len() > MAX_STACKS {
+            return Err(format!("carried and stash hold at most {MAX_STACKS} rows"));
+        }
         self.stats.resize(6, 0);
         self.equipped.resize(EQUIP_SLOTS, 0);
         self.bless.resize(BLESS_SLOTS, 0);
@@ -223,6 +253,333 @@ impl CharacterDto {
         self.learned_spells.resize(LEARNED, 0);
         Ok(self)
     }
+}
+
+impl CharacterDto {
+    /// The file `SaveCharacter` would write for this character.
+    pub fn to_mmec(&self) -> Result<Mmec, String> {
+        let stacks = |v: &[StackDto]| {
+            v.iter()
+                .map(|s| ItemStack {
+                    item: s.item,
+                    qty: s.qty,
+                })
+                .collect()
+        };
+        Ok(Mmec {
+            character: self.to_character()?,
+            carried: stacks(&self.carried),
+            stash: stacks(&self.stash),
+            extra: self
+                .extra
+                .iter()
+                .map(|e| ExtraEntry {
+                    section: e.section.clone(),
+                    key: e.key.clone(),
+                    value: e.value.clone(),
+                })
+                .collect(),
+        })
+    }
+
+    /// A stored character from a loaded file (the name is the caller's to set).
+    pub fn from_mmec(m: &Mmec) -> Self {
+        let c = &m.character;
+        let a = &c.attack;
+        let stacks = |v: &[ItemStack]| {
+            v.iter()
+                .map(|s| StackDto {
+                    item: s.item,
+                    qty: s.qty,
+                })
+                .collect()
+        };
+        Self {
+            name: c.name.clone(),
+            race: c.race,
+            class: c.class,
+            level: c.level,
+            alignment: c.alignment,
+            global_filter: c.global_filter,
+            stats: c.stats.to_vec(),
+            stat_adjustments: c.stat_adjustments.clone(),
+            equipped: c.equipped.to_vec(),
+            bless: c.bless.to_vec(),
+            quests: c.quests.to_vec(),
+            quest_options: c.quest_options.to_vec(),
+            mr_text: c.mr_text.clone(),
+            anti_magic: c.anti_magic,
+            add_weight: c.add_weight,
+            use_add_weight: c.use_add_weight,
+            attack: AttackDto {
+                attack_type: a.attack_type as i32,
+                backstab: a.backstab,
+                backstab_weapon: a.backstab_weapon,
+                martial_art: a.martial_art,
+                spell_num: a.spell_num,
+                spell_lvl: a.spell_lvl,
+                manual_p: a.manual_p,
+                manual_m: a.manual_m,
+                use_meditate: a.use_meditate,
+                heal_type: a.heal_type,
+                heal_spell_num: a.heal_spell_num,
+                heal_spell_lvl: a.heal_spell_lvl,
+                heal_rounds: a.heal_rounds,
+                heal_manual: a.heal_manual,
+            },
+            learned_spells: c.learned.spells.to_vec(),
+            learned_class: c.learned.class,
+            carried: stacks(&m.carried),
+            stash: stacks(&m.stash),
+            extra: m
+                .extra
+                .iter()
+                .map(|e| ExtraDto {
+                    section: e.section.clone(),
+                    key: e.key.clone(),
+                    value: e.value.clone(),
+                })
+                .collect(),
+            options: EvalOptions::default(),
+        }
+    }
+}
+
+// ---------- .mmec import and export ----------
+
+/// Where `InvenEquipItem` puts an item: by its own worn type, not by the key it was saved under.
+/// `use_2nd_wrist` is MME's `Use2ndWrist` setting (on by default).
+fn equip_slot(item: &touchstone_model::Item, eq: &[i32; 20], use_2nd_wrist: bool) -> Option<usize> {
+    let n = item.number;
+    match item.item_type {
+        1 => Some(16),
+        0 => match item.worn {
+            1 => Some(19),
+            2 => Some(0),
+            3 => Some(8),
+            4 | 13 => {
+                if eq[9] > 0 {
+                    if eq[9] == n || eq[10] == n {
+                        None
+                    } else {
+                        Some(10)
+                    }
+                } else if eq[10] > 0 {
+                    if eq[10] == n { None } else { Some(9) }
+                } else {
+                    Some(9)
+                }
+            }
+            5 => Some(13),
+            6 => Some(5),
+            7 => Some(3),
+            8 => Some(2),
+            9 => Some(12),
+            10 => Some(11),
+            11 => Some(4),
+            12 => Some(15),
+            14 => {
+                if eq[6] > 0 {
+                    if eq[6] == n || eq[7] == n {
+                        None
+                    } else if use_2nd_wrist {
+                        Some(7)
+                    } else {
+                        Some(6)
+                    }
+                } else if eq[7] > 0 {
+                    if eq[7] == n { None } else { Some(6) }
+                } else {
+                    Some(6)
+                }
+            }
+            15 => Some(1),
+            16 => Some(14),
+            18 => Some(17),
+            19 => Some(18),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The steps of `LoadCharacter` that read game data, applied to a freshly parsed file.
+pub fn apply_world(world: &World, m: &mut Mmec) {
+    let c = &mut m.character;
+    if c.class
+        .is_some_and(|n| n != 0 && world.get_class(n).is_none())
+    {
+        c.class = None;
+    }
+    if c.race
+        .is_some_and(|n| n != 0 && world.get_race(n).is_none())
+    {
+        c.race = None;
+    }
+
+    let saved = c.equipped;
+    c.equipped = [0; 20];
+    for slot in mmec::LOAD_ORDER {
+        if let Some(item) = world.get_item(saved[slot])
+            && let Some(to) = equip_slot(item, &c.equipped, true)
+        {
+            c.equipped[to] = item.number;
+        }
+    }
+    mmec::fix_attack_for_weapon(c);
+    if c.attack.backstab_weapon > 0
+        && world
+            .get_item(c.attack.backstab_weapon)
+            .is_none_or(|i| i.item_type != 1)
+    {
+        c.attack.backstab_weapon = 0;
+    }
+
+    for n in &mut c.bless {
+        if *n > 0 && !spell_is_bless_spell(&world.spells, *n) {
+            *n = 0;
+        }
+    }
+
+    c.learned.class = 0;
+    match c.class {
+        None => c.learned.spells = [0; LEARNED],
+        Some(class) if class > 0 => {
+            let env = usable_env(world);
+            for n in &mut c.learned.spells {
+                if *n > 0 {
+                    if env.spell_is_usable(*n, class, 0, 0, false) {
+                        c.learned.class = i16::try_from(class).unwrap_or(0);
+                    } else {
+                        *n = 0;
+                    }
+                }
+            }
+        }
+        Some(_) => {}
+    }
+
+    // LV_AddRowByItemNumber: unknown items are skipped, a quantity is 1..9999
+    for list in [&mut m.carried, &mut m.stash] {
+        list.retain(|s| s.item != 0 && world.get_item(s.item).is_some());
+        for s in list.iter_mut() {
+            s.qty = if s.qty < 0 { 1 } else { s.qty.min(9999) };
+        }
+    }
+}
+
+fn usable_env(world: &World) -> UsableEnv<'_> {
+    UsableEnv {
+        profile: Profile::Stock,
+        spells: &world.spells,
+        classes: &world.classes,
+        nmr_ver: nmr_ver(&world.info.nmr_version),
+        only_in_game: true,
+        disable_kai_autolearn: world.info.disable_kai,
+    }
+}
+
+/// The text before `.mmec` in an uploaded file's name (any directory part dropped).
+fn stem(file: &str) -> &str {
+    let base = file.rsplit(['/', '\\']).next().unwrap_or(file);
+    let lower = base.to_ascii_lowercase();
+    if lower.ends_with(".mmec") {
+        &base[..base.len() - 5]
+    } else {
+        base
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ImportQuery {
+    /// Save under this name, else the file's PlayerInfo Name, else its file name.
+    name: Option<String>,
+    /// The uploaded file's name.
+    file: Option<String>,
+    #[serde(default)]
+    overwrite: bool,
+}
+
+/// `POST /api/characters/import`: the body is the `.mmec` file.
+pub async fn import(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ImportQuery>,
+    body: axum::body::Bytes,
+) -> ApiResult {
+    let mut m = mmec::parse(&body).map_err(|e| unprocessable(e.to_string()))?;
+    apply_world(&state.current().world, &mut m);
+    let mut dto = CharacterDto::from_mmec(&m);
+    let from_file = q.file.as_deref().map(stem).unwrap_or("").trim().to_owned();
+    let name = if let Some(n) = q.name.as_deref().filter(|n| !n.is_empty()) {
+        validate_name(n).map_err(unprocessable)?;
+        n.to_owned()
+    } else {
+        let own = dto.name.trim().to_owned();
+        if validate_name(&own).is_ok() {
+            own
+        } else {
+            validate_name(&from_file).map_err(|e| {
+                unprocessable(format!(
+                    "the file has no usable character name and its file name is no better: {e}"
+                ))
+            })?;
+            from_file
+        }
+    };
+    let dir = dir(&state);
+    if !q.overwrite
+        && tokio::fs::try_exists(file_for(&dir, &name))
+            .await
+            .unwrap_or(false)
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("a character named {name:?} already exists"),
+        ));
+    }
+    dto.name.clone_from(&name);
+    let dto = dto.normalized().map_err(bad)?;
+    store(&dir, &name, &dto).await?;
+    json(&dto)
+}
+
+fn percent_encode(s: &str) -> String {
+    use std::fmt::Write;
+    s.bytes().fold(String::new(), |mut o, b| {
+        if b.is_ascii_alphanumeric() || b"-_.".contains(&b) {
+            o.push(char::from(b));
+        } else {
+            let _ = write!(o, "%{b:02X}");
+        }
+        o
+    })
+}
+
+/// `GET /api/characters/{name}/export.mmec`
+pub async fn export(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> ApiResult {
+    validate_name(&name).map_err(bad)?;
+    let dto = read_dto(&state, &name).await?;
+    let bytes = mmec::write(&dto.to_mmec().map_err(bad)?);
+    let ascii: String = name
+        .chars()
+        .map(|c| if c.is_ascii() { c } else { '_' })
+        .collect();
+    let disposition = format!(
+        "attachment; filename=\"{ascii}.mmec\"; filename*=UTF-8''{}.mmec",
+        percent_encode(&name)
+    );
+    Ok((
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/octet-stream".to_owned(),
+            ),
+            (axum::http::header::CONTENT_DISPOSITION, disposition),
+            (axum::http::header::CACHE_CONTROL, "no-cache".to_owned()),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 // ---------- evaluate ----------
@@ -663,9 +1020,8 @@ pub async fn list(State(state): State<Arc<AppState>>) -> ApiResult {
     json(&out)
 }
 
-pub async fn get(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> ApiResult {
-    validate_name(&name).map_err(bad)?;
-    match tokio::fs::read(file_for(&dir(&state), &name)).await {
+async fn read_dto(state: &AppState, name: &str) -> Result<CharacterDto, (StatusCode, String)> {
+    match tokio::fs::read(file_for(&dir(state), name)).await {
         Ok(bytes) => {
             let mut dto: CharacterDto = serde_json::from_slice(&bytes).map_err(|e| {
                 (
@@ -673,14 +1029,19 @@ pub async fn get(State(state): State<Arc<AppState>>, Path(name): Path<String>) -
                     format!("saved character {name:?} is damaged: {e}"),
                 )
             })?;
-            dto.name = name;
-            json(&dto)
+            dto.name = name.to_owned();
+            Ok(dto)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             Err(not_found(format!("no character {name:?}")))
         }
         Err(e) => Err(io_fail(&e)),
     }
+}
+
+pub async fn get(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> ApiResult {
+    validate_name(&name).map_err(bad)?;
+    json(&read_dto(&state, &name).await?)
 }
 
 static TMP: AtomicU64 = AtomicU64::new(0);
@@ -693,10 +1054,15 @@ pub async fn put(
     validate_name(&name).map_err(bad)?;
     let mut dto = dto.normalized().map_err(bad)?;
     dto.name.clone_from(&name);
-    let bytes = serde_json::to_vec_pretty(&dto)
+    store(&dir(&state), &name, &dto).await?;
+    json(&dto)
+}
+
+/// Atomic write of a stored character.
+async fn store(dir: &FsPath, name: &str, dto: &CharacterDto) -> Result<(), (StatusCode, String)> {
+    let bytes = serde_json::to_vec_pretty(dto)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let dir = dir(&state);
-    tokio::fs::create_dir_all(&dir)
+    tokio::fs::create_dir_all(dir)
         .await
         .map_err(|e| io_fail(&e))?;
     // The temp file is in the same directory so the rename cannot cross filesystems, and starts
@@ -708,14 +1074,14 @@ pub async fn put(
     ));
     let result = async {
         tokio::fs::write(&tmp, &bytes).await?;
-        tokio::fs::rename(&tmp, file_for(&dir, &name)).await
+        tokio::fs::rename(&tmp, file_for(dir, name)).await
     }
     .await;
     if let Err(e) = result {
         let _ = tokio::fs::remove_file(&tmp).await;
         return Err(io_fail(&e));
     }
-    json(&dto)
+    Ok(())
 }
 
 pub async fn delete(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> ApiResult {
