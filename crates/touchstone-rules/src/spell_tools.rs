@@ -81,8 +81,8 @@ pub fn negate_query(
         NegateFrom::List { spell, answer } => (f64::from(spell), 0, answer),
         NegateFrom::Pane { tag } => {
             let (n, l) = pane_tag(tag);
-            // `nLevel As Integer`: a level that does not fit is the error the outer handler gets
-            let l = vb::cint(l).map_or(0, i32::from);
+            // `nLevel As Long` in this handler
+            let l = vb::clng(l).unwrap_or(0);
             (n, l, None)
         }
     };
@@ -105,6 +105,14 @@ pub fn negate_query(
         };
         get_current_spell_min_max(Some(spell), avg_level_max_all_stats, &req)
     };
+    if i16::try_from(level).is_err() {
+        // GetCurrentSpellMinMax takes an Integer: the call overflows and the handler resumes at FindNegates' call
+        q.level = level;
+        return NegatePlan {
+            query: q,
+            ask_level,
+        };
+    }
     let mut mm = range(level);
     if is_list
         && mm.n_min.scaled() == 0
@@ -115,9 +123,18 @@ pub fn negate_query(
             None => ask_level = true,
             Some(v) if v > 0.0 => {
                 // `nLevel = Val(sTemp)` into an Integer: an overflow ends the block at the error handler
-                if let Ok(l) = vb::cint(v) {
-                    level = i32::from(l).min(9999);
-                    mm = range(level);
+                match vb::cint(v) {
+                    Ok(l) => {
+                        level = i32::from(l).min(9999);
+                        mm = range(level);
+                    }
+                    // the error handler resumes at the call, skipping the ability loop
+                    Err(_) => {
+                        return NegatePlan {
+                            query: q,
+                            ask_level,
+                        };
+                    }
                 }
             }
             Some(_) => {}

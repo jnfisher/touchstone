@@ -858,6 +858,58 @@ class ControlArrayShim(ExtObject):
         return self.vb_get("item", args)
 
 
+class PickListShim(ExtObject):
+    """The list a context-menu handler works on (`objWorkingListView`): its name and the selected row.
+    {"name": "lvSpells", "text": "12", "tag": "spell", "subtag": "12@40"}; no "text" means nothing is selected."""
+
+    class _Sub(ExtObject):
+        def __init__(self, tag):
+            self.tag = tag
+
+        def vb_get(self, name, args):
+            if name.lower() == "tag":
+                return self.tag
+            raise VBError(438)
+
+    class _Subs(ExtObject):
+        def __init__(self, tag):
+            self.tag = tag
+
+        def vb_get(self, name, args):
+            if name.lower() == "count":
+                return V.I32(1)
+            raise VBError(438)
+
+        def vb_default(self, args):
+            return PickListShim._Sub(self.tag)
+
+    class _Row(ExtObject):
+        def __init__(self, spec):
+            self.spec = spec
+
+        def vb_get(self, name, args):
+            n = name.lower()
+            if n == "text":
+                return str(self.spec.get("text", ""))
+            if n == "tag":
+                return str(self.spec.get("tag", ""))
+            if n == "listsubitems":
+                subs = PickListShim._Subs(str(self.spec.get("subtag", "")))
+                return subs.vb_default(args) if args else subs
+            raise VBError(438)
+
+    def __init__(self, spec):
+        self.spec = spec
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "name":
+            return str(self.spec.get("name", ""))
+        if n == "selecteditem":
+            return PickListShim._Row(self.spec) if "text" in self.spec else NOTHING
+        raise VBError(438)
+
+
 class NoopShim(ExtObject):
     """An object whose every method does nothing (tool-tip manager, pictures)."""
 
@@ -869,6 +921,13 @@ class NoopShim(ExtObject):
 
     def vb_default(self, args):
         return None
+
+
+class ChainNoopShim(NoopShim):
+    """A NoopShim whose properties are NoopShims too (`frmProgressBar.ProgressBar.Value = 0`)."""
+
+    def vb_get(self, name, args):
+        return self
 
 
 class ControlProxy(ExtObject):

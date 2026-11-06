@@ -232,6 +232,8 @@ class Env:
                     self.it.bind(name, shims.ControlProxy(self, name))
         specs = spec if isinstance(spec, list) else [spec]
         self.it.bind("objToolTip", shims.NoopShim())
+        if "frmprogressbar" not in self.it.externals:      # the progress bar of a long search is only drawn
+            self.it.bind("frmProgressBar", shims.ChainNoopShim())
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         self.it.bind_proc("RGB", lambda it_, r, g, b: V.mk_i32(V.int_value(r) + 256 * V.int_value(g) + 65536 * V.int_value(b)))
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
@@ -323,7 +325,7 @@ class Env:
             it_.externals["clipboard"].text = text
             return True
         it.bind_proc("SetClipboardText", set_clipboard_text)
-        for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
+        for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos", "LockWindowUpdate"):
             it.bind_proc(n, zero)
         it.bind_proc("HandleError", handle_error)
         it.procs.pop("handleerror", None)
@@ -334,6 +336,11 @@ class Env:
             rec.add("sort_listview", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
                     data_type=V.int_value(kind), ascending=bool(ascending))
         it.bind_proc("SortListView", sort_listview)
+
+        def sort_by_tag(it_, lv, column, kind, ascending):
+            rec.add("sort_listview_by_tag", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
+                    data_type=V.int_value(kind), ascending=bool(ascending))
+        it.bind_proc("SortListViewByTag", sort_by_tag)
 
         def refresh_sort(shops_first):
             # LV_RefreshSort / LV_RefreshSort_ShopsFirst (item detail, P3-35): the same skipped feature; only the request
@@ -741,6 +748,10 @@ class Env:
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
+        if expr.startswith("%lvf."):
+            # a recording ListView of another form: "%lvf.frmResults.lvResults" -> [text, tag, cells] per row
+            fname, ctl = expr[5:].split(".", 1)
+            return self.it.externals[fname.lower()].vb_get(ctl, []).dump(encode)
         if expr.startswith("%lvn."):
             # a frmMain recording ListView reduced to Text and Tag per row (the record number and the attack kind)
             # as "number" or "number:tag" strings, to keep the fixtures small
@@ -793,6 +804,8 @@ class Env:
                     cur[k] = v
         self.set_forms(forms)
         self.inputbox_answers = list(case.get("inputbox") or [])
+        if "work_list" in case:      # the list a menu handler works on (objWorkingListView)
+            self.it.bind("objWorkingListView", shims.PickListShim(case["work_list"]))
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
         self.lair_env = case.get("lair_env")

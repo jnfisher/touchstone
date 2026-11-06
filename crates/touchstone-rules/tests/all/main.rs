@@ -42,5 +42,6 @@ mod pipeline;
 mod rows;
 mod spell_cast;
 mod spells;
+mod spell_tools;
 mod stats;
 mod textblock;
