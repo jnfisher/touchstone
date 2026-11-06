@@ -236,6 +236,17 @@ impl CharacterDto {
         })
     }
 
+    /// The lists at full length without the validation, for a character built here.
+    pub(crate) fn padded(mut self) -> Self {
+        self.stats.resize(6, 0);
+        self.equipped.resize(EQUIP_SLOTS, 0);
+        self.bless.resize(BLESS_SLOTS, 0);
+        self.quests.resize(QUESTS, false);
+        self.quest_options.resize(QUEST_OPTS, 0);
+        self.learned_spells.resize(LEARNED, 0);
+        self
+    }
+
     /// The same character with every list at full length, as it is stored.
     fn normalized(mut self) -> Result<Self, String> {
         self.to_character()?;
