@@ -35,6 +35,16 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - A wrist item (worn type 14) and a finger item (4 or 13) can go in either of their two slots, but
   the armour explorer's wrist filter also accepts worn type 17 while the equipment lists never offer it.
 
+## Reference rows (P3-31)
+
+- ListView sorting is not ported (the grid sorts). `GetLocations` returns rows in the order MME adds them
+  plus `LocationList::sorts`, the row count at each `SortListView` request; sorting the first n rows by
+  their first cell at those moments reproduces MME's order. How the ListView control compares text
+  (case, locale) is not pinned by any fixture.
+- Positions in `GetLocations` are Integers in MME and would overflow past 32,767 characters; the port uses
+  32-bit positions. No stock text is that long (the longest "Summoned By" is 20,000).
+- The oracle answers `GetLairInfo` from invented numbers on the real group indexes, so the lair rows'
+  exp and damage text is checked for layout, not for the values the lair cache would give.
 ## List filters (P3-29)
 
 - MME lists records in the table's physical order and the grid sorts them afterwards. `touchstone_rules::filters`

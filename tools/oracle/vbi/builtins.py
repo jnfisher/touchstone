@@ -11,6 +11,7 @@ CONSTANTS = {
     "vbcrlf": "\r\n", "vbcr": "\r", "vblf": "\n", "vbnewline": "\r\n", "vbtab": "\t", "vbnullstring": "",
     "vbnullchar": "\x00", "vbback": "\b", "vbformfeed": "\f", "vbverticaltab": "\v",
     "vbbinarycompare": I32(0), "vbtextcompare": I32(1), "vbdatabasecompare": I32(2),
+    "vbtrue": I32(-1), "vbfalse": I32(0), "vbusedefault": I32(-2),
     "vbokonly": I32(0), "vbokcancel": I32(1), "vbyesno": I32(4), "vbyesnocancel": I32(3),
     "vbcritical": I32(16), "vbquestion": I32(32), "vbexclamation": I32(48), "vbinformation": I32(64),
     "vbyes": I32(6), "vbno": I32(7), "vbok": I32(1), "vbcancel": I32(2), "vbretry": I32(4),
@@ -420,6 +421,26 @@ def f_format(it, x, fmt=None, *rest):
     return V.vb_format_num(v, fmt)
 
 
+def f_formatnumber(it, x, digits=None, lead=None, parens=None, group=None):
+    """FormatNumber(x, digits, IncludeLeadingDigit, UseParensForNegativeNumbers, GroupDigits) in the US locale: an
+    omitted (or -2) tri-state is the locale default (leading digit, no parens, grouped); -1 digits is 2."""
+    def opt(a, default):
+        return default if a is None or a is MISSING else _n(a)
+    d = opt(digits, -1)
+    d = 2 if d < 0 else d
+    if type(x) is str:
+        x = V.str_to_double(x)
+    v = int(x) / 10000.0 if type(x) is Cur else V.as_float(x)
+    lead, parens, group = opt(lead, -2), opt(parens, -2), opt(group, -2)
+    pat = ("#,##0" if group != 0 else "0") + ("." + "0" * d if d else "")
+    s = V.vb_format_num(abs(v), pat)
+    if lead == 0 and s.startswith("0."):
+        s = s[1:]
+    if v < 0 and s.strip("0.,") != "":
+        s = "(" + s + ")" if parens == -1 else "-" + s
+    return s
+
+
 def f_cstr(it, x):
     return _s(x)
 
@@ -632,7 +653,7 @@ BUILTINS = {
     "replace": f_replace, "trim": f_trim, "ltrim": f_ltrim, "rtrim": f_rtrim, "ucase": f_ucase,
     "lcase": f_lcase, "space": f_space, "string": f_string, "chr": f_chr, "chrw": f_chrw, "asc": f_asc,
     "ascw": f_asc, "strcomp": f_strcomp, "split": f_split, "join": f_join, "array": f_array, "str": f_str,
-    "val": f_val, "format": f_format, "iif": f_iif, "switch": f_switch, "choose": f_choose,
+    "val": f_val, "format": f_format, "formatnumber": f_formatnumber, "iif": f_iif, "switch": f_switch, "choose": f_choose,
     "isnumeric": f_isnumeric, "isempty": f_isempty, "isnull": f_isnull, "ismissing": f_ismissing,
     "isarray": f_isarray, "isobject": f_isobject, "typename": f_typename, "vartype": f_vartype,
     "lbound": f_lbound, "ubound": f_ubound, "timer": f_timer, "now": f_now, "doevents": f_doevents,

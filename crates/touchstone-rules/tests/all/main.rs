@@ -21,6 +21,7 @@ mod item_match;
 mod item_value;
 mod lair_info;
 mod lairs;
+mod locations;
 mod mega_stat;
 mod mmec;
 mod monster_glue;
