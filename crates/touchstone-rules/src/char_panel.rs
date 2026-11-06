@@ -36,7 +36,7 @@ use crate::stats::{
     ManaRegenInput, calc_cp_level, calc_mana_regen, calc_max_hp, calc_max_mana,
     calc_meditate_mana_regen, calc_mr, calc_picklocks, calc_rest_mana_regen, calc_resting_rate,
     calc_spell_casting, get_class_magery, get_class_magery_lvl, get_class_max_hp, get_class_min_hp,
-    get_race_cp, soft_cap_extra, soft_caps_on,
+    get_race_cp, regen_on, soft_cap_extra, soft_caps_on,
 };
 
 type Res<T> = Result<T, Vb6Error>;
@@ -416,7 +416,7 @@ fn magic_steps(i: &MagicInput, out: &mut Magic) -> Res<()> {
         out.spellcasting_caption = Some("Spellcasting: ?".to_string());
         out.max_mana_caption = Some("Max Mana: ?".to_string());
         out.medi_ticks = Some(0.0);
-        if i.profile.balance().is_some() {
+        if regen_on(i.profile).is_some() {
             out.rest_ticks = Some(0.0);
         }
         out.mana_regen = Some(0);
@@ -444,7 +444,7 @@ fn magic_steps(i: &MagicInput, out: &mut Magic) -> Res<()> {
     // MME's meditation tick takes no "Alter Mana Regeneration"; Quicksilver's counts it (R10)
     let medi = calc_meditate_mana_regen(i.profile, &regen_in).to_f64();
     out.medi_ticks = Some(medi);
-    if i.profile.balance().is_some() {
+    if regen_on(i.profile).is_some() {
         let rest = calc_rest_mana_regen(i.profile, &regen_in).to_f64();
         out.rest_ticks = Some(rest);
         out.mana_regen_caption = Some(format!(

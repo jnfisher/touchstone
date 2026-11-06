@@ -259,15 +259,13 @@ fn average_ticks_are_the_engine_cycle_total() {
             ),
             ("meditate", calc_meditate_mana_regen),
         ] {
-            let Some(&(sum_v, sum_n)) = sums.get(&(mode.to_string(), standing)) else {
+            let Some(&(sum_v, _)) = sums.get(&(mode.to_string(), standing)) else {
                 continue;
             };
             checked += 1;
-            for (name, p, sum) in [("v120", v120(), sum_v), ("neutral", neutral(), sum_n)] {
-                let got = f(p, &input).scaled() * 30;
-                if got != i64::from(sum) * 10_000 {
-                    bad.push(format!("{} {mode} {name}: {got} vs {sum} x 10000", c["id"]));
-                }
+            let got = f(v120(), &input).scaled() * 30;
+            if got != i64::from(sum_v) * 10_000 {
+                bad.push(format!("{} {mode} v120: {got} vs {sum_v} x 10000", c["id"]));
             }
         }
     }
@@ -332,9 +330,20 @@ fn recovery_rounds_match_engine() {
                 want_v,
             ),
             (
-                "neutral",
-                calc_mana_recovery_rounds(neutral(), target, standing, rate, 100),
+                "neutral qs",
+                calc_mana_recovery_rounds_qs(&NEUTRAL, meditating, target, standing, 100),
                 want_n,
+            ),
+            // R10 is off at NEUTRAL: the stock route, whatever the rate
+            (
+                "neutral",
+                calc_mana_recovery_rounds(neutral(), target, standing, 0, 100),
+                want_n,
+            ),
+            (
+                "neutral rate",
+                calc_mana_recovery_rounds(neutral(), target, standing, rate, 100),
+                calc_mana_recovery_rounds(Profile::Stock, target, standing, rate, 100),
             ),
             // screening: stock MME, no meditation, is the engine at multiples of 1
             (
@@ -460,7 +469,7 @@ fn magic_panel_under_quicksilver() {
     assert_eq!(m.medi_ticks, Some(8.0));
 }
 
-/// Stock keeps MME's panel byte for byte; at neutral multiples the Quicksilver tick is zero.
+/// Stock keeps MME's panel byte for byte, and so does Quicksilver at NEUTRAL (R10 off).
 #[test]
 fn magic_panel_stock_and_neutral() {
     let world = panel_world();
@@ -491,7 +500,8 @@ fn magic_panel_stock_and_neutral() {
                 assert_eq!(q.spellcasting, s.spellcasting);
             }
             let n = magic(neutral(), &world, class, 30.0, pct);
-            assert_eq!((n.rest_ticks, n.medi_ticks), (Some(0.0), Some(0.0)));
+            // R10 is off at NEUTRAL: the panel is MME's
+            assert_eq!(n, s);
         }
     }
 }
@@ -512,4 +522,24 @@ fn hit_point_panel_is_stock() {
     let stock = refresh_hit_points(Profile::Stock, &input);
     assert_eq!(refresh_hit_points(v120(), &input), stock);
     assert_eq!(refresh_hit_points(neutral(), &input), stock);
+}
+
+/// R10 off: a balance whose two multiples are NEUTRAL's takes the stock route for the ticks too.
+#[test]
+fn neutral_ticks_are_stock() {
+    for magic_type in 0..=5 {
+        let input = ManaRegenInput {
+            level: 37,
+            intellect: 88,
+            willpower: 61,
+            charm: 45,
+            magic_level: 3,
+            magic_type,
+            mp_regen: 25,
+            meditating: false,
+        };
+        for f in [calc_rest_mana_regen, calc_meditate_mana_regen] {
+            assert_eq!(f(neutral(), &input), f(Profile::Stock, &input));
+        }
+    }
 }

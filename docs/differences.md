@@ -258,6 +258,13 @@ Under `Profile::Quicksilver` only; the stock rules are untouched.
 - The recovery model still ignores combat and HP: the game ends rest and meditate when both bars are full, and
   meditating needs HP below full or mana below full to start. The hit point panel is unchanged.
 
+- Rest and meditate regeneration reads as off when a Quicksilver balance's `rest_mana_mult` and
+  `meditate_mana_mult` are both `Balance::NEUTRAL`'s (1). MME's meditation tick is not a multiple of the standing
+  rate, so NEUTRAL cannot express it; at those values the panel, the ticks and the recovery rounds take the stock
+  route (no "Rest Ticks" line, MME's meditation tick), which keeps the identity harness exact. A real retune that
+  sets both multiples to 1 therefore also reads as stock. The vector `neutral` column is the engine at multiples of
+  1 (standing ticks only), which equals stock with no meditation rate.
+
 ## Quicksilver knees (Q-006)
 
 - Under the Quicksilver profile the magic resistance and dodge knees (R12, R13) apply to the character's own

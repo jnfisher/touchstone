@@ -25,7 +25,7 @@ use crate::quicksilver::Balance;
 use crate::spells::{MinMaxRequest, SpellText, get_current_spell_min_max};
 use crate::stats::{
     QS_MEDITATE_TICK_SECS, QS_REST_TICK_SECS, QS_SLOW_SECS, get_class_magery, get_class_magery_lvl,
-    qs_boost_tick,
+    qs_boost_tick, regen_on,
 };
 
 type Res<T> = Result<T, Vb6Error>;
@@ -415,11 +415,9 @@ pub fn calc_mana_recovery_rounds(
     meditate_rate: i32,
     percentage: i16,
 ) -> i32 {
-    match profile {
-        Profile::Stock => {
-            recovery_inner(max_mana, regen_rate, meditate_rate, percentage).unwrap_or(0)
-        }
-        Profile::Quicksilver(b) => {
+    match regen_on(profile) {
+        None => recovery_inner(max_mana, regen_rate, meditate_rate, percentage).unwrap_or(0),
+        Some(b) => {
             calc_mana_recovery_rounds_qs(b, meditate_rate > 0, max_mana, regen_rate, percentage)
         }
     }

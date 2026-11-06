@@ -588,15 +588,31 @@ fn qs_standing(profile: Profile, input: &ManaRegenInput) -> i32 {
     i32::try_from(standing.scaled() / 10_000).unwrap_or(i32::MAX)
 }
 
+/// The balance when R10 is on. A Quicksilver balance whose two multiples are `Balance::NEUTRAL`'s
+/// (1: resting and meditating add nothing to the standing rate) is read as "off": MME's meditation
+/// tick is not a multiple of the standing rate, so NEUTRAL cannot express it, and every rest and
+/// meditate path takes the stock route (see docs/differences.md).
+pub(crate) fn regen_on(profile: Profile) -> Option<&'static Balance> {
+    match profile {
+        Profile::Stock => None,
+        Profile::Quicksilver(b) => {
+            let off = Balance::NEUTRAL;
+            let same = b.rest_mana_mult == off.rest_mana_mult
+                && b.meditate_mana_mult == off.meditate_mana_mult;
+            (!same).then_some(b)
+        }
+    }
+}
+
 /// Mana of one rest tick (every [`QS_REST_TICK_SECS`] seconds), averaged over its carry cycle.
 ///
 /// Quicksilver rule R10, no MME counterpart: in the stock rules resting restores no mana, so
 /// `Profile::Stock` gives 0. `input.mp_regen` counts and `input.meditating` is ignored.
 #[must_use]
 pub fn calc_rest_mana_regen(profile: Profile, input: &ManaRegenInput) -> Currency {
-    match profile {
-        Profile::Stock => Currency::from_scaled(0),
-        Profile::Quicksilver(b) => qs_average_tick(
+    match regen_on(profile) {
+        None => Currency::from_scaled(0),
+        Some(b) => qs_average_tick(
             qs_standing(profile, input),
             b.rest_mana_mult,
             QS_REST_TICK_SECS,
@@ -612,8 +628,8 @@ pub fn calc_rest_mana_regen(profile: Profile, input: &ManaRegenInput) -> Currenc
 /// standing rate, regeneration buffs counted. `input.meditating` is ignored.
 #[must_use]
 pub fn calc_meditate_mana_regen(profile: Profile, input: &ManaRegenInput) -> Currency {
-    match profile {
-        Profile::Stock => calc_mana_regen(
+    match regen_on(profile) {
+        None => calc_mana_regen(
             profile,
             &ManaRegenInput {
                 mp_regen: 0,
@@ -621,7 +637,7 @@ pub fn calc_meditate_mana_regen(profile: Profile, input: &ManaRegenInput) -> Cur
                 ..*input
             },
         ),
-        Profile::Quicksilver(b) => qs_average_tick(
+        Some(b) => qs_average_tick(
             qs_standing(profile, input),
             b.meditate_mana_mult,
             QS_MEDITATE_TICK_SECS,
