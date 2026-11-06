@@ -896,6 +896,16 @@ class Compiler:
                 low, name = t.low, t.name
                 return lambda fr, value: self.member_set(objfn(fr), low, [a(fr) for a in argfns], value, desc,
                                                          name, is_set)
+            if t.kind == "call":
+                # `arr(i)(key) = value`: the element is a shim object (a Dictionary) and the second call its Item
+                inner = self.cx(t, ctx)
+
+                def sc(fr, value):
+                    o = self.deref(inner(fr))
+                    if not isinstance(o, ExtObject):
+                        raise VBError(13)
+                    o.vb_set("", [self.deref(a(fr)) for a in argfns], value)
+                return sc
         if k == "bang":
             objfn = self.with_obj(target.withid) if target.obj is None else self.cx(target.obj, ctx)
             desc = self.describe(target.obj) if target.obj is not None else ""

@@ -23,6 +23,21 @@ MODULES = ["modMain.bas", "modMMudDatabase.bas", "modMMudFunc.bas", "modSyntaxsF
            "clsMonsterAttackSim.cls", "modExpPerHour.bas"]
 STOCK_MDB_SHA = "eba20f06af8dc08df755eb6dcd9763b023794f12e809cbab6762236d64d7345f"
 
+# Procedures dropped from a module before it is loaded: modReachability's debug CSV writer uses file I/O statements,
+# which the interpreter does not run (the card skips it).
+CUT_PROCS = {"modReachability.bas": ["ReachWriteDebugCSV"]}
+
+
+def cut_procs(path, names):
+    from vbi.parser import decode_source
+    text = decode_source(open(path, "rb").read())
+    for n in names:
+        text, k = re.subn(r"(?ms)^(?:Public |Private )?(?:Sub|Function) %s\b.*?^End (?:Sub|Function)[ \t]*\r?\n" % n, "", text)
+        if k != 1:
+            raise OracleFatal("cannot cut %s from %s" % (n, path))
+    return text
+
+
 # Procedures of the loaded modules that are replaced by recorded no-ops (UI, Win32, files, shutdown).
 SHIMMED_PROCS = ["DebugLogPrint", "AppTerminate", "Sleep", "SendMessage", "GetWindowLong", "SetWindowLong",
                  "SetWindowPos", "Unload", "SetClipboardText"]
@@ -175,7 +190,10 @@ class Env:
         self.stubbed = []       # scenario stubs that replace a procedure of a loaded module (ExpandCombo)
         it = self.it = Interpreter()
         for f in (modules or MODULES):
-            it.load_file(os.path.join(mme, f))
+            if f in CUT_PROCS:
+                it.load_source(cut_procs(os.path.join(mme, f), CUT_PROCS[f]), name=f.rsplit(".", 1)[0], kind="bas")
+            else:
+                it.load_file(os.path.join(mme, f))
         if frm:
             self._load_form_procs(mme, frm)
         it.ensure_ready()
@@ -188,6 +206,7 @@ class Env:
         it.intrinsic_hooks["msgbox"] = self._msgbox
         for tn in ("scripting.dictionary", "dictionary"):
             it.new_hooks[tn] = shims.DictionaryShim
+        it.new_hooks["collection"] = shims.CollectionShim
         self.lair_env = None
         self.db_open = False        # scenario "db_open": `DB.OpenRecordset(table)` works (item detail's second recordsets)
         self.shared_lairs = {}
@@ -312,7 +331,7 @@ class Env:
             return False
 
         for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors",
-                  "LV_AssignRowSeqIfMissing"):
+                  "LV_AssignRowSeqIfMissing", "Load", "EnsureAppForeground"):
             it.bind_proc(n, noop)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
@@ -348,6 +367,8 @@ class Env:
         # matching is done here with Python's re (ASCII classes, as in VBScript).
         it.bind_proc("RegExpFindv2", self._regexp_find)
         it.procs.pop("regexpfindv2", None)
+        for n, v in (("dbOpenSnapshot", 4), ("dbForwardOnly", 8), ("vbModeless", 0)):     # DAO / form constants (modReachability)
+            it.bind(n, V.I32(v))
         it.bind_proc("EnsureDatabaseConnection", false)
         it.procs.pop("ensuredatabaseconnection", None)
 
