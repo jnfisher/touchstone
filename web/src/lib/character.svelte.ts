@@ -15,6 +15,7 @@ import {
   type EvalOptions,
   type EvalState,
 } from "./character";
+import { autoLoadLastCharEnabled } from "./settings.svelte";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -254,6 +255,8 @@ export function openLastCharacter(
   if (!p) {
     p = (async () => {
       await store.refreshList();
+      // Settings > "load the last character at start" (MME's AutoLoadLastChar).
+      if (!(await autoLoadLastCharEnabled())) return undefined;
       let last: string | null = null;
       try {
         last = localStorage.getItem(LAST_KEY);
