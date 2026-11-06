@@ -1,0 +1,45 @@
+[Unit]
+Description=touchstone (MMUD Explorer web server)
+Documentation=https://github.com/jnfisher/touchstone/blob/main/docs/install-pi.md
+# Start after the game so its -wal and -shm files exist: a read-only reader cannot create them.
+# Change or drop silvermere.service to match how the game is started on this machine.
+After=network-online.target silvermere.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=touchstone
+Group=touchstone
+# The game's group (for example `mud`) is added with `usermod -aG mud touchstone`, so the
+# database is readable through group permissions.
+ExecStart=/usr/local/bin/touchstone serve --config /etc/touchstone/touchstone.toml
+Restart=on-failure
+RestartSec=5
+
+# /var/lib/touchstone: touchstone's own files (saved characters, converted databases).
+# Set `data_dir = "/var/lib/touchstone"` in the config.
+StateDirectory=touchstone
+StateDirectoryMode=0750
+WorkingDirectory=/var/lib/touchstone
+
+# Everything is read-only except the state directory. Name the directory that holds the game's
+# database; the leading "-" keeps the unit starting if it is missing (touchstone then reports
+# the real error).
+ProtectSystem=strict
+ReadOnlyPaths=-/srv/mud
+ProtectHome=read-only
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

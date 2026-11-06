@@ -3,19 +3,27 @@
 # Address and port to listen on. No authentication: keep it on a LAN or Tailscale.
 bind = "0.0.0.0:8370"
 
-# Where touchstone keeps its own files (saved characters, converted databases).
-data_dir = "data"
+# Where touchstone keeps its own files (saved characters, converted databases). Under the
+# systemd unit this is its StateDirectory, /var/lib/touchstone. Relative paths are relative to
+# the working directory.
+data_dir = "/var/lib/touchstone"
 
 [source]
 # "mdb": an MMUD Explorer database. "silvermere": a running silvermere/Quicksilver game's SQLite
 # file, read live and reloaded when the game changes it. The source is required.
-kind = "mdb"
+kind = "silvermere"
 
 # mdb: either an already converted .sqlite (see tools/mdb-fetch.sh), or a .mdb, which is converted
 # on start into <data_dir>/converted/ with mdbtools (apt install mdbtools) and python3, using
-# tools/mdb2sqlite.py. silvermere: the game's database file; touchstone must be able to read the
-# file and its -shm sibling (run as the game's user, or share its group).
-path = "/srv/mud/data-v1.11p.sqlite"
+# tools/mdb2sqlite.py. silvermere: the game's database file, opened read-only. touchstone must be
+# able to read the file and its -wal and -shm siblings (the game creates them while it runs), so
+# add the touchstone user to the game's group and keep those files group-readable. The
+# directory is not written to, but start the game first: with no -wal/-shm a read-only reader
+# cannot create them. See docs/install-pi.md.
+#
+# Quicksilver-style path below; for a stock MME database use kind = "mdb" and, for example,
+# path = "/var/lib/touchstone/data-v1.11p.sqlite".
+path = "/srv/mud/quicksilver/data/game.db"
 
 # silvermere only: seconds between checks for changed game data. Default 10.
 # reload_interval_secs = 10
