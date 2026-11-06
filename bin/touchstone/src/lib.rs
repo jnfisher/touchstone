@@ -16,6 +16,7 @@ pub mod monster_damage;
 pub mod monster_sim;
 pub mod panes;
 pub mod paste;
+pub mod profile;
 pub mod reach;
 pub mod rooms;
 pub mod settings;

@@ -49,3 +49,9 @@ fn pipeline_fixtures_identical_under_neutral() {
 fn paste_party_fixtures_identical_under_neutral() {
     crate::paste_party::check_fixture(neutral());
 }
+
+/// R14: the creation-point panel (RefreshCPs) prices stats above the race maximum.
+#[test]
+fn char_panel_fixtures_identical_under_neutral() {
+    crate::char_panel::check_fixture(neutral());
+}

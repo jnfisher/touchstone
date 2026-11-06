@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
-use touchstone_rules::Profile;
 use touchstone_rules::RulesError;
 use touchstone_rules::ability_text::AbilityEnv;
 use touchstone_rules::attack::{AttackEnv, EquippedGlobals};
@@ -46,9 +45,10 @@ pub async fn build_route(
 ) -> ApiResult {
     let loaded = state.current();
     let world = &loaded.world;
-    let abilities = AbilityEnv::for_world(world, Profile::Stock);
+    let profile = loaded.profile;
+    let abilities = AbilityEnv::for_world(world, profile);
     let equipped = EquippedGlobals::default();
-    let avg = compute_avg_level_max_stats(Profile::Stock, &world.races);
+    let avg = compute_avg_level_max_stats(profile, &world.races);
     let env = AttackEnv {
         items: &world.items,
         classes: &world.classes,
@@ -69,7 +69,7 @@ pub async fn build_route(
     } else {
         0
     };
-    let out = match builder::build(Profile::Stock, &env, avg.single_stat, q.class, q.race) {
+    let out = match builder::build(profile, &env, avg.single_stat, q.class, q.race) {
         Ok(b) => BuildJson {
             class,
             race,

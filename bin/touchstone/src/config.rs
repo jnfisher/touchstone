@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde::Deserialize;
 
+use crate::profile::RulesConfig;
+
 pub const DEFAULT_BIND: &str = "0.0.0.0:8370";
 pub const DEFAULT_RELOAD_SECS: u64 = 10;
 
@@ -15,6 +17,8 @@ pub struct Config {
     pub data_dir: PathBuf,
     /// Required to serve; optional here so an empty file still parses.
     pub source: Option<SourceConfig>,
+    /// Which game rules to follow (`[rules]`).
+    pub rules: RulesConfig,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -57,6 +61,7 @@ impl Default for Config {
             bind: DEFAULT_BIND.to_owned(),
             data_dir: PathBuf::from("data"),
             source: None,
+            rules: RulesConfig::default(),
         }
     }
 }
@@ -83,6 +88,18 @@ mod tests {
         assert_eq!(c.bind, "0.0.0.0:8370");
         assert_eq!(c.data_dir, PathBuf::from("data"));
         assert!(c.source.is_none());
+        assert_eq!(c.rules, RulesConfig::default());
+    }
+
+    #[test]
+    fn rules_section_parses() {
+        use crate::profile::ProfileSetting;
+        let c =
+            parse("[rules]\nprofile = \"stock\"\n[rules.quicksilver_balance]\ncrit_knee = 50\n");
+        assert_eq!(c.rules.profile, ProfileSetting::Stock);
+        assert_eq!(c.rules.quicksilver_balance.unwrap().crit_knee, 50);
+        assert!(toml::from_str::<Config>("[rules]\nprofile = \"x\"\n").is_err());
+        assert!(toml::from_str::<Config>("[rules]\nbogus = 1\n").is_err());
     }
 
     #[test]

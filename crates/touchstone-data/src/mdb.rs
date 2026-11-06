@@ -130,6 +130,7 @@ fn info(r: &Row<'_>) -> Res<Info> {
     Ok(Info {
         nmr_version: text(r, "NMR Version")?,
         dat_file_version: text(r, "Dat File Version")?,
+        content_version: None,
         date: text(r, "Date")?,
         time: text(r, "Time")?,
         custom: text(r, "Custom")?,

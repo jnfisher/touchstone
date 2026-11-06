@@ -424,7 +424,13 @@ fn empty(kind: &'static str, number: i32) -> PaneJson {
     }
 }
 
-fn item_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -> PaneJson {
+fn item_pane(
+    profile: Profile,
+    world: &World,
+    lairs: &mut StoredLairs,
+    sh: &Shared,
+    number: i32,
+) -> PaneJson {
     let o = &sh.body.options;
     let ctx = sh.ctx;
     // The same combo reading as the weapon list: normal unless combat is calculated.
@@ -454,7 +460,7 @@ fn item_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -
     };
     let names = WorldNames(world);
     let env = ItemDetailEnv {
-        profile: Profile::Stock,
+        profile,
         world,
         names: &names,
         textblocks: world,
@@ -493,7 +499,13 @@ fn item_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -
     out
 }
 
-fn spell_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -> PaneJson {
+fn spell_pane(
+    profile: Profile,
+    world: &World,
+    lairs: &mut StoredLairs,
+    sh: &Shared,
+    number: i32,
+) -> PaneJson {
     let o = &sh.body.options;
     let ctx = sh.ctx;
     let level_box = o.level.map_or_else(|| val(&ctx.level_text), f64::from);
@@ -510,14 +522,7 @@ fn spell_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) 
         avg_level_max_all_stats: ctx.avg,
         locations: sh.location_options(&sh.charm_tag),
     };
-    let d = pull_spell_detail(
-        Profile::Stock,
-        world,
-        lairs,
-        ctx.state.as_ref(),
-        number,
-        &opts,
-    );
+    let d = pull_spell_detail(profile, world, lairs, ctx.state.as_ref(), number, &opts);
     let mut out = empty("spells", number);
     out.text = d.text;
     out.rows = d.rows.iter().map(row_json).collect();
@@ -527,7 +532,13 @@ fn spell_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) 
     out
 }
 
-fn shop_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -> PaneJson {
+fn shop_pane(
+    profile: Profile,
+    world: &World,
+    lairs: &mut StoredLairs,
+    sh: &Shared,
+    number: i32,
+) -> PaneJson {
     let body = sh.body;
     let charm = body.charm.unwrap_or_else(|| {
         if body.show_charm || body.show_sell {
@@ -544,7 +555,7 @@ fn shop_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -
         show_sell: body.show_sell,
         locations: sh.location_options(&sh.charm_tag),
     };
-    let d = pull_shop_detail(Profile::Stock, world, lairs, number, &opts);
+    let d = pull_shop_detail(profile, world, lairs, number, &opts);
     let mut out = empty("shops", number);
     out.rows = d.detail_rows().iter().map(row_json).collect();
     out.text = d.text;
@@ -556,10 +567,16 @@ fn shop_pane(world: &World, lairs: &mut StoredLairs, sh: &Shared, number: i32) -
     out
 }
 
-fn class_race_pane(world: &World, ctx: &Ctx, pane: Pane, number: i32) -> PaneJson {
+fn class_race_pane(
+    profile: Profile,
+    world: &World,
+    ctx: &Ctx,
+    pane: Pane,
+    number: i32,
+) -> PaneJson {
     let names = WorldNames(world);
     let env = AbilityEnv {
-        profile: Profile::Stock,
+        profile,
         names: &names,
         textblocks: world,
         spells: &world.spells,
@@ -649,7 +666,9 @@ fn line_json(world: &World, r: &MonsterRow) -> LineJson {
 
 /// `PullMonsterDetail` for the current character and the lair/party boxes, over the damage arrays and flags in `sh.damage`
 /// (what a calculation left, or MME's start-up values).
+#[allow(clippy::too_many_arguments)] // one pane's inputs, each from a different source
 fn monster_pane(
+    profile: Profile,
     world: &World,
     sh: &Shared,
     number: i32,
@@ -660,7 +679,7 @@ fn monster_pane(
 ) -> Result<PaneJson, (StatusCode, String)> {
     let ctx = sh.ctx;
     let controls = &sh.body.options.monsters;
-    let mut ab = AbilityEnv::for_world(world, Profile::Stock);
+    let mut ab = AbilityEnv::for_world(world, profile);
     ab.hide_record_numbers = sh.hide;
     ab.avg_level_max_all_stats = ctx.avg;
     if ctx.state.is_some() {
@@ -738,12 +757,13 @@ fn build(
     damage: &Snapshot,
 ) -> Result<(PaneJson, Option<DamageCaches>), (StatusCode, String)> {
     let world = &loaded.world;
+    let profile = loaded.profile;
     let eval = EvaluateBody {
         character: body.character.clone(),
         global_filter: body.global_filter.clone(),
         options: body.options.clone(),
     };
-    let ctx = prepare(world, &eval)?;
+    let ctx = prepare(profile, world, &eval)?;
     let (charm_tag, strength_tag, attack_type_mme) = match &ctx.state {
         Some(st) => (
             touchstone_vb6::cstr(st.stats.stat_with_bonus[5]),
@@ -768,29 +788,30 @@ fn build(
     let out = match pane {
         Pane::Items => {
             world.get_item(number).ok_or_else(|| missing("item"))?;
-            item_pane(world, &mut lairs, &sh, number)
+            item_pane(profile, world, &mut lairs, &sh, number)
         }
         Pane::Spells => {
             world.get_spell(number).ok_or_else(|| missing("spell"))?;
-            spell_pane(world, &mut lairs, &sh, number)
+            spell_pane(profile, world, &mut lairs, &sh, number)
         }
         Pane::Shops => {
             world.get_shop(number).ok_or_else(|| missing("shop"))?;
-            shop_pane(world, &mut lairs, &sh, number)
+            shop_pane(profile, world, &mut lairs, &sh, number)
         }
         Pane::Classes => {
             world.get_class(number).ok_or_else(|| missing("class"))?;
-            class_race_pane(world, &ctx, pane, number)
+            class_race_pane(profile, world, &ctx, pane, number)
         }
         Pane::Races => {
             world.get_race(number).ok_or_else(|| missing("race"))?;
-            class_race_pane(world, &ctx, pane, number)
+            class_race_pane(profile, world, &ctx, pane, number)
         }
         Pane::Monsters => {
             world
                 .get_monster(number)
                 .ok_or_else(|| missing("monster"))?;
             monster_pane(
+                profile,
                 world,
                 &sh,
                 number,

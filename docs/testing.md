@@ -47,7 +47,7 @@ in for it:
   rule's own card checks the `v120` column.
 - **Identity harness.** `tests/all/quicksilver_identity.rs` runs the MME fixtures through
   `Profile::Quicksilver(&Balance::NEUTRAL)` and expects the MME answers. A card that makes a family
-  parametric adds that family's fixture test there.
+  parametric adds that family's fixture test there. It covers the stats, accuracy, attack and char_panel fixtures.
 
 ## No manual verification
 

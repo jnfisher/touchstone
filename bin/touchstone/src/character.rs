@@ -455,7 +455,7 @@ fn equip_slot(item: &touchstone_model::Item, eq: &[i32; 20], use_2nd_wrist: bool
 }
 
 /// The steps of `LoadCharacter` that read game data, applied to a freshly parsed file.
-pub fn apply_world(world: &World, m: &mut Mmec) {
+pub fn apply_world(profile: Profile, world: &World, m: &mut Mmec) {
     let c = &mut m.character;
     if c.class
         .is_some_and(|n| n != 0 && world.get_class(n).is_none())
@@ -496,7 +496,7 @@ pub fn apply_world(world: &World, m: &mut Mmec) {
     match c.class {
         None => c.learned.spells = [0; LEARNED],
         Some(class) if class > 0 => {
-            let env = usable_env(world);
+            let env = usable_env(profile, world);
             for n in &mut c.learned.spells {
                 if *n > 0 {
                     if env.spell_is_usable(*n, class, 0, 0, false) {
@@ -519,9 +519,9 @@ pub fn apply_world(world: &World, m: &mut Mmec) {
     }
 }
 
-pub(crate) fn usable_env(world: &World) -> UsableEnv<'_> {
+pub(crate) fn usable_env(profile: Profile, world: &World) -> UsableEnv<'_> {
     UsableEnv {
-        profile: Profile::Stock,
+        profile,
         spells: &world.spells,
         classes: &world.classes,
         nmr_ver: nmr_ver(&world.info.nmr_version),
@@ -558,7 +558,8 @@ pub async fn import(
     body: axum::body::Bytes,
 ) -> ApiResult {
     let mut m = mmec::parse(&body).map_err(|e| unprocessable(e.to_string()))?;
-    apply_world(&state.current().world, &mut m);
+    let loaded = state.current();
+    apply_world(loaded.profile, &loaded.world, &mut m);
     let mut dto = CharacterDto::from_mmec(&m);
     let from_file = q.file.as_deref().map(stem).unwrap_or("").trim().to_owned();
     let name = if let Some(n) = q.name.as_deref().filter(|n| !n.is_empty()) {
@@ -759,7 +760,7 @@ fn error_text(code: Option<i32>) -> Option<String> {
     code.map(|c| vb_error_text(u32::try_from(c).unwrap_or(0)))
 }
 
-fn state_json(world: &World, st: &CharacterState, ch: &Character) -> StateJson {
+fn state_json(profile: Profile, world: &World, st: &CharacterState, ch: &Character) -> StateJson {
     let s = &st.stats;
     let cps = &st.cps;
     let (exp_kind, exp) = match cps.summary.as_ref().map(|c| c.exp) {
@@ -846,7 +847,7 @@ fn state_json(world: &World, st: &CharacterState, ch: &Character) -> StateJson {
             rounds: st.attack_config().heal_rounds,
             spell_lvl: st.attack_config().heal_spell_lvl,
         },
-        attack_name: crate::combat_setup::attack_names(world, &st.character, st, false).0,
+        attack_name: crate::combat_setup::attack_names(profile, world, &st.character, st, false).0,
         stats_error_text: error_text(s.error),
         calc: CalcJson {
             stat_tags: s.stat_tag.iter().map(|t| t.unwrap_or(0.0)).collect(),
@@ -865,6 +866,7 @@ fn state_json(world: &World, st: &CharacterState, ch: &Character) -> StateJson {
 
 /// `RefreshAll` over the loaded world, returning the character and the state it left.
 pub(crate) fn refresh(
+    profile: Profile,
     world: &World,
     dto: &CharacterDto,
 ) -> Result<(Character, CharacterState), (StatusCode, String)> {
@@ -878,19 +880,22 @@ pub(crate) fn refresh(
         item_manager: dto.gear_rows(world),
         dat_ver_caption: world.info.dat_file_version.clone(),
         nmr_ver: nmr_ver(&world.info.nmr_version),
-        avg_level_max_all_stats: compute_avg_level_max_stats(Profile::Stock, &world.races)
-            .all_stats,
+        avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
         ..PipelineOptions::default()
     };
-    let st = refresh_all(Profile::Stock, world, &ch, &opts)
+    let st = refresh_all(profile, world, &ch, &opts)
         .map_err(|e| unprocessable(format!("cannot evaluate this character: {e}")))?;
     Ok((ch, st))
 }
 
 /// `RefreshAll` over the loaded world. Split out so tests can call it without HTTP.
-pub fn evaluate(world: &World, dto: &CharacterDto) -> Result<StateJson, (StatusCode, String)> {
-    let (ch, st) = refresh(world, dto)?;
-    Ok(state_json(world, &st, &ch))
+pub fn evaluate(
+    profile: Profile,
+    world: &World,
+    dto: &CharacterDto,
+) -> Result<StateJson, (StatusCode, String)> {
+    let (ch, st) = refresh(profile, world, dto)?;
+    Ok(state_json(profile, world, &st, &ch))
 }
 
 pub async fn evaluate_route(
@@ -898,7 +903,8 @@ pub async fn evaluate_route(
     Body(dto): Body<CharacterDto>,
 ) -> ApiResult {
     let loaded = state.current();
-    json(&evaluate(&loaded.world, &dto)?)
+    let profile = loaded.profile;
+    json(&evaluate(profile, &loaded.world, &dto)?)
 }
 
 // ---------- bless spells ----------
@@ -925,6 +931,7 @@ pub struct BlessChoice {
 
 /// Port of frmMain `FilterBlessSpells`, with `bOnlyInGame` on as MME defaults.
 pub fn bless_spells(
+    profile: Profile,
     world: &World,
     class: i32,
     level: i32,
@@ -933,7 +940,7 @@ pub fn bless_spells(
     include: &[i32],
 ) -> Vec<BlessChoice> {
     let env = UsableEnv {
-        profile: Profile::Stock,
+        profile,
         spells: &world.spells,
         classes: &world.classes,
         nmr_ver: nmr_ver(&world.info.nmr_version),
@@ -991,7 +998,9 @@ pub async fn bless_spells_route(
         );
     }
     let loaded = state.current();
+    let profile = loaded.profile;
     json(&bless_spells(
+        profile,
         &loaded.world,
         q.class.unwrap_or(0),
         q.level.unwrap_or(0),

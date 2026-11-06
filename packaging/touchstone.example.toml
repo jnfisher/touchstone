@@ -31,3 +31,16 @@ path = "/opt/quicksilver/data/quicksilver.db"
 # mdb only, and only for a .mdb path: where mdb2sqlite.py is when it is not in a tools/ directory
 # next to the binary, its parent, or the working directory.
 # converter = "/opt/touchstone/tools/mdb2sqlite.py"
+
+[rules]
+# Which game rules the calculations follow. "auto" (default): stock MME rules, except a Quicksilver
+# database with content version 1.20.N, which gets the 1.20 rules; a Quicksilver database with any
+# other content version refuses to start. "stock": always the stock rules, even on a Quicksilver
+# database (for comparisons). "quicksilver": the 1.20 rules whatever the database is.
+# profile = "auto"
+
+# Optional: override individual Quicksilver balance keys, with the key names of Quicksilver's own
+# [balance] table (so it can be pasted unchanged). Unknown keys and invalid values stop startup.
+# /api/info lists the keys that differ from the 1.20.0 values.
+# [rules.quicksilver_balance]
+# crit_knee = 40
