@@ -106,6 +106,10 @@ the orchestrator writes each card when its dependencies are close to merged.
 | Q-015 | Show the rules profile in the web UI | #115 |
 | Q-016 | End-to-end cells against the Quicksilver balance tool | #117 |
 | F-002 | Follow-ups bundle 2 (header fit, live profile, reach row, party damage) | #116 |
+| Q-017 | Alter Energy Usage (ability 87) under Quicksilver | #119 |
+| P3-04b | `pull_spell_eq` Long handling | #120 |
+| M-001 | Map layout engine (MapStartMapping / MapActivateCell / MapMapExits) | #121 |
+| M-002 | Web map view (grid, walking, legend, presets, pop-out window) | #122 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -116,19 +120,12 @@ the orchestrator writes each card when its dependencies are close to merged.
 
 ## In progress
 
-| Card | Title | State |
-|---|---|---|
-| M-001 | Map layout engine (MapStartMapping / MapActivateCell / MapDrawOnRoom) | agent |
-| Q-017 | Alter Energy Usage (ability 87) under Quicksilver | agent |
+None.
 
 ## Next
 
-Phase 6: John chose the graphical map (2026-11-06). The results tree, NMR import/export and notepad are not planned.
-
-| Card | Title | Depends |
-|---|---|---|
-| M-002 | Web map view (grid, walking, legend, presets, pop-out window) | M-001 |
-| P3-04b | `pull_spell_eq` Long handling | P3-04 |
+All planned phases are done. Phase 6 was the graphical map only; the results tree, NMR import/export and notepad are
+not planned. Candidates are the follow-ups below.
 
 ## Follow-ups noted
 
@@ -146,3 +143,4 @@ Phase 6: John chose the graphical map (2026-11-06). The results tree, NMR import
 - Fixture tests for item_detail, hit_calc, lair_info, monster_glue and class_race_builder hard-code Stock, so the identity harness doesn't cover them (Q-011).
 - Quicksilver cells (Q-016): leftover Warlock/Bard damage gap beyond ability 87; Cleric L60 weapon-cast pricing.
 - `/api/info` polling every 30 s could use an ETag (F-002); vs Party is offered for any party size, MME needs two or more (F-002).
+- Map pop-out: selection sync with the Rooms tab (BroadcastChannel); a Find Room box in the pop-out (M-002).
