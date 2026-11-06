@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
 	import { api, type AbilityTable, type Item, type Spell, type TableName, type TableTypes } from '$lib/api';
+	import ClassRaceBuilder from '$lib/components/ClassRaceBuilder.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
 	import ShopControls from '$lib/components/ShopControls.svelte';
@@ -258,6 +259,7 @@
 									<SpellEffect number={Number(explorer.rowId(selected))} reqLevel={(selected as Spell).req_level} />
 								{/key}
 							{:else if slug === 'races' || slug === 'classes'}
+								<ClassRaceBuilder kind={slug === 'races' ? 'race' : 'class'} number={Number(explorer.rowId(selected))} />
 								<ExpTable kind={slug === 'races' ? 'race' : 'class'} number={Number(explorer.rowId(selected))} />
 							{/if}
 						</DetailPane>
