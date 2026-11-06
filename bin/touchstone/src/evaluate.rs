@@ -524,22 +524,22 @@ fn to_table(tab: Tab, built: Built) -> Table {
 // ---------- the build ----------
 
 /// What the builders read about the world and the character.
-struct Ctx<'a> {
-    world: &'a World,
-    nmr: f64,
-    avg: f64,
+pub(crate) struct Ctx<'a> {
+    pub(crate) world: &'a World,
+    pub(crate) nmr: f64,
+    pub(crate) avg: f64,
     /// The loaded character's state when it is used (`chkGlobalFilter` on).
-    state: Option<CharacterState>,
-    level_text: String,
+    pub(crate) state: Option<CharacterState>,
+    pub(crate) level_text: String,
     /// `lblInvenCharStat(10).Tag`, the accuracy a swing falls back on.
-    accuracy_tag: String,
+    pub(crate) accuracy_tag: String,
     /// The global filter's class, race, level, alignment and minimum item level.
-    who: GlobalChar,
+    pub(crate) who: GlobalChar,
     /// `chkGlobalFilter.Value = 1`: the lists keep to what `who` can use. True too for a filter
     /// that has its own values and no character (`state` is then `None`).
-    filter_on: bool,
+    pub(crate) filter_on: bool,
     /// `nEquippedItem`.
-    equipped_items: [i32; 20],
+    pub(crate) equipped_items: [i32; 20],
 }
 
 impl Ctx<'_> {
@@ -951,12 +951,12 @@ fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
     env
 }
 
-/// Build one tab's list for a request.
+/// Resolve a request's character and global filter into what the builders read.
 ///
 /// # Errors
 /// 422 for a character without class and race or one the pipeline cannot evaluate; 400 for a
 /// character that is not well formed.
-pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, ApiError> {
+pub(crate) fn prepare<'a>(world: &'a World, req: &EvaluateBody) -> Result<Ctx<'a>, ApiError> {
     req.options.validate()?;
     if let Some(g) = &req.global_filter {
         g.validate()?;
@@ -984,7 +984,7 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
         };
     }
     if let Some(dto) = &req.character {
-        let ch = dto.to_character().map_err(bad)?;
+        let mut ch = dto.to_character().map_err(bad)?;
         if ch.class.is_none() || ch.race.is_none() {
             return Err((
                 StatusCode::UNPROCESSABLE_ENTITY,
@@ -996,9 +996,12 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
             None => (dto.global_filter, dto.options.min_item_level),
         };
         if use_char {
+            // The bar's "use character" is MME's `chkGlobalFilter`, whatever the saved flag says.
+            ch.global_filter = true;
             let opts = PipelineOptions {
                 hide_class_race: dto.options.hide_class_race,
                 min_item_level,
+                item_manager: dto.gear_rows(world),
                 dat_ver_caption: world.info.dat_file_version.clone(),
                 nmr_ver: nmr,
                 avg_level_max_all_stats: avg,
@@ -1027,7 +1030,7 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
         .as_ref()
         .and_then(|st| st.stats.stat_tag[10])
         .map_or_else(String::new, vb::cstr);
-    let ctx = Ctx {
+    Ok(Ctx {
         world,
         nmr,
         avg,
@@ -1037,7 +1040,15 @@ pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, Ap
         who,
         filter_on,
         equipped_items,
-    };
+    })
+}
+
+/// Build one tab's list for a request.
+///
+/// # Errors
+/// As [`prepare`].
+pub fn evaluate(world: &World, tab: Tab, req: &EvaluateBody) -> Result<Table, ApiError> {
+    let ctx = prepare(world, req)?;
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),

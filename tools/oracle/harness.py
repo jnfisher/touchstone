@@ -181,11 +181,15 @@ class Env:
         it.ensure_ready()
         for name in SHIMMED_PROCS + self.stubbed:
             it.procs.pop(name.lower(), None)
+        for name in self.stubbed:       # a stub also replaces a Private procedure of a loaded module
+            for m in it.modules.values():
+                m.proc_map.pop(name.lower(), None)
         self._bind_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
         for tn in ("scripting.dictionary", "dictionary"):
             it.new_hooks[tn] = shims.DictionaryShim
         self.lair_env = None
+        self.db_open = False        # scenario "db_open": `DB.OpenRecordset(table)` works (item detail's second recordsets)
         self.shared_lairs = {}
         it.intrinsic_hooks["inputbox"] = self._inputbox
         if paste_procs:
@@ -321,6 +325,23 @@ class Env:
             rec.add("sort_listview", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
                     data_type=V.int_value(kind), ascending=bool(ascending))
         it.bind_proc("SortListView", sort_listview)
+
+        def refresh_sort(shops_first):
+            # LV_RefreshSort / LV_RefreshSort_ShopsFirst (item detail, P3-35): the same skipped feature; only the request
+            # is recorded: rows held, column, data type, by tag, ascending (their optional defaults differ per procedure).
+            defaults = (1, 1, True, False) if shops_first else (1, 0, False, True)
+
+            def f(it_, lv, col=V.MISSING, dtype=V.MISSING, by_tag=V.MISSING, asc=V.MISSING):
+                got = [d if a is V.MISSING else a for a, d in zip((col, dtype, by_tag, asc), defaults)]
+                rec.add("lv_refresh_sort", shops_first=shops_first, rows=len(getattr(lv, "rows", [])),
+                        column=V.int_value(got[0]), data_type=V.int_value(got[1]), by_tag=bool(got[2]), ascending=bool(got[3]))
+            return f
+        # a family that stubs them itself (filters) keeps its stub
+        for n, sf in (("LV_RefreshSort", False), ("LV_RefreshSort_ShopsFirst", True)):
+            if n.lower() not in it.ext_procs:
+                it.bind_proc(n, refresh_sort(sf))
+        for n, v in (("lvwcolumnleft", 0), ("lvwcolumnright", 1), ("lvwcolumncenter", 2)):     # ColumnHeaders.Add alignment
+            it.bind(n, V.I32(v))
         for n, v in (("ldtstring", 0), ("ldtnumber", 1), ("ldtDateTime", 2)):     # modListViewExt's ListDataType
             it.bind(n, V.I32(v))
         # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
@@ -406,6 +427,8 @@ class Env:
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
         it.bind("Forms", shims.FormsCollection(self.loaded_forms))
+        if self.db and self.db_open and "db" in self.it.globals:
+            self.it.global_cell("DB").v = shims.DbShim(self.db)
         for g, table in shims.RECORDSET_GLOBALS.items():
             cell = it.globals.get(g.lower())
             if cell is not None:
@@ -481,6 +504,9 @@ class Env:
                 continue
             if isinstance(a, dict) and "lv" in a:
                 args.append(lv)
+                continue
+            if isinstance(a, dict) and "key" in a:
+                args.append(self.cur_key)        # the record number a `rows` step is on
                 continue
             if isinstance(a, dict) and str(a.get("ref", "")).startswith("array:"):
                 # ByRef array argument: {"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]};
@@ -558,6 +584,10 @@ class Env:
         if refs:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
             self.saved[step.get("as", target)] = refs
+        if step.get("capture"):
+            # `capture` {name: read expression}: the reads taken right after this call (the controls a
+            # Sub fills), so one case can run many calls on one set-up; lands in "<as>.cap"
+            results[step.get("as", target) + ".cap"] = {k: self.read(objs, x) for k, x in step["capture"].items()}
 
     def select_step(self, st, results):
         """Step `{"select": "cmbEquip", "index": 3, "item": 1234, "as": "name"}`: the user picks the list entry whose
@@ -597,16 +627,30 @@ class Env:
         if spec.get("watch"):
             wname, widx = re.match(r"(\w+)\((\d+)\)$", spec["watch"]).groups()
             watch = self.it.externals["frmmain"].vb_get(wname, [V.I16(int(widx))])
-        per, seen = [], []
+        per, seen, captured = [], [], []
         for key in spec["keys"]:
             rs.vb_get("seek", ["=", decode(key)])
+            self.cur_key = decode(key)
             lv = lv_shared or shims.RecordingListViewShim()
             if "hwnd" in spec:
                 lv.props["hwnd"] = V.I32(spec["hwnd"])   # a list that is not frmMain's own (its hWnd reads 0)
             before = len(watch.items.get("list", {})) if watch else 0
             args = self.build_args(st.get("args", []), objs, [], lv)
+            n_events = len(self.rec.events)
             self.invoke(objs, st["call"], args)
-            if not shared:
+            if spec.get("capture"):
+                # `capture`: {"name": "%c.txtDetail.Text"}: read expressions evaluated after each key; with `events` the
+                # recorded events of that key move from the case's event list into the capture
+                cap = {k: self.read(objs, expr) for k, expr in spec["capture"].items()}
+                if spec.get("all_rows"):
+                    cap["rows"] = lv.dump(encode)       # every row of this key's ListView (the plain output keeps the first)
+                if spec.get("events"):
+                    cap["events"] = self.rec.events[n_events:]
+                    del self.rec.events[n_events:]
+                captured.append(cap)
+            if spec.get("lv") == "list":
+                per.append(lv.dump_detail(encode))     # every row of the list, with Bold (the detail panes)
+            elif not shared and not spec.get("all_rows"):
                 rows = lv.dump(encode)
                 per.append(rows[0] if rows else None)
             if watch is not None:
@@ -623,6 +667,8 @@ class Env:
             results[name + ".post"] = post
         if watch is not None:
             results[name + ".watch"] = seen
+        if spec.get("capture"):
+            results[name + ".capture"] = captured
 
     _READ = re.compile(r"^(?P<obj>[A-Za-z_]\w*)\.(?P<prop>\w+)(?:\[(?P<idx>[^\]]*)\])?$")
 
@@ -674,6 +720,9 @@ class Env:
                 if n > 1 or sel != 0:       # a combo holding only its None entry is left out
                     out[str(i)] = {"n": n, "sel": sel, "data": [int(c.vb_get("itemdata", [V.I16(k)])) for k in range(n)]}
             return out
+        if expr == "%clip":
+            # what the code under test left on the clipboard ("" when it never copied)
+            return self.it.externals["clipboard"].text
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
@@ -805,6 +854,7 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     database = db_path() if scn.get("database") else None
     env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
               paste_procs=bool(scn.get("paste_procs")), db_only=scn.get("db_only"))
+    env.db_open = bool(scn.get("db_open"))
     if "lairs" in scn.get("shims", []):
         env.enable_lair_shims()
         env.shared_lairs = (scn.get("data") or {}).get("lairs") or {}
