@@ -32,8 +32,14 @@ fn pairs(flat: &Value) -> Vec<AbilitySlot> {
 }
 
 fn world() -> World {
+    world_from("monster_glue")
+}
+
+/// The World built from a scenario's "table" key (monster_glue_char reuses the format).
+pub(crate) fn world_from(family: &str) -> World {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/scenarios/monster_glue.json");
+        .join("../../fixtures/scenarios")
+        .join(format!("{family}.json"));
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let t = &doc["table"];
     let n = |r: &Value, k: usize| r.get(k).map_or(0, i);
@@ -94,7 +100,7 @@ fn world() -> World {
                 exp_multi: 0.0,
                 hp: 0,
                 energy: i(&r[2]),
-                avg_dmg: 0.0,
+                avg_dmg: r.get(8).and_then(Value::as_f64).unwrap_or(0.0),
                 avg_dmg_phys: 0.0,
                 avg_dmg_spell: 0.0,
                 greet_txt: 0,

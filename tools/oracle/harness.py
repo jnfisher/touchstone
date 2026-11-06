@@ -168,8 +168,10 @@ class _Dump:
 class Env:
     def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None):
         self.mme = mme
+        shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra) if database else None
         self.rec = shims.Recorder()
+        self.msgbox_answers = []
         it = self.it = Interpreter()
         for f in (modules or MODULES):
             it.load_file(os.path.join(mme, f))
@@ -184,6 +186,8 @@ class Env:
             it.new_hooks[tn] = shims.DictionaryShim
         self.lair_env = None
         self.shared_lairs = {}
+        it.intrinsic_hooks["inputbox"] = self._inputbox
+        self.inputbox_answers = []
         self.class_names = {m.name: m for m in it.modules.values() if m.is_class}
         self.cells = []
         for m in it.modules.values():
@@ -199,6 +203,11 @@ class Env:
         # controls forward to the same frmMain shim, so a case must use one form's controls only
         for k, one in enumerate(spec if isinstance(spec, list) else [spec]):
             raw = open(os.path.join(mme, one.get("file", "frmMain.frm")), "rb").read()
+            if one.get("file", "frmMain.frm") == "frmMain.frm":
+                # `frmMain.Proc(args)` from another module reaches the form's own procedure
+                for pn in one["procs"]:
+                    shims.FORM_METHODS[pn.lower()] = (
+                        lambda args, pn=pn: self.it.call_proc(self.it.find_proc(pn), None, list(args), [None] * len(args)))
             self.it.load_source(frm_mod.build_source(raw, one), name="frmMainProcs%s" % (k or ""), kind="bas")
             for name in frm_mod.control_names(raw):
                 if name.lower() not in self.it.externals:
@@ -215,7 +224,18 @@ class Env:
         text = V.c_str(a[0]) if a else ""
         buttons = int(a[1]) if len(a) > 1 and V.is_num(a[1]) else 0
         self.rec.add("msgbox", text=text)
+        if self.msgbox_answers:       # a case's "msgbox": the answers to the boxes MME shows, in order
+            return V.I16(self.msgbox_answers.pop(0))
         return shims.msgbox_result(buttons)
+
+    def _inputbox(self, it, prompt=None, title=None, default=None, *rest):
+        """InputBox: answers from the case's "inputbox" list in call order (null accepts the default,
+        an exhausted list cancels, which is an empty string)."""
+        dflt = V.c_str(default) if default is not None and default is not V.MISSING else ""
+        ans = self.inputbox_answers.pop(0) if self.inputbox_answers else ""
+        ans = dflt if ans is None else ans
+        self.rec.add("inputbox", prompt=V.c_str(prompt) if prompt is not None else "", default=dflt, answer=ans)
+        return ans
 
     def _bind_procs(self):
         it = self.it
@@ -237,7 +257,8 @@ class Env:
         def false(it_, *a):
             return False
 
-        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors"):
+        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors",
+                  "LV_AssignRowSeqIfMissing"):
             it.bind_proc(n, noop)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
@@ -429,6 +450,8 @@ class Env:
                     d.items[float(k)] = (V.mk_i32(k), V.mk_i32(v))
                 dicts.append(d)
                 args.append(d)
+            elif isinstance(a, dict) and "control" in a:
+                args.append(self.it.externals["frmmain"].vb_get(a["control"], []))  # a frmMain control, by reference
             elif isinstance(a, dict) and "obj" in a:
                 args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:
@@ -475,6 +498,9 @@ class Env:
             if m["lo"] is not None:
                 return [one([V.I16(i)]) for i in range(int(m["lo"]), int(m["hi"]) + 1)]
             return one([V.I16(int(m["ci"]))] if m["ci"] is not None else [])
+        if expr.startswith("%lv."):
+            # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
+            return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
         m = self._READ.match(expr)
@@ -490,12 +516,14 @@ class Env:
 
     def run_case(self, case, setup):
         self.reset(case.get("rnd"))
+        self.msgbox_answers = list(case.get("msgbox", []))
         # a case's controls replace the family-wide setup's controls of the same name, form by form
         forms = {}
         for src in (setup.get("forms"), case.get("forms")):
             for fname, props in (src or {}).items():
                 forms.setdefault(fname, {}).update(props)
         self.set_forms(forms)
+        self.inputbox_answers = list(case.get("inputbox") or [])
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
         self.lair_env = case.get("lair_env")
