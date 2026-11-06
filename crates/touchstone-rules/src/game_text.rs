@@ -10,8 +10,10 @@
 //! Errors: MME's `HandleError` shows a message and carries on. Here the result lists each such
 //! event in [`ParseOutput::handled`] (a Long overflow from a huge count is the only one reachable).
 
+mod matching;
 mod vbstr;
 
+pub use matching::*;
 pub use touchstone_vb6::is_numeric;
 pub use vbstr::{instr, instr_ci, instrrev, lcase, left, len, mid, mid_from, right, rtrim, trim};
 
