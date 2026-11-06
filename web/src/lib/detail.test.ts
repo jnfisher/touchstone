@@ -18,7 +18,8 @@ describe('detail panes', () => {
 	it('maps tabs to panes', () => {
 		expect(['weapons', 'armour', 'items'].map(paneKind)).toEqual(['items', 'items', 'items']);
 		expect(paneKind('shops')).toBe('shops');
-		expect(paneKind('monsters')).toBeUndefined();
+		expect(paneKind('monsters')).toBe('monsters');
+		expect(paneKind('rooms')).toBeUndefined();
 	});
 
 	it('sends the character only while the bar mirrors it', () => {
@@ -26,6 +27,11 @@ describe('detail panes', () => {
 		expect(paneBody(doc, DEFAULT_FILTER).character).toBe(doc);
 		expect(paneBody(doc, { ...DEFAULT_FILTER, use_character: false }).character).toBeUndefined();
 		expect(paneBody(undefined, DEFAULT_FILTER).character).toBeUndefined();
+		// a complete character the bar does not mirror still goes along for the monster pane
+		const off = { ...DEFAULT_FILTER, use_character: false };
+		expect(paneBody(doc, off, { keepCharacter: true }).character).toBe(doc);
+		expect(paneBody({ class: null, race: 1 } as never, off, { keepCharacter: true }).character).toBeUndefined();
+		expect(paneBody(doc, off, { options: { attack: 5 } }).options).toEqual({ attack: 5 });
 		const b = paneBody(undefined, DEFAULT_FILTER, { charm: 40, showSell: true });
 		expect([b.charm, b.show_sell, b.show_charm]).toEqual([40, true, undefined]);
 	});

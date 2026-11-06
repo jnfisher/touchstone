@@ -3,7 +3,7 @@
 //! [`pull_monster_detail`] ports modMain `PullMonsterDetail` and `AddMonsterDamageOutText`: the rows MME
 //! puts into the detail list when a monster is selected. The attributes, abilities, drops and attacks come
 //! from the record; the damage lines run the character's attack choice against the monster (and against
-//! its average lair), and the scripting estimate runs `CalcExpPerHour`. A row is a [`DetailRow`]: its
+//! its average lair), and the scripting estimate runs `CalcExpPerHour`. A row is a [`MonsterRow`]: its
 //! label, the tag MME gave the row (the kind of record it points at), the colour and bold flag, and the
 //! value cell, all with MME's exact text. Colours are the light theme's (`TColor` is the identity).
 //!
@@ -55,7 +55,7 @@ const SYS_GREY: i32 = -2_147_483_627;
 
 /// What a row points at (MME's `ListItem.Tag`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DetailKind {
+pub enum MonsterRowKind {
     Plain,
     Item,
     Spell,
@@ -67,7 +67,7 @@ pub enum DetailKind {
 
 /// A sub-item of a row (MME's `ListSubItems(1)`, the "Detail" column).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct DetailCell {
+pub struct MonsterCell {
     pub text: String,
     /// `None`: MME never assigned the Tag.
     pub tag: Option<String>,
@@ -77,27 +77,27 @@ pub struct DetailCell {
 
 /// A `ListItem` of the detail list.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct DetailRow {
+pub struct MonsterRow {
     /// The `Text` column.
     pub label: String,
     /// `ListItem.Tag` as MME assigned it: the kind of record the row points at.
     pub tag: Option<String>,
     pub fore_color: Option<i32>,
     pub bold: bool,
-    pub cells: Vec<DetailCell>,
+    pub cells: Vec<MonsterCell>,
 }
 
-impl DetailRow {
+impl MonsterRow {
     /// The kind the tag names.
     #[must_use]
-    pub fn kind(&self) -> DetailKind {
+    pub fn kind(&self) -> MonsterRowKind {
         match self.tag.as_deref() {
-            None => DetailKind::Plain,
-            Some("Item") => DetailKind::Item,
-            Some("Spell") => DetailKind::Spell,
-            Some("Monster" | "monster") => DetailKind::Monster,
-            Some("greet_text") => DetailKind::GreetText,
-            Some(_) => DetailKind::Location,
+            None => MonsterRowKind::Plain,
+            Some("Item") => MonsterRowKind::Item,
+            Some("Spell") => MonsterRowKind::Spell,
+            Some("Monster" | "monster") => MonsterRowKind::Monster,
+            Some("greet_text") => MonsterRowKind::GreetText,
+            Some(_) => MonsterRowKind::Location,
         }
     }
 
@@ -115,13 +115,13 @@ impl DetailRow {
     }
     /// `ListSubItems.Add (1), "Detail", text`.
     fn text(&mut self, t: impl Into<String>) -> &mut Self {
-        self.cells.push(DetailCell {
+        self.cells.push(MonsterCell {
             text: t.into(),
-            ..DetailCell::default()
+            ..MonsterCell::default()
         });
         self
     }
-    fn cell(&mut self) -> Res<&mut DetailCell> {
+    fn cell(&mut self) -> Res<&mut MonsterCell> {
         // `ListSubItems(1)` before an Add is VB error 35600
         self.cells.last_mut().ok_or(Vb6Error::InvalidProcedureCall)
     }
@@ -143,16 +143,22 @@ impl DetailRow {
     }
 }
 
+/// The names the oracle tests (and the other panes' `DetailRow`) know these by; `detail::DetailRow` is the label/value
+/// row of the other panes, this module's rows carry a tag, colours and sub-items.
+pub type DetailRow = MonsterRow;
+pub type DetailCell = MonsterCell;
+pub type DetailKind = MonsterRowKind;
+
 /// The rows the reachability module adds (`AddMonsterReachRows`); that module is optional.
 pub trait ReachRows {
-    fn rows(&self, monster: i32) -> Vec<DetailRow>;
+    fn rows(&self, monster: i32) -> Vec<MonsterRow>;
 }
 
 /// No reachability module: no rows.
 pub struct NoReach;
 
 impl ReachRows for NoReach {
-    fn rows(&self, _monster: i32) -> Vec<DetailRow> {
+    fn rows(&self, _monster: i32) -> Vec<MonsterRow> {
         Vec::new()
     }
 }
@@ -248,15 +254,15 @@ pub struct MonsterDetailInputs<'a> {
 }
 
 struct Lv {
-    rows: Vec<DetailRow>,
+    rows: Vec<MonsterRow>,
 }
 
 impl Lv {
     /// `DetailLV.ListItems.Add()` with its `Text`.
-    fn add(&mut self, label: impl Into<String>) -> &mut DetailRow {
-        self.rows.push(DetailRow {
+    fn add(&mut self, label: impl Into<String>) -> &mut MonsterRow {
+        self.rows.push(MonsterRow {
             label: label.into(),
-            ..DetailRow::default()
+            ..MonsterRow::default()
         });
         self.rows.last_mut().expect("just pushed")
     }
@@ -377,7 +383,7 @@ fn spell_style(world: &World, spell: i32, slay: bool, illu: bool) -> (Option<i32
     }
 }
 
-fn apply_style(row: &mut DetailRow, st: (Option<i32>, bool)) -> Res<()> {
+fn apply_style(row: &mut MonsterRow, st: (Option<i32>, bool)) -> Res<()> {
     if let Some(c) = st.0 {
         row.vcolor(c)?;
     }
@@ -461,7 +467,7 @@ pub fn pull_monster_detail(
     caches: &mut DamageCaches,
     number: i32,
     limit: i16,
-) -> Vec<DetailRow> {
+) -> Vec<MonsterRow> {
     let mut lv = Lv { rows: Vec::new() };
     let world = env.callouts.world;
     let Some(m) = world.get_monster(number) else {
@@ -886,7 +892,7 @@ fn look_up_monster_regen(
         );
     });
     for r in out.rows {
-        lv.rows.push(DetailRow {
+        lv.rows.push(MonsterRow {
             label: r.text,
             tag: r.tag,
             fore_color: None,
@@ -894,7 +900,7 @@ fn look_up_monster_regen(
             cells: r
                 .cells
                 .into_iter()
-                .map(|c| DetailCell {
+                .map(|c| MonsterCell {
                     text: c.text,
                     tag: c.tag,
                     fore_color: None,

@@ -3,8 +3,6 @@
 // Column order and headers follow modMain's Add*2LV row builders; record filters follow the
 // Filter* procedures in frmMain with MME's default "only in-game" setting.
 import type { ClassRec, Item, Monster, Race, Room, Shop, Spell, TableName, TableTypes } from './api';
-import type { Abilities, AbilitySlot } from './api';
-import * as E from './enums';
 import type { EvalTab } from './evaluate';
 import type { SectionSlug } from './sections';
 
@@ -35,16 +33,6 @@ export interface DetailGroup {
 	rows: DetailRow[];
 }
 
-/** Server-computed values the detail pane waits for; each is absent until it arrives. */
-export interface DetailExtra {
-	/** MME's ability text for the record. */
-	abilities?: Abilities;
-	/** The text could not be fetched; the raw slots are shown instead. */
-	abilitiesFailed?: boolean;
-	/** `GetMaxDamage` for a monster. */
-	maxDamage?: number;
-}
-
 /** Name lookups for cross references in the detail pane; any table may still be loading. */
 export interface Lookups {
 	items?: Map<number, string>;
@@ -70,61 +58,18 @@ export interface Explorer<K extends TableName = TableName> {
 	computed?: EvalTab;
 	/** Columns MME shows that need the rules engine or a character; not faked here. */
 	pending: string[];
-	detail(rec: TableTypes[K], lk: Lookups, extra?: DetailExtra): DetailGroup[];
+	detail(rec: TableTypes[K], lk: Lookups): DetailGroup[];
 }
 
 // ---------- helpers ----------
 
-export function putCommas(n: number): string {
-	const [int, frac] = String(n).split('.');
-	const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return frac ? `${grouped}.${frac}` : grouped;
-}
-/** VB Format(n, "#,#") for a value that is shown as 0 when not positive. */
-const commaOrZero = (v: Cell) => (typeof v === 'number' && v > 0 ? putCommas(Math.round(v)) : '0');
-
-/** Value of the last slot holding one of `ids`, as MME's ability loops leave it. */
-export function abilityValue(slots: AbilitySlot[], ...ids: number[]): number | undefined {
-	let found: number | undefined;
-	for (const s of slots) if (s.ability !== 0 && ids.includes(s.ability)) found = s.value;
-	return found;
-}
-
-/** "Name (#n)" when the table is loaded, "#n" otherwise. */
-function ref(map: Map<number, string> | undefined, n: number): string {
-	const name = map?.get(n);
-	return name ? `${name} (#${n})` : `#${n}`;
-}
-
 const text = (s: string | null | undefined) => s ?? '';
-const yes = (b: boolean) => (b ? 'Yes' : 'No');
 const row = (label: string, value: string | number, long = false): DetailRow => ({
 	label,
 	value: String(value),
 	long
 });
 const group = (title: string, rows: DetailRow[]): DetailGroup => ({ title, rows });
-
-function abilityRows(slots: AbilitySlot[]): DetailRow[] {
-	return slots
-		.filter((s) => s.ability !== 0)
-		.map((s) => row(`Ability ${s.ability}`, s.value));
-}
-/**
- * The Abilities group: MME's text ("Accuracy" / "+5") once the server has answered, the raw slots
- * only if it could not. While the text is on its way the group is left out rather than flashing
- * numbers.
- */
-function abilityGroup(slots: AbilitySlot[], extra: DetailExtra | undefined): DetailGroup[] {
-	const ab = extra?.abilities;
-	if (!ab) {
-		const raw = extra?.abilitiesFailed ? abilityRows(slots) : [];
-		return raw.length ? [group('Abilities', raw)] : [];
-	}
-	const rows = ab.lines.map((l) => row(l.name, l.detail || 'Yes', l.detail.length > 36));
-	if (ab.class_ok.length) rows.push(row('Class OK', ab.class_ok.join(', '), true));
-	return rows.length ? [group('Abilities', rows)] : [];
-}
 
 const num = <T>(id: string, header: string, get: (r: T) => number, width = 80): ColumnSpec<T> => ({
 	id,
@@ -139,8 +84,6 @@ const str = <T>(id: string, header: string, get: (r: T) => string, width?: numbe
 	width,
 	get
 });
-const numberCol = <T extends { number: number }>(): ColumnSpec<T> =>
-	num<T>('num', '#', (r) => r.number, 70);
 
 // ---------- items: Weapons, Armour, Sundry ----------
 
@@ -224,101 +167,22 @@ const spells: Explorer<'spells'> = {
 
 // ---------- monsters ----------
 
-const DODGE = 34;
-const MAGICAL = 28;
 const monName = (m: Monster) => text(m.name);
 
 const monsters: Explorer<'monsters'> = {
 	slug: 'monsters',
 	table: 'monsters',
-	needs: ['items', 'spells'],
+	needs: [],
 	include: (m) => m.in_game && monName(m) !== '' && !monName(m).startsWith('sdf'),
-	// The column set of NMR v1.83 and later (Script Value is only shown by older data).
-	columns: [
-		numberCol<Monster>(),
-		str('name', 'Name', monName, 240),
-		num('rgn', 'RGN', (m) => m.regen_time, 80),
-		{
-			...num<Monster>('exp', 'Exp', (m) => m.exp * m.exp_multi, 120),
-			format: commaOrZero
-		},
-		{ ...num<Monster>('hp', 'HP', (m) => m.hp, 80), format: commaOrZero },
-		{
-			...str<Monster>('acdr', 'AC/DR', (m) => `${m.armour_class}/${m.damage_resist}`, 90),
-			sortKey: (m) => m.armour_class + m.damage_resist
-		},
-		num('dodge', 'Dodge', (m) => abilityValue(m.abilities, DODGE) ?? 0, 75),
-		num('mr', 'MR', (m) => m.magic_res, 65),
-		{
-			...num<Monster>('lairexp', 'Lair Exp', (m) => m.avg_lair_exp, 95),
-			format: (v) => putCommas(Number(v))
-		},
-		{
-			...num<Monster>('mag', 'Mag.', (m) => abilityValue(m.abilities, MAGICAL) ?? 0, 70),
-			format: (v) => (v ? String(v) : '')
-		},
-		{
-			...num<Monster>('bsdef', 'BS Defense', (m) => m.bs_defense, 95),
-			format: (v) => (v ? String(v) : '')
-		},
-		str('undead', 'Undead', (m) => (m.undead > 0 ? 'X' : ''), 80)
-	],
+	// The list comes from the server (POST /api/evaluate/monsters): FilterMonsters with the tab's boxes, MME's
+	// columns, cells and colours for the current character. The pane is PullMonsterDetail (/api/detail).
+	computed: 'monsters',
+	columns: [],
 	rowId: (m) => m.number,
 	title: monName,
 	defaultSort: { col: 'name', dir: 'asc' },
-	pending: ['Acc (Maj/Mx)', 'Damage', 'Exp/(Dmg+HP)', 'Lairs', 'Mobs/Spwn', 'Spell Atk.'],
-	detail: (m, lk, extra) => {
-		const out = [
-			group(monName(m), [
-				row('Number', m.number),
-				row('Type', E.monsterType(m.type)),
-				row('Alignment', E.monsterAlignment(m.align)),
-				row('HP', putCommas(m.hp)),
-				row('Exp', putCommas(m.exp)),
-				row('Exp multiplier', m.exp_multi),
-				row('AC / DR', `${m.armour_class} / ${m.damage_resist}`),
-				row('Magic resist', m.magic_res),
-				row('BS defense', m.bs_defense),
-				row('Undead', yes(m.undead > 0)),
-				row('Energy', m.energy),
-				row('HP regen', m.hp_regen),
-				row('Regen time', m.regen_time),
-				row('Charm level', m.charm_lvl),
-				row('Follow %', m.follow_pct),
-				row('Game limit', m.game_limit),
-				...(extra?.maxDamage === undefined
-					? []
-					: [row('Max damage / round', putCommas(extra.maxDamage))]),
-				row('Stored avg damage', m.avg_dmg),
-				row('Stored lair exp', putCommas(m.avg_lair_exp)),
-				row('Weapon', ref(lk.items, m.weapon)),
-				row('In game', yes(m.in_game))
-			])
-		];
-		const attacks = m.attacks
-			.filter((a) => a.att_type !== 0 || a.pct > 0)
-			.map((a, i) =>
-				row(
-					`Attack ${i + 1}`,
-					`${a.name}: ${E.monsterAttackType(a.att_type)}, acc ${a.acc}, ${a.pct}%, ${a.min}-${a.max}` +
-						(a.hit_spell ? `, hit spell ${ref(lk.spells, a.hit_spell)}` : ''),
-					true
-				)
-			);
-		if (attacks.length) out.push(group('Attacks', attacks));
-		const mid = m.mid_spells
-			.filter((s) => s.spell !== 0)
-			.map((s) => row(ref(lk.spells, s.spell), `${s.pct}% at level ${s.lvl}`));
-		if (m.death_spell) mid.push(row('On death', ref(lk.spells, m.death_spell)));
-		if (m.create_spell) mid.push(row('On creation', ref(lk.spells, m.create_spell)));
-		if (mid.length) out.push(group('Spells', mid));
-		const drops = m.drops.filter((d) => d.item !== 0).map((d) => row(ref(lk.items, d.item), `${d.pct}%`));
-		if (drops.length) out.push(group('Drops', drops));
-		// Guarded-by (146) is a row of its own in MME; the server leaves it out of the text.
-		out.push(...abilityGroup(m.abilities, extra));
-		if (m.summoned_by) out.push(group('Locations', [row('Summoned by', m.summoned_by, true)]));
-		return out;
-	}
+	pending: [],
+	detail: (m) => titleOnly(monName(m))
 };
 
 // ---------- shops ----------

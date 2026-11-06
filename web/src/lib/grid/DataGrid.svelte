@@ -267,4 +267,11 @@
 	:global(.ag-cell.ts-cell-above) {
 		color: var(--positive);
 	}
+	/* Monsters: calculated against this character or party, and rows that fail the filter. */
+	:global(.ag-cell.ts-cell-calc) {
+		color: var(--violet);
+	}
+	:global(.ag-cell.ts-cell-nomatch) {
+		color: var(--muted-foreground);
+	}
 </style>
