@@ -368,6 +368,7 @@ impl CharacterState {
             accy_abils: s.accy_abils,
             hit_magic_non_weapon: s.hit_magic_non_weapon,
             qnd_bonus: s.qnd_bonus,
+            energy_use: s.energy_use,
         }
     }
 
@@ -459,6 +460,7 @@ impl CharacterState {
             encum_current: p.encum_current,
             encum_max: p.encum_max,
             spell_dmg_bonus: p.spell_dmg_bonus,
+            energy_pct: p.energy_pct,
         }
     }
 

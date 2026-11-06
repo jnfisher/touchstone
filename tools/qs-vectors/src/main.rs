@@ -6,6 +6,7 @@
 
 mod backstab;
 mod cells;
+mod energy;
 mod exphr_d;
 mod knees;
 mod melee;
@@ -64,6 +65,7 @@ fn main() {
     for fam in [
         backstab::family(),
         cells::family(),
+        energy::family(),
         exphr_d::family(),
         knees::family(),
         melee::family(),

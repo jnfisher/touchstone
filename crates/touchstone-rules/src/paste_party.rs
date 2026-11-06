@@ -1302,6 +1302,7 @@ fn attack_prompts(
                 encum_current: 0,
                 encum_max: 0,
                 spell_dmg_bonus: 0,
+                energy_pct: 0,
             };
             let req = AttackRequest {
                 attack_type: attack,

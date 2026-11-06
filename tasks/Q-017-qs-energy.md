@@ -8,6 +8,7 @@ touches:
   - crates/touchstone-rules/src/gear.rs                  # aggregate ability 87 (Quicksilver only)
   - crates/touchstone-rules/src/character.rs             # carry it into the profile
   - crates/touchstone-rules/src/pipeline.rs
+  - crates/touchstone-rules/src/quicksilver/balance.rs   # `is_neutral`, additive
   - crates/touchstone-rules/src/attack.rs                # energy per blow
   - tools/qs-vectors/src/energy.rs
   - tools/qs-vectors/src/main.rs                         # register the module; additive
@@ -37,6 +38,8 @@ Quicksilver only, aggregate the ability the way the engine does and apply it to 
   spell's average cast. "Negate ability" is not modelled.
 - Applied to a normal blow after the Quick and Deadly bonus is judged (the engine judges that without abilities):
   `energy * pct / 100` when pct is positive. Not applied to fixed-1000 attacks. The 200 floor stays unmodelled.
+- The balance has no key for it (its keys mirror the engine's), so `Balance::is_neutral()` switches it off: the
+  neutral profile answers as MME does and the identity harness stays exact.
 
 ## Do
 1. `CharStats.energy_use` (gear), carried via the profile to `attack::CharacterProfile.energy_pct`.

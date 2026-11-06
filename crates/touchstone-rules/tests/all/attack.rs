@@ -150,6 +150,7 @@ fn profile(udt: &Value) -> CharacterProfile {
         encum_current: n("nEncumCurrent"),
         encum_max: n("nEncumMax"),
         spell_dmg_bonus: n("nSpellDmgBonus") as i16,
+        energy_pct: 0,
     }
 }
 

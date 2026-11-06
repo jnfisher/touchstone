@@ -61,7 +61,7 @@ fn rows<'a>(tables: &'a Value, key: &str) -> &'a Vec<Value> {
     tables[key].as_array().unwrap()
 }
 
-fn world(tables: &Value) -> World {
+pub(crate) fn world(tables: &Value) -> World {
     let items = rows(tables, "items")
         .iter()
         .map(|r| Item {
@@ -299,9 +299,7 @@ fn touchstone(world: &World, c: &Value, profile: Profile) -> (f64, f64) {
     (out.average_damage.to_f64(), out.swings)
 }
 
-/// The spells of a cell's standing buffs that carry "Alter Energy Usage" (ability 87). MME has no
-/// character-level counterpart (only the item detail applies a fixed 85%), so a cell with one fights
-/// with fewer blows a round in the tool than in touchstone.
+/// The spells of a cell's standing buffs that carry "Alter Energy Usage" (ability 87).
 fn has_energy_buff(tables: &Value, c: &Value) -> bool {
     c["inputs"]["buffs"].as_array().unwrap().iter().any(|b| {
         rows(tables, "spells")
@@ -344,8 +342,8 @@ fn cells_header_and_shape() {
 /// end-to-end cells"):
 /// - the tool caps a blow at the round's 1000 energy, so a very slow blow still lands once a round
 ///   where MME's swings fall below one (allowance 17%);
-/// - a standing buff with Alter Energy Usage speeds the tool's blows; MME does not apply it to the
-///   character (allowance 25%);
+/// - a standing buff with Alter Energy Usage speeds the tool's blows; Quicksilver's profile now
+///   applies it (Q-017), so those cells need no allowance and must stay within the default 7%;
 /// - a weapon that casts spells on hit: the tool plays every cast, MME prices them from the spell
 ///   text (allowance 12%).
 #[test]
@@ -378,7 +376,6 @@ fn cells_agree_with_the_balance_tool() {
         }
         if has_energy_buff(tables, c) {
             energy += 1;
-            allow = allow.max(0.25);
         }
         if t["weapon_dpr"].as_f64().unwrap() > 5.0 {
             cast += 1;

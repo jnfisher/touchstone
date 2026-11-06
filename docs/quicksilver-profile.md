@@ -240,6 +240,7 @@ touch `docs/differences.md` only to append.
 | Q-014 | Exp/hr under Quicksilver (Model D) | Q-008, Q-010, Q-013 | R2, R6, R10 | `exp_per_hour/` (profile gate for Models A to C, Model D recovery and procs), `docs/differences.md`, tests, `fixtures/quicksilver/exphr_d.json` | M |
 | Q-015 | Web: show the profile | Q-004, Q-014 | part 3 | `web/` (header badge, hide Models A to C and Quicksilver-only text under the profile), web tests | S |
 | Q-016 | End-to-end cells against the balance tool | Q-013, Q-014 | layer 3 | `tools/qs-vectors/`, `fixtures/quicksilver/cells.json`, `crates/touchstone-rules/tests/all/quicksilver_cells.rs` | M |
+| Q-017 | Alter Energy Usage (ability 87) | Q-016 | layer 2, layer 3 | `tools/qs-vectors/src/energy.rs`, `fixtures/quicksilver/energy.json`, `crates/touchstone-rules/tests/all/quicksilver_energy.rs` | S |
 
 Order: Q-002 to Q-005 first (Q-002 is independent and can run beside Q-003), then Q-006 to Q-008 in
 parallel, then the combat chain Q-009, Q-010, Q-011, the spell card Q-012, then Q-013, Q-014 and

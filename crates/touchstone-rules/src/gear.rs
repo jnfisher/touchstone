@@ -201,6 +201,10 @@ pub struct CharStats {
     pub bless_spells: [i32; BLESS_SLOTS],
     /// The VB6 run-time error that ended the calculation early, if any.
     pub error: Option<i32>,
+    /// Quicksilver's "Alter Energy Usage" (ability 87) as a percentage of a normal blow's energy:
+    /// the running average over the character's sources (see [`quicksilver_energy_use`]). 0 under
+    /// Stock, where MME has no such stat, and 0 when no source has the ability.
+    pub energy_use: i32,
     /// `Val(lblInvenCharStat(i).Tag)`; `None` while the tag is empty (second half, P3-18).
     pub stat_tag: [Option<f64>; STAT_COUNT],
     /// `nGlobalAttackAccyAdj`: the accuracy a bash or smash attack gives up (second half).
@@ -239,6 +243,7 @@ impl CharStats {
             bless: Box::new([0.0; BLESS_COUNT]),
             bless_spells: [0; BLESS_SLOTS],
             error: None,
+            energy_use: 0,
             stat_tag: [None; STAT_COUNT],
             attack_accy_adj: 0,
             qnd_bonus: 0,
@@ -985,7 +990,132 @@ fn run(input: &GearInput, s: &mut CharStats) -> Res<()> {
     if s.shadow_ac > 0 {
         s.add(2, f64::from(s.shadow_ac));
     }
+    if profile_has_energy_use(input.profile) {
+        s.energy_use = quicksilver_energy_use(input, &slots);
+    }
     Ok(())
+}
+
+/// Does the profile apply Alter Energy Usage? Quicksilver does, unless its balance is the neutral
+/// one (the balance has no key for it, so neutral is the setting that switches it off). Stock and
+/// MME have no such stat.
+#[must_use]
+pub fn profile_has_energy_use(profile: Profile) -> bool {
+    matches!(profile, Profile::Quicksilver(b) if !b.is_neutral())
+}
+
+/// The ability that alters the energy a blow costs.
+const ABILITY_ENERGY_USE: i32 = 87;
+
+/// Quicksilver's "Alter Energy Usage" total; not an MME stat. Each source that has the ability
+/// averages it into the running value, `(running + value) / 2` once the running value is not 0, so
+/// the order matters: bless spells, race, class, the worn items in slot order, the weapon, then
+/// the carried items that apply. A bless spell slot of 0 takes the spell's average cast, as the
+/// other bless abilities do. "Negate ability" is not modelled.
+fn quicksilver_energy_use(input: &GearInput, slots: &[Slot]) -> i32 {
+    let world = input.world;
+    let who = &input.character;
+    let mut total = 0i32;
+    let mut apply = |value: i32| {
+        total = if total != 0 {
+            (total + value) / 2
+        } else {
+            value
+        };
+    };
+    let set_level = if who.level == 0 { 1 } else { who.level };
+    for &number in input.bless_slots.iter().filter(|&&n| n > 0) {
+        let Some(spell) = world.get_spell(number) else {
+            continue;
+        };
+        for a in spell
+            .abilities
+            .iter()
+            .filter(|a| a.ability == ABILITY_ENERGY_USE)
+        {
+            let value = if a.value != 0 {
+                a.value
+            } else {
+                spell_average_cast(spell, set_level).unwrap_or(0)
+            };
+            apply(value);
+        }
+    }
+    if !input.hide_class_race {
+        if who.race > 0
+            && let Some(race) = world.get_race(who.race)
+        {
+            race.abilities
+                .iter()
+                .filter(|a| a.ability == ABILITY_ENERGY_USE)
+                .for_each(|a| apply(a.value));
+        }
+        if who.class > 0
+            && let Some(class) = world.get_class(who.class)
+        {
+            class
+                .abilities
+                .iter()
+                .filter(|a| a.ability == ABILITY_ENERGY_USE)
+                .for_each(|a| apply(a.value));
+        }
+    }
+    // The weapon (slot 16) comes after the other worn items.
+    let order = slots
+        .iter()
+        .filter(|sl| !sl.carried && sl.index != 16)
+        .chain(slots.iter().filter(|sl| !sl.carried && sl.index == 16))
+        .chain(slots.iter().filter(|sl| sl.carried));
+    for sl in order {
+        if sl.item < 1 {
+            continue;
+        }
+        let Some(item) = world.get_item(sl.item) else {
+            continue;
+        };
+        if sl.carried
+            && !(carried_item_applies(item)
+                && item_is_usable_by_char(
+                    input.profile,
+                    world,
+                    who,
+                    &input.equipped,
+                    sl.item,
+                    true,
+                    false,
+                ))
+        {
+            continue;
+        }
+        item.abilities
+            .iter()
+            .filter(|a| a.ability == ABILITY_ENERGY_USE)
+            .for_each(|a| apply(a.value));
+    }
+    total
+}
+
+/// The average of a spell's Min and Max at `level`, truncated as `bless_one` does.
+fn spell_average_cast(spell: &Spell, set_level: i32) -> Res<i32> {
+    let mut level = set_level;
+    if level > spell.cap && spell.cap > 0 {
+        level = spell.cap;
+    }
+    if level < spell.req_level {
+        level = spell.req_level;
+    }
+    let req = MinMaxRequest {
+        use_level: level > 0,
+        level: to_integer(level)?,
+        ..MinMaxRequest::default()
+    };
+    let mm = get_current_spell_min_max(Some(spell), 0.0, &req);
+    to_long(
+        mm.n_min
+            .checked_add(mm.n_max)?
+            .checked_div(cur_long(2))?
+            .to_f64(),
+    )
 }
 
 /// Class then race: stealth flags, the race's hit points per level and the abilities that map to a
