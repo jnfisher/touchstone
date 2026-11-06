@@ -13,6 +13,7 @@ use touchstone_model::{Class, Magery, Race};
 use touchstone_vb6 as vb;
 use touchstone_vb6::{Currency, Vb6Error};
 
+use crate::quicksilver::Balance;
 use crate::{Profile, RulesError};
 
 fn vb6(e: Vb6Error) -> RulesError {
@@ -188,6 +189,111 @@ pub fn cp_cost_for_raise(profile: Profile, delta: i32) -> Result<i32, RulesError
         vb::add_i32(full, vb::mul_i32(rem_pts, tens + 1).map_err(vb6)?).map_err(vb6)?
     };
     Ok(cost)
+}
+
+/// Whether the profile prices stat training with soft caps (R14). Stock does not, and a
+/// Quicksilver balance whose three soft-cap keys are `Balance::NEUTRAL`'s is read as "off": MME
+/// prices every point above the race minimum on the one stock ladder, which NEUTRAL's flat price
+/// cannot reproduce above the race maximum (see docs/differences.md).
+pub(crate) fn soft_caps_on(profile: Profile) -> Option<&'static Balance> {
+    match profile {
+        Profile::Stock => None,
+        Profile::Quicksilver(b) => {
+            let off = Balance::NEUTRAL;
+            let same = b.softcap_floor == off.softcap_floor
+                && b.softcap_floor_price == off.softcap_floor_price
+                && b.softcap_band_prices == off.softcap_band_prices;
+            (!same).then_some(b)
+        }
+    }
+}
+
+/// The stat value up to which training is priced below the bands: the race maximum, or under
+/// Quicksilver the larger of that and `softcap_floor` (R14).
+#[must_use]
+pub fn soft_cap(profile: Profile, race_max: i32) -> i32 {
+    match soft_caps_on(profile) {
+        None => race_max,
+        Some(b) => race_max.max(i32::try_from(b.softcap_floor).unwrap_or(i32::MAX)),
+    }
+}
+
+/// The highest value training takes a stat to: the soft cap and one band of ten points per band
+/// price. `None` where the profile sets no limit (MME checks no ceiling in its price).
+#[must_use]
+pub fn train_max(profile: Profile, race_max: i32) -> Option<i32> {
+    let b = soft_caps_on(profile)?;
+    let bands = i32::try_from(b.softcap_band_prices.len() * 10).unwrap_or(0);
+    Some(soft_cap(profile, race_max).saturating_add(bands))
+}
+
+/// Creation points for the part of a stat above its race maximum: the floor price up to the soft
+/// cap, then the bands (the last one open-ended). `None` when the profile prices the whole stat on
+/// the stock ladder; otherwise the extra to add to the ladder cost of `min(target, race_max)`.
+///
+/// # Errors
+/// `Vb6(6)` on a Long overflow (a target in the hundreds of millions).
+pub fn soft_cap_extra(
+    profile: Profile,
+    race_max: i32,
+    target: i32,
+) -> Result<Option<i32>, RulesError> {
+    let Some(b) = soft_caps_on(profile) else {
+        return Ok(None);
+    };
+    let cap = soft_cap(profile, race_max);
+    let price = |p: u32| i32::try_from(p).unwrap_or(i32::MAX);
+    let floor_pts = target.min(cap).saturating_sub(race_max).max(0);
+    let mut cost = vb::mul_i32(floor_pts, price(b.softcap_floor_price)).map_err(vb6)?;
+    let mut over = target.saturating_sub(cap).max(0);
+    let last = b.softcap_band_prices.len() - 1;
+    for (i, &p) in b.softcap_band_prices.iter().enumerate() {
+        let n = if i == last { over } else { over.min(10) };
+        cost = vb::add_i32(cost, vb::mul_i32(n, price(p)).map_err(vb6)?).map_err(vb6)?;
+        over -= n;
+    }
+    Ok(Some(cost))
+}
+
+/// Creation points from the race minimum to `target` on the profile's training ladder.
+fn train_total(
+    profile: Profile,
+    race_min: i32,
+    race_max: i32,
+    target: i32,
+) -> Result<i32, RulesError> {
+    let race_max = race_max.max(race_min);
+    match soft_cap_extra(profile, race_max, target)? {
+        None => cp_cost_for_raise(profile, vb::sub_i32(target, race_min).map_err(vb6)?),
+        Some(extra) => {
+            let ladder = cp_cost_for_raise(
+                profile,
+                vb::sub_i32(target.min(race_max), race_min).map_err(vb6)?,
+            )?;
+            vb::add_i32(ladder, extra).map_err(vb6)
+        }
+    }
+}
+
+/// Port of Quicksilver's training price (R14): creation points to raise a stat from `from` to
+/// `to` for a race whose range is `race_min..=race_max`; 0 when `to <= from`. Under the stock
+/// profile the one ladder of [`cp_cost_for_raise`] counted from the race minimum.
+///
+/// # Errors
+/// `Vb6(6)` on a Long overflow.
+pub fn train_cost(
+    profile: Profile,
+    race_min: i32,
+    race_max: i32,
+    from: i32,
+    to: i32,
+) -> Result<i32, RulesError> {
+    if to <= from {
+        return Ok(0);
+    }
+    let hi = train_total(profile, race_min, race_max, to)?;
+    let lo = train_total(profile, race_min, race_max, from)?;
+    Ok((hi - lo).max(0))
 }
 
 /// Port of modMMudDatabase LevelNeededForCP: the first level at which `base_cp` plus the
