@@ -27,3 +27,39 @@ export function infoLines(info: Info): InfoLine[] {
 	}
 	return lines.filter((l) => l.value !== '');
 }
+
+// ---------- the rules profile (stock or Quicksilver) ----------
+
+/** The server left the profile out (an older build) or says stock: nothing Quicksilver to show. */
+export function isQuicksilver(info: Info | undefined): boolean {
+	return info?.profile?.name === 'quicksilver';
+}
+
+/** The header badge: "Quicksilver 1.20.0", or "Stock" with the content version when the database has one. */
+export function profileBadge(info: Info): string {
+	const p = info.profile;
+	const name = p?.name === 'quicksilver' ? 'Quicksilver' : 'Stock';
+	return p?.content_version ? `${name} ${p.content_version}` : name;
+}
+
+/** The badge's tooltip: what the badge means, and the balance overrides from `touchstone.toml` if any. */
+export function profileBadgeTitle(info: Info): string {
+	const p = info.profile;
+	if (p?.name !== 'quicksilver') return 'Stock MajorMUD rules';
+	const o = p.balance_overrides;
+	return o.length
+		? `Quicksilver rules. Balance overrides from touchstone.toml: ${o.join(', ')}`
+		: 'Quicksilver rules, balance as shipped';
+}
+
+/** The popover's "Rules profile" rows. */
+export function profileLines(info: Info): InfoLine[] {
+	const p = info.profile;
+	if (!p) return [];
+	return [
+		{ label: 'Profile', value: p.name === 'quicksilver' ? 'Quicksilver' : 'Stock' },
+		{ label: 'Setting', value: p.setting },
+		{ label: 'Content version', value: p.content_version ?? 'none' },
+		{ label: 'Balance overrides', value: p.balance_overrides.length ? p.balance_overrides.join(', ') : 'none' }
+	];
+}

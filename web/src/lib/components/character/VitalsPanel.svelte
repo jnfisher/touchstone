@@ -19,13 +19,13 @@
 				{#if ev.hp.min !== null && ev.hp.max !== null}
 					<div class="text-muted-foreground text-xs tabular-nums">{ev.hp.min} to {ev.hp.max}, avg {ev.hp.average}</div>
 				{/if}
-				<div class="text-muted-foreground text-xs">{ev.hp.rest_caption ?? ''}</div>
+				<div class="text-muted-foreground text-xs whitespace-pre-line">{(ev.hp.rest_caption ?? '').replace(/\r\n/g, '\n')}</div>
 				{#if ev.hp.error_text}<div class="text-destructive text-xs">{ev.hp.error_text}</div>{/if}
 			</div>
 			<div class={tile}>
 				<div class={tileLabel}>Mana</div>
 				<div data-testid="char-mana">{ev.mana.max_caption ?? 'None'}</div>
-				<div class="text-muted-foreground text-xs">{ev.mana.regen_caption ?? ''}</div>
+				<div class="text-muted-foreground text-xs whitespace-pre-line">{(ev.mana.regen_caption ?? '').replace(/\r\n/g, '\n')}</div>
 				<div class="text-muted-foreground text-xs">{ev.mana.spellcasting_caption ?? ''}</div>
 				{#if ev.mana.error_text}<div class="text-destructive text-xs">{ev.mana.error_text}</div>{/if}
 			</div>

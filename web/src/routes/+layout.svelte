@@ -16,6 +16,7 @@
 	import { getCharacterStore } from '$lib/character.svelte';
 	import GlobalFilterBar from '$lib/components/GlobalFilterBar.svelte';
 	import MenuDialogs from '$lib/components/MenuDialogs.svelte';
+	import ProfileBadge from '$lib/components/ProfileBadge.svelte';
 	import InfoPopover from '$lib/components/InfoPopover.svelte';
 	import OptionsMenu from '$lib/components/OptionsMenu.svelte';
 	import PasteDialog from '$lib/components/paste/PasteDialog.svelte';
@@ -152,6 +153,7 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			<OptionsMenu />
+			<ProfileBadge />
 			<InfoPopover />
 			<Tooltip.Root>
 				<Tooltip.Trigger>
