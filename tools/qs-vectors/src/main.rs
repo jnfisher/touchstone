@@ -8,6 +8,7 @@ mod backstab;
 mod knees;
 mod opener;
 mod regen;
+mod spells;
 mod training;
 
 use std::path::Path;
@@ -60,6 +61,7 @@ fn main() {
         knees::family(),
         opener::family(),
         regen::family(),
+        spells::family(),
         training::family(),
     ] {
         let text = render(&fam, &commit, &version);

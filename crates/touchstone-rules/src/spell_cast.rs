@@ -15,7 +15,7 @@
 //! ported. `CalculateSpellCast` prints ability names through `GetAbilityStats` (P3-07's); the
 //! caller supplies them through [`SpellText::ability_stats`].
 
-use touchstone_model::{Class, Spell};
+use touchstone_model::{Class, Magery, Spell};
 use touchstone_vb6 as vb;
 use touchstone_vb6::{Currency, Vb6Error};
 
@@ -725,6 +725,96 @@ pub struct SpellCasterProfile {
     pub spell_overhead: f64,
     /// `nManaRegen`.
     pub mana_regen: f64,
+    /// The character's casting stat ([`casting_stat`]): Quicksilver's R7 reads it. 0 for no
+    /// character and for classes without mana.
+    pub casting_stat: i32,
+    /// The character's class number, for Quicksilver's class spell share (R8); 0 is no class.
+    pub class: i32,
+    /// The character's level (not the cast level), for the class share.
+    pub level: i32,
+}
+
+/// The stat that drives a class's mana, which Quicksilver's R7 scales spell damage by: Mage
+/// Intellect, Priest Willpower, Druid their mean (truncated), Bard Charm; 0 for Kai and no magic.
+/// It is the stat `CalcManaRegen` multiplies, so the same stats are passed.
+#[must_use]
+pub fn casting_stat(magery: Magery, intellect: i32, willpower: i32, charm: i32) -> i32 {
+    match magery {
+        Magery::Mage => intellect,
+        Magery::Priest => willpower,
+        Magery::Druid => ((i64::from(intellect) + i64::from(willpower)) / 2) as i32,
+        Magery::Bard => charm,
+        Magery::None | Magery::Kai => 0,
+    }
+}
+
+/// Quicksilver R7 and R8: a player's damage spell amount after the casting-stat bonus (per mille
+/// added per stat point over 50, the stat counting a third above `spell_stat_knee`) and then the
+/// class's share at the character's level, both truncating in 64 bits. Stock leaves the amount
+/// alone, and so does the neutral balance.
+///
+/// A class number outside the stock fifteen has no share and keeps the whole amount.
+#[must_use]
+pub fn scale_spell_damage(profile: Profile, amount: i32, who: &SpellCasterProfile) -> i32 {
+    let Profile::Quicksilver(b) = profile else {
+        return amount;
+    };
+    let stat = Balance::knee_third(i64::from(who.casting_stat), b.spell_stat_knee);
+    let bonus = (stat - 50).max(0) * i64::from(b.spell_stat_permille);
+    let boosted = (i64::from(amount) * (1000 + bonus) / 1000)
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+    let class = u16::try_from(who.class).unwrap_or(0);
+    let level = u16::try_from(who.level.max(0)).unwrap_or(u16::MAX);
+    b.class_spell_pct.scale(class, level, boosted)
+}
+
+/// A monster's chance to resist an area spell and the cut it then takes (Quicksilver R9), both
+/// whole percents of the engine: the chance is `min(MR / 2, 98)` taken against the 99 values the
+/// host's `genrdn(1, 100)` returns, the cut `min(aoe_resist_cut_max_pct, MR / aoe_resist_cut_div)`.
+fn area_resist(b: &Balance, mr: i32) -> (i32, i32) {
+    if mr <= 0 {
+        return (0, 0);
+    }
+    let chance = (mr / 2).min(98);
+    let div = i32::try_from(b.aoe_resist_cut_div.max(1)).unwrap_or(i32::MAX);
+    let max = i32::try_from(b.aoe_resist_cut_max_pct).unwrap_or(i32::MAX);
+    (chance, (mr / div).clamp(0, max))
+}
+
+/// Quicksilver R9 for tests and callers that show it: the chance, in rolls out of the engine's 99,
+/// that a monster of magic resistance `mr` resists an area spell, and the cut it then takes in
+/// percent. `(0, 0)` in stock.
+#[must_use]
+pub fn area_resist_chance(profile: Profile, mr: i32) -> (i32, i32) {
+    match profile {
+        Profile::Stock => (0, 0),
+        Profile::Quicksilver(b) => area_resist(b, mr),
+    }
+}
+
+/// The text for R9 when it takes anything off: the chance a monster's roll resists, as a whole
+/// percent of the 99 rolls, and the cut it then takes.
+fn area_resist_note(profile: Profile, mr: i32) -> Option<String> {
+    let Profile::Quicksilver(b) = profile else {
+        return None;
+    };
+    let (chance, cut) = area_resist(b, mr);
+    (chance > 0 && cut > 0).then(|| {
+        let pct = (f64::from(chance) * 100.0 / 99.0).round();
+        format!("{pct}% chance for a monster to resist and take {cut}% less")
+    })
+}
+
+/// Quicksilver R9: the share of an area damage spell a monster of magic resistance `mr` is
+/// expected to keep, `1 - p * cut / 100`, where `p` is the chance its resist roll succeeds. 1 in
+/// stock (a Never-resist area spell is never resisted there) and for a monster with no resistance.
+#[must_use]
+pub fn area_resist_keep(profile: Profile, mr: i32) -> f64 {
+    let Profile::Quicksilver(b) = profile else {
+        return 1.0;
+    };
+    let (chance, cut) = area_resist(b, mr);
+    1.0 - f64::from(chance) * f64::from(cut) / 9900.0
 }
 
 /// The arguments of `CalculateSpellCast` after the profile. `cast_level` 0 or less means the
@@ -900,6 +990,15 @@ impl SpellCastEnv<'_> {
 
         let non_magic = sp.abilities.iter().any(|a| a.ability == 144);
 
+        // Quicksilver R7/R8: the amount a damage slot adds is scaled by the caster's casting stat
+        // and class. Inflict Damage and Inflict Damage on Armour always scale on a monster; a drain
+        // only when it does not last. Stock and the neutral balance leave every amount alone.
+        let who_scale = |a: i32| scale_spell_damage(self.profile, a, who);
+        let lasting = sp.dur != 0;
+        let drain_scale = |a: i32| if lasting { a } else { who_scale(a) };
+        let mut roll_scaled = false;
+        let mut area_damage = false;
+
         let (mut damage, mut heals, mut min_damage) = (0i32, 0i32, 0i32);
         let mut damage_minus_mr = false;
         let mut value_modified = false;
@@ -908,15 +1007,17 @@ impl SpellCastEnv<'_> {
             match slot.ability {
                 1 => {
                     r.b_does_damage = true;
+                    area_damage = true;
                     if v == 0 {
-                        damage = vb::add_i32(damage, avg_modified)?;
-                        min_damage = vb::add_i32(min_damage, min_modified)?;
+                        roll_scaled = true;
+                        damage = vb::add_i32(damage, who_scale(avg_modified))?;
+                        min_damage = vb::add_i32(min_damage, who_scale(min_modified))?;
                         if multiplier > 1.0 {
                             value_modified = true;
                         }
                     } else {
-                        damage = vb::add_i32(damage, v)?;
-                        min_damage = vb::add_i32(min_damage, v)?;
+                        damage = vb::add_i32(damage, who_scale(v))?;
+                        min_damage = vb::add_i32(min_damage, who_scale(v))?;
                     }
                     if elemental != 0 {
                         let t2 = clng(vb::round(
@@ -932,28 +1033,31 @@ impl SpellCastEnv<'_> {
                     r.b_does_damage = true;
                     r.b_does_heal = true;
                     if v == 0 {
-                        damage = vb::add_i32(damage, avg_modified)?;
-                        min_damage = vb::add_i32(min_damage, min_modified)?;
-                        heals = vb::add_i32(heals, avg_modified)?;
+                        roll_scaled |= !lasting;
+                        damage = vb::add_i32(damage, drain_scale(avg_modified))?;
+                        min_damage = vb::add_i32(min_damage, drain_scale(min_modified))?;
+                        heals = vb::add_i32(heals, drain_scale(avg_modified))?;
                     } else {
-                        damage = v;
-                        min_damage = v;
-                        heals = v;
+                        damage = drain_scale(v);
+                        min_damage = drain_scale(v);
+                        heals = drain_scale(v);
                     }
                 }
                 17 => {
                     // damage reduced by magic resist
                     r.b_does_damage = true;
+                    area_damage = true;
                     let (temp, temp_min);
                     if v == 0 {
+                        roll_scaled = true;
                         damage_minus_mr = true;
-                        temp = avg_modified;
-                        temp_min = min_modified;
+                        temp = who_scale(avg_modified);
+                        temp_min = who_scale(min_modified);
                         if multiplier > 1.0 {
                             value_modified = true;
                         }
                     } else {
-                        temp = v;
+                        temp = who_scale(v);
                         temp_min = temp;
                     }
                     let resist = |dmg: i32| -> Res<i32> {
@@ -1011,6 +1115,10 @@ impl SpellCastEnv<'_> {
             min_cast = clng(vb::fix(f64::from(min_cast) * multiplier))?;
             max_cast = clng(vb::fix(f64::from(max_cast) * multiplier))?;
         }
+        if roll_scaled {
+            min_cast = who_scale(min_cast);
+            max_cast = who_scale(max_cast);
+        }
         let avg_before_resist = clng(vb::round(
             f64::from(vb::add_i32(min_cast, max_cast)?) / 2.0,
             0,
@@ -1065,23 +1173,36 @@ impl SpellCastEnv<'_> {
         r.n_min_cast = min_cast;
         r.n_max_cast = max_cast;
         r.n_avg_cast = if value_modified {
-            avg_modified
+            who_scale(avg_modified)
         } else {
             avg_cast
         };
         r.n_num_casts = casts;
         r.n_mana_cost = vb::cint(f64::from(sp.mana_cost) * casts)?;
         r.n_cast_chance = cast_chance;
-        let scale = |n: i32| -> Res<i32> {
+        // Quicksilver R9: an area damage spell that reaches monsters is cut, in expectation, by the
+        // monsters that resist it (1.0 in stock, where the factor is exactly neutral).
+        let area_keep = if area_damage && matches!(sp.targets, 3 | 5 | 9 | 11 | 12) {
+            area_resist_keep(self.profile, req.vs_mr)
+        } else {
+            1.0
+        };
+        let area_note = if area_keep < 1.0 {
+            area_resist_note(self.profile, req.vs_mr)
+        } else {
+            None
+        };
+        let scale = |n: i32, keep: f64| -> Res<i32> {
             clng(vb::round(
                 ((f64::from(n) * casts) * (f64::from(cast_chance) / 100.0))
-                    * (1.0 - (f64::from(full_resist) / 100.0)),
+                    * (1.0 - (f64::from(full_resist) / 100.0))
+                    * keep,
                 0,
             )?)
         };
-        r.n_avg_round_dmg = scale(damage)?;
-        r.n_min_round_dmg = scale(min_damage)?;
-        r.n_avg_round_heals = scale(heals)?;
+        r.n_avg_round_dmg = scale(damage, area_keep)?;
+        r.n_min_round_dmg = scale(min_damage, area_keep)?;
+        r.n_avg_round_heals = scale(heals, 1.0)?;
         r.n_duration = to_i16(duration)?;
         r.n_full_resist_chance = full_resist;
 
@@ -1154,6 +1275,9 @@ impl SpellCastEnv<'_> {
                         " and ",
                     );
                 }
+                if let Some(note) = &area_note {
+                    s_not = auto_append(&s_not, note, " and ");
+                }
                 if !s_not.is_empty() {
                     s_avg.push_str(&format!(", not including {s_not}"));
                 }
@@ -1169,6 +1293,9 @@ impl SpellCastEnv<'_> {
                         ", {}% chance to fully-resist",
                         r.n_full_resist_chance
                     ));
+                }
+                if let Some(note) = &area_note {
+                    s_avg.push_str(&format!(", {note}"));
                 }
             }
         }

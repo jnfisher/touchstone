@@ -114,7 +114,7 @@ fn opener_cost_and_follow_blows() {
 
 /// MME's energy for the same character. Where it is 200 or more it must equal the engine's normal
 /// blow (the screening of the neutral column); below that the engine's floor of 200 applies and MME
-/// has none (docs/differences.md).
+/// has none, and above 1000 the engine holds a blow to the round (docs/differences.md).
 fn mme_energy(i: &Value) -> i32 {
     let e = calc_energy_used(&EnergyInput {
         combat: Currency::from_f64(f64::from(int(&i["combat"]))).unwrap(),
@@ -137,7 +137,7 @@ fn energy_cases_match_mme_and_the_stab_rule() {
         n += 1;
         let mme = mme_energy(&c["inputs"]);
         let (engine_normal, v120_stab) = pair(&c["v120"]);
-        if mme.max(200) != engine_normal {
+        if mme.clamp(200, 1000) != engine_normal {
             bad.push(format!("{}: MME {mme}, engine {engine_normal}", c["id"]));
             continue;
         }
