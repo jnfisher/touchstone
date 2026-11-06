@@ -1181,6 +1181,7 @@ pub(crate) fn with_monster_env<R>(
             nmr_ver: ctx.nmr,
             avg_level_max_all_stats: ctx.avg,
             party: controls.party(),
+            hide_record_numbers: ctx.hide_record_numbers,
             ..PipelineOptions::default()
         };
         placeholder = refresh_all(profile, world, &ch, &opts)
@@ -1448,11 +1449,12 @@ fn row_env<'a>(ctx: &'a Ctx, equipped: &'a EquippedGlobals) -> RowEnv<'a> {
 ///
 /// # Errors
 /// 422 for a character without class and race or one the pipeline cannot evaluate; 400 for a
-/// character that is not well formed.
+/// character that is not well formed. `hide_record_numbers` is `bHideRecordNumbers`.
 pub(crate) fn prepare<'a>(
     profile: Profile,
     world: &'a World,
     req: &EvaluateBody,
+    hide_record_numbers: bool,
 ) -> Result<Ctx<'a>, ApiError> {
     req.options.validate()?;
     if let Some(g) = &req.global_filter {
@@ -1505,6 +1507,7 @@ pub(crate) fn prepare<'a>(
                 nmr_ver: nmr,
                 avg_level_max_all_stats: avg,
                 party: req.options.monsters.party(),
+                hide_record_numbers: hide_record_numbers,
                 ..PipelineOptions::default()
             };
             let st = refresh_all(profile, world, &ch, &opts).map_err(|e| {
@@ -1543,7 +1546,7 @@ pub(crate) fn prepare<'a>(
         equipped_items,
         attack,
         reach: None,
-        hide_record_numbers: false,
+        hide_record_numbers,
     })
 }
 
@@ -1613,9 +1616,8 @@ pub fn evaluate_with_damage(
     damage: &Snapshot,
     reach: Option<&crate::reach::ReachSlot>,
 ) -> Result<Table, ApiError> {
-    let mut ctx = prepare(profile, world, req)?;
+    let mut ctx = prepare(profile, world, req, hide_record_numbers)?;
     ctx.reach = reach;
-    ctx.hide_record_numbers = hide_record_numbers;
     let built = match tab {
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),

@@ -418,7 +418,7 @@ fn character_side<'a>(
             ..Options::default()
         },
     };
-    let ctx = prepare(profile, world, &req)?;
+    let ctx = prepare(profile, world, &req, state.hide_record_numbers())?;
     let exp = run_settings(state, Some(character)).0;
     let snap = Snapshot::uncalculated(world);
     let (chr, desc) = with_monster_env(

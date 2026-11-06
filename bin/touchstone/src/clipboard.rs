@@ -62,8 +62,9 @@ pub fn character_clip(
     profile: Profile,
     world: &World,
     req: &CharacterRequest,
+    hide_record_numbers: bool,
 ) -> Result<ClipJson, (axum::http::StatusCode, String)> {
-    let (ch, st) = refresh(profile, world, &req.character)?;
+    let (ch, st) = refresh(profile, world, &req.character, hide_record_numbers)?;
     let (Some(class), Some(race)) = (ch.class, ch.race) else {
         return Err(bad("pick a class and race"));
     };
@@ -138,7 +139,12 @@ pub async fn character_route(
 ) -> ApiResult {
     let loaded = state.current();
     let profile = loaded.profile;
-    json(&character_clip(profile, &loaded.world, &req)?)
+    json(&character_clip(
+        profile,
+        &loaded.world,
+        &req,
+        state.hide_record_numbers(),
+    )?)
 }
 
 // ---------- rows the page holds ----------

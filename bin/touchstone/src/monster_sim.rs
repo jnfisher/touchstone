@@ -496,7 +496,11 @@ pub async fn sim_route(State(app): State<Arc<AppState>>, Body(req): Body<SimReq>
     let loaded = app.current();
     let profile = loaded.profile;
     let chr = match &req.defender.character {
-        Some(dto) => Some(refresh(profile, &loaded.world, dto)?.1.sim_inputs()),
+        Some(dto) => Some(
+            refresh(profile, &loaded.world, dto, app.hide_record_numbers())?
+                .1
+                .sim_inputs(),
+        ),
         None => None,
     };
     // Half a million rounds is real work; keep it off the async threads.
@@ -523,9 +527,14 @@ pub async fn defender_route(
 ) -> ApiResult {
     let loaded = app.current();
     let profile = loaded.profile;
-    let chr = refresh(profile, &loaded.world, &req.character)?
-        .1
-        .sim_inputs();
+    let chr = refresh(
+        profile,
+        &loaded.world,
+        &req.character,
+        app.hide_record_numbers(),
+    )?
+    .1
+    .sim_inputs();
     json(&DefenderJson {
         class: chr.class,
         defender: Boxes::from_character(&chr)?,

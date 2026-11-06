@@ -760,7 +760,13 @@ fn error_text(code: Option<i32>) -> Option<String> {
     code.map(|c| vb_error_text(u32::try_from(c).unwrap_or(0)))
 }
 
-fn state_json(profile: Profile, world: &World, st: &CharacterState, ch: &Character) -> StateJson {
+fn state_json(
+    profile: Profile,
+    world: &World,
+    st: &CharacterState,
+    ch: &Character,
+    hide_record_numbers: bool,
+) -> StateJson {
     let s = &st.stats;
     let cps = &st.cps;
     let (exp_kind, exp) = match cps.summary.as_ref().map(|c| c.exp) {
@@ -847,7 +853,15 @@ fn state_json(profile: Profile, world: &World, st: &CharacterState, ch: &Charact
             rounds: st.attack_config().heal_rounds,
             spell_lvl: st.attack_config().heal_spell_lvl,
         },
-        attack_name: crate::combat_setup::attack_names(profile, world, &st.character, st, false).0,
+        attack_name: crate::combat_setup::attack_names(
+            profile,
+            world,
+            &st.character,
+            st,
+            false,
+            hide_record_numbers,
+        )
+        .0,
         stats_error_text: error_text(s.error),
         calc: CalcJson {
             stat_tags: s.stat_tag.iter().map(|t| t.unwrap_or(0.0)).collect(),
@@ -869,6 +883,7 @@ pub(crate) fn refresh(
     profile: Profile,
     world: &World,
     dto: &CharacterDto,
+    hide_record_numbers: bool,
 ) -> Result<(Character, CharacterState), (StatusCode, String)> {
     let ch = dto.to_character().map_err(bad)?;
     if ch.class.is_none() || ch.race.is_none() {
@@ -881,6 +896,7 @@ pub(crate) fn refresh(
         dat_ver_caption: world.info.dat_file_version.clone(),
         nmr_ver: nmr_ver(&world.info.nmr_version),
         avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
+        hide_record_numbers,
         ..PipelineOptions::default()
     };
     let st = refresh_all(profile, world, &ch, &opts)
@@ -893,9 +909,10 @@ pub fn evaluate(
     profile: Profile,
     world: &World,
     dto: &CharacterDto,
+    hide_record_numbers: bool,
 ) -> Result<StateJson, (StatusCode, String)> {
-    let (ch, st) = refresh(profile, world, dto)?;
-    Ok(state_json(profile, world, &st, &ch))
+    let (ch, st) = refresh(profile, world, dto, hide_record_numbers)?;
+    Ok(state_json(profile, world, &st, &ch, hide_record_numbers))
 }
 
 pub async fn evaluate_route(
@@ -904,7 +921,12 @@ pub async fn evaluate_route(
 ) -> ApiResult {
     let loaded = state.current();
     let profile = loaded.profile;
-    json(&evaluate(profile, &loaded.world, &dto)?)
+    json(&evaluate(
+        profile,
+        &loaded.world,
+        &dto,
+        state.hide_record_numbers(),
+    )?)
 }
 
 // ---------- bless spells ----------

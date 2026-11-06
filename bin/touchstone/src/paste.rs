@@ -249,6 +249,8 @@ pub struct PasteCharacterRequest {
     pub only_in_game: bool,
     /// `bInvenUse2ndWrist` (on by default).
     pub second_wrist: bool,
+    /// `bHideRecordNumbers`: the route fills in the setting when this is left out.
+    pub hide_record_numbers: Option<bool>,
 }
 
 impl Default for PasteCharacterRequest {
@@ -263,6 +265,7 @@ impl Default for PasteCharacterRequest {
             hold: Vec::new(),
             only_in_game: true,
             second_wrist: true,
+            hide_record_numbers: None,
         }
     }
 }
@@ -312,12 +315,14 @@ fn charm_of(
     ch: &Character,
     min_item_level: i32,
     item_manager: Vec<ItemManagerRow>,
+    hide_record_numbers: bool,
 ) -> (String, f64) {
     let base = f64::from(ch.stats[5]);
     if ch.class.is_none() || ch.race.is_none() {
         return (vb::cstr(base), 0.0);
     }
     let opts = PipelineOptions {
+        hide_record_numbers,
         min_item_level,
         item_manager,
         dat_ver_caption: world.info.dat_file_version.clone(),
@@ -384,6 +389,7 @@ fn start_state(
         &ch,
         req.character.options.min_item_level,
         item_manager::gear_rows(&rows),
+        req.hide_record_numbers.unwrap_or(false),
     );
     PasteState {
         stat_text: stat_texts(&ch.stats),
@@ -408,6 +414,7 @@ pub(crate) fn rows_from_stacks(
     world: &World,
     dto: &CharacterDto,
     ch: &Character,
+    hide_record_numbers: bool,
 ) -> Vec<ListRow> {
     let (charm_tag, _) = charm_of(
         profile,
@@ -415,12 +422,13 @@ pub(crate) fn rows_from_stacks(
         ch,
         dto.options.min_item_level,
         dto.gear_rows(world),
+        hide_record_numbers,
     );
     let who = who_for(ch);
     let menv = MatchEnv {
         world,
         only_in_game: true,
-        hide_record_numbers: false,
+        hide_record_numbers,
         charm_tag: &charm_tag,
         who: &who,
         equipped: &ch.equipped,
@@ -443,6 +451,7 @@ pub(crate) fn add_rows_by_item(
     ch: &Character,
     rows: &mut Vec<ListRow>,
     adds: &[(i32, &str, &str, i32)],
+    hide_record_numbers: bool,
 ) -> Vec<Event> {
     let (charm_tag, _) = charm_of(
         profile,
@@ -450,12 +459,13 @@ pub(crate) fn add_rows_by_item(
         ch,
         dto.options.min_item_level,
         item_manager::gear_rows(rows),
+        hide_record_numbers,
     );
     let who = who_for(ch);
     let menv = MatchEnv {
         world,
         only_in_game: true,
-        hide_record_numbers: false,
+        hide_record_numbers,
         charm_tag: &charm_tag,
         who: &who,
         equipped: &ch.equipped,
@@ -498,7 +508,7 @@ fn run_once(
         world,
         only_in_game: req.only_in_game,
         second_wrist: req.second_wrist,
-        hide_record_numbers: false,
+        hide_record_numbers: req.hide_record_numbers.unwrap_or(false),
         nmr_ver: nmr_ver(&world.info.nmr_version),
         disable_kai_autolearn: world.info.disable_kai,
         min_item_level: req.character.options.min_item_level,
@@ -593,7 +603,13 @@ pub fn paste_character(
     let char_loaded = req.char_loaded.unwrap_or(!ch.name.is_empty());
     let rows = match &req.rows {
         Some(r) => r.iter().map(row_from_json).collect(),
-        None => rows_from_stacks(profile, world, &req.character, &ch),
+        None => rows_from_stacks(
+            profile,
+            world,
+            &req.character,
+            &ch,
+            req.hide_record_numbers.unwrap_or(false),
+        ),
     };
     let mut st = start_state(profile, world, req, ch, rows, char_loaded);
     let (mut out, ask) = run_once(world, req, &mut st, &req.answers);
@@ -695,10 +711,12 @@ pub fn paste_character(
 
 pub async fn character_route(
     State(state): State<Arc<AppState>>,
-    Body(req): Body<PasteCharacterRequest>,
+    Body(mut req): Body<PasteCharacterRequest>,
 ) -> ApiResult {
     let loaded = state.current();
     let profile = loaded.profile;
+    req.hide_record_numbers
+        .get_or_insert_with(|| state.hide_record_numbers());
     json(&paste_character(profile, &loaded.world, &req).map_err(bad)?)
 }
 

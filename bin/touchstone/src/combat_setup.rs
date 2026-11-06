@@ -55,6 +55,7 @@ fn evaluate_character(
     profile: Profile,
     world: &World,
     dto: &CharacterDto,
+    hide_record_numbers: bool,
 ) -> Result<(Character, CharacterState), ApiError> {
     let ch = dto.to_character().map_err(bad)?;
     if ch.class.is_none() || ch.race.is_none() {
@@ -67,6 +68,7 @@ fn evaluate_character(
         dat_ver_caption: world.info.dat_file_version.clone(),
         nmr_ver: nmr_ver(&world.info.nmr_version),
         avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
+        hide_record_numbers,
         ..PipelineOptions::default()
     };
     let st = refresh_all(profile, world, &ch, &opts)
@@ -133,8 +135,9 @@ pub fn options(
     world: &World,
     dto: &CharacterDto,
     recovery_only: bool,
+    hide_record_numbers: bool,
 ) -> Result<Options, ApiError> {
-    let (ch, st) = evaluate_character(profile, world, dto)?;
+    let (ch, st) = evaluate_character(profile, world, dto, hide_record_numbers)?;
     let class = ch.class.unwrap_or(0);
     let env = usable_env(profile, world);
     let mut out = Options {
@@ -681,6 +684,7 @@ pub fn attack_names(
     ch: &Character,
     st: &CharacterState,
     recovery_only: bool,
+    hide_record_numbers: bool,
 ) -> (String, String) {
     let inputs = st.profile_inputs();
     let names = AbilityEnv::for_world(world, profile);
@@ -689,7 +693,7 @@ pub fn attack_names(
         profile,
         nmr_ver: nmr_ver(&world.info.nmr_version),
         avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
-        hide_record_numbers: false,
+        hide_record_numbers,
         recovery_only,
         classes: &world.classes,
         items: &world.items,
@@ -713,16 +717,24 @@ pub fn preview(
     dto: &CharacterDto,
     draft: &AttackDto,
     recovery_only: bool,
+    hide_record_numbers: bool,
 ) -> Result<Preview, ApiError> {
     check_draft(draft)?;
-    let (ch, st) = evaluate_character(profile, world, dto)?;
+    let (ch, st) = evaluate_character(profile, world, dto, hide_record_numbers)?;
     let applied = apply_choice(&dto.attack, draft);
     let (attack_name, attack_name_long) = {
         let mut next = dto.clone();
         next.attack = applied.clone();
         let next = next.to_character().map_err(bad)?;
         // the profile for the name is the saved one's; only the choice differs
-        attack_names(profile, world, &next, &st, recovery_only)
+        attack_names(
+            profile,
+            world,
+            &next,
+            &st,
+            recovery_only,
+            hide_record_numbers,
+        )
     };
     let (attack, heal, error_text) = match combat_stats(profile, world, &ch, &st, draft) {
         Ok(s) => (s.attack, s.heal, None),
@@ -762,6 +774,7 @@ pub async fn options_route(
         &loaded.world,
         &req.character,
         req.recovery_only,
+        state.hide_record_numbers(),
     )?)
 }
 
@@ -788,5 +801,6 @@ pub async fn preview_route(
         &req.character,
         &draft,
         req.recovery_only,
+        state.hide_record_numbers(),
     )?)
 }

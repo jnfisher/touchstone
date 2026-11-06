@@ -77,6 +77,8 @@ pub struct PipelineOptions {
     pub party: PartyFilter,
     /// `RefreshAll`'s optional `bSetupClass`.
     pub setup_class: bool,
+    /// `bHideRecordNumbers`, for the names the combat contexts print.
+    pub hide_record_numbers: bool,
 }
 
 impl Default for PipelineOptions {
@@ -90,6 +92,7 @@ impl Default for PipelineOptions {
             avg_level_max_all_stats: 0.0,
             party: PartyFilter::default(),
             setup_class: true,
+            hide_record_numbers: false,
         }
     }
 }
@@ -374,7 +377,7 @@ impl CharacterState {
             profile: Profile::Stock,
             nmr_ver: self.options.nmr_ver,
             avg_level_max_all_stats: self.options.avg_level_max_all_stats,
-            hide_record_numbers: false,
+            hide_record_numbers: self.options.hide_record_numbers,
             recovery_only: false,
             classes: &world.classes,
             items: &world.items,
@@ -396,7 +399,7 @@ impl CharacterState {
             profile: Profile::Stock,
             nmr_ver: self.options.nmr_ver,
             avg_level_max_all_stats: self.options.avg_level_max_all_stats,
-            hide_record_numbers: false,
+            hide_record_numbers: self.options.hide_record_numbers,
             recovery_only: false,
             classes: &world.classes,
             items: &world.items,
@@ -550,6 +553,8 @@ pub struct CharacterEnv {
     pub damage_out_text: [String; 2],
     /// `txtMonsterLairFilter(9).Text`.
     pub party_swings_text: String,
+    /// `bHideRecordNumbers`, as the state was built with it.
+    hide_record_numbers: bool,
 }
 
 impl CharacterEnv {
@@ -560,7 +565,7 @@ impl CharacterEnv {
             profile: Profile::Stock,
             nmr_ver: self.nmr_ver,
             avg_level_max_all_stats: self.avg_level_max_all_stats,
-            hide_record_numbers: false,
+            hide_record_numbers: self.hide_record_numbers,
             recovery_only: false,
             classes: &world.classes,
             items: &world.items,
@@ -609,6 +614,7 @@ impl CharacterState {
             party: self.options.party.clone(),
             damage_out_text,
             party_swings_text,
+            hide_record_numbers: self.options.hide_record_numbers,
         }
     }
 }
