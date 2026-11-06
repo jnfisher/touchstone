@@ -650,8 +650,10 @@ def families():
     return sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(scenario_dir(), "*.json")))
 
 
-def build_fixture(family, mme=None, sdir=None):
-    """Return the fixture file's bytes for a family."""
+def build_fixture(family, mme=None, sdir=None, part=None):
+    """Return the fixture file's bytes for a family. With part=(k, n) only cases k, k+n, k+2n ... run
+    and (header line, [(case index, line)]) comes back for assemble_fixture (cases never depend on one
+    another: run_case resets the environment, so a family can be split across processes)."""
     mme = mme or mme_dir()
     path = os.path.join(sdir or scenario_dir(), family + ".json")
     raw = open(path, "rb").read()
@@ -680,11 +682,25 @@ def build_fixture(family, mme=None, sdir=None):
     }
     if "data" in scn:
         header["data"] = scn["data"]      # tables the Rust test needs once, shared by every case
-    lines = ['{"header":' + _Dump.dumps(header) + ',', '"cases":[']
+    head = '{"header":' + _Dump.dumps(header) + ','
+    out = []
     for i, c in enumerate(cases):
+        if part is not None and i % part[1] != part[0]:
+            continue
         res = env.run_case(c, setup)
         entry = {"id": c["id"], "inputs": {k: v for k, v in c.items() if k != "id"}}
         entry.update(res)
-        lines.append(_Dump.dumps(entry) + ("," if i + 1 < len(cases) else ""))
+        out.append((i, _Dump.dumps(entry)))
+    if part is not None:
+        return head, out
+    return assemble_fixture(head, out)
+
+
+def assemble_fixture(head, indexed_lines):
+    """The fixture bytes from the header line and the (case index, JSON line) pairs of every case."""
+    ordered = [line for _, line in sorted(indexed_lines)]
+    lines = [head, '"cases":[']
+    for i, line in enumerate(ordered):
+        lines.append(line + ("," if i + 1 < len(ordered) else ""))
     lines.append("]}")
     return ("\n".join(lines) + "\n").encode("ascii")

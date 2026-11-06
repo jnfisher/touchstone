@@ -61,11 +61,12 @@ directly and through compiled VB source). Beyond it:
 ## Scenarios and fixtures (T-022)
 
     python3 -I tools/oracle/oracle.py gen FAMILY|--all [--out DIR]
-    python3 -I tools/oracle/oracle.py check [FAMILY...]   # regenerate to a temp dir, byte-compare with fixtures/rules/
+    python3 -I tools/oracle/oracle.py check [-j N] [FAMILY...]   # regenerate to a temp dir, byte-compare with fixtures/rules/
 
 `fixtures/scenarios/<family>.json` in, `fixtures/rules/<family>.json` out (byte-identical on a re-run;
 nothing time- or path-dependent is written). `check` is what `.github/workflows/oracle-check.yml`
-runs (manual). Code: `harness.py` (environment, case runner, value coding), `shims.py` (recordsets,
+runs (manual). `check` builds families in parallel worker processes (`-j N`, default
+`min(4, cpu count)`, the slowest families split into pieces of cases) and prints each family as it finishes. Code: `harness.py` (environment, case runner, value coding), `shims.py` (recordsets,
 forms), `scenario.py` (grids and seeded samples).
 
 ### Scenario file

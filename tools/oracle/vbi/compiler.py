@@ -1,4 +1,5 @@
 """Compiles procedure ASTs into flat instruction lists and expressions into Python closures."""
+import operator
 from .ast import Node
 from .errors import VBError, OracleUnbound, EndProgram, VBSyntaxError
 from . import values as V
@@ -7,6 +8,7 @@ from .objects import Var, ElemRef, FieldRef, VBArray, UDTInstance, ClsInstance, 
 from .builtins import BUILTINS, CONSTANTS, f_like
 from .interp import (OMIT, EXIT, REFTYPES, ConstEntry, EnumType, ModuleRef, _RefCell)
 
+_INTS = (V.U8, V.I16, V.I32)
 BIN_ARITH = {"+": V.add, "-": V.sub, "*": V.mul, "/": V.div, "\\": V.int_div, "mod": V.mod, "^": V.power,
              "&": V.concat}
 LOGIC = ("and", "or", "xor", "eqv", "imp")
@@ -31,12 +33,20 @@ class CompiledProc:
         self.static_decls = []
         self.ret_code = "variant"
         self.labels = {}
+        self.no_paramarray = not any(p.paramarray for p in proc.params)
+        self._ret_def = None
 
     def statics_for(self, this):
         return self.static_cells
 
     def ret_default(self, it):
-        return it.default_value(self.ret_code)
+        d = self._ret_def
+        if d is None:
+            d = it.default_value(self.ret_code)
+            if type(d) in (V.I16, V.I32, V.U8, V.Cur, V.F32, float, str, bool) or d is V.EMPTY:
+                self._ret_def = (d,)      # immutable scalar: safe to share
+            return d
+        return d[0]
 
 
 class Ctx:
@@ -211,9 +221,47 @@ class Compiler:
         op = node.op
         a = self.cx(node.l, ctx)
         b = self.cx(node.r, ctx)
+        if op in ("+", "-", "*"):
+            fn = BIN_ARITH[op]
+            pyop = {"+": operator.add, "-": operator.sub, "*": operator.mul}[op]
+
+            def fast(fr):
+                x = a(fr)
+                y = b(fr)
+                tx = type(x)
+                ty = type(y)
+                if (tx is float and (ty is float or ty in _INTS)) or (ty is float and tx in _INTS):
+                    z = pyop(x, y)          # Double with a Double or an integer type: a Double operation
+                    if z - z == 0.0:        # finite; NaN/Infinity go the slow way to raise Overflow
+                        return z
+                return fn(x, y)
+            return fast
+        if op == "/":
+            def fdiv(fr):
+                x = a(fr)
+                y = b(fr)
+                tx = type(x)
+                ty = type(y)
+                if (tx is float and (ty is float or ty in _INTS)) or (ty is float and tx in _INTS):
+                    if y != 0:
+                        z = x / y
+                        if z - z == 0.0:
+                            return z
+                return V.div(x, y)
+            return fdiv
         if op in BIN_ARITH:
             fn = BIN_ARITH[op]
             return lambda fr: fn(a(fr), b(fr))
+        if op in ("and", "or"):
+            is_and = op == "and"
+
+            def flogic(fr):
+                x = a(fr)
+                y = b(fr)                   # VB evaluates both operands
+                if type(x) is bool and type(y) is bool:
+                    return (x and y) if is_and else (x or y)
+                return V.logic(op, x, y)
+            return flogic
         if op in LOGIC:
             return lambda fr: V.logic(op, a(fr), b(fr))
         if op in ("=", "<>") and (self._variant_vs_text(node.l, node.r, ctx) or self._variant_vs_text(node.r, node.l, ctx)):
@@ -466,6 +514,39 @@ class Compiler:
             if k in ("local", "clsvar", "global"):
                 base = self.name_value(target, ctx)
                 name = target.name
+
+                if len(argfns) == 1:
+                    a0 = argfns[0]
+
+                    def fi1(fr):
+                        arr = base(fr)
+                        v = a0(fr)
+                        if type(arr) is VBArray and type(v) in _INTS:
+                            b = arr.bounds           # one-dimensional, in range: read the element directly
+                            if b is not None and len(b) == 1:
+                                i = int(v) - b[0][0]
+                                if 0 <= i <= b[0][1] - b[0][0]:
+                                    return arr.data[i]
+                        return self.index_value(arr, [self.deref(v)], name)
+                    return fi1
+
+                if len(argfns) == 2:
+                    a0, a1 = argfns
+
+                    def fi2(fr):
+                        arr = base(fr)
+                        v = a0(fr)
+                        w = a1(fr)
+                        if type(arr) is VBArray and type(v) in _INTS and type(w) in _INTS:
+                            b = arr.bounds
+                            if b is not None and len(b) == 2:
+                                (l0, h0), (l1, h1) = b
+                                i = int(v)
+                                j = int(w)
+                                if l0 <= i <= h0 and l1 <= j <= h1:
+                                    return arr.data[(i - l0) * (h1 - l1 + 1) + (j - l1)]
+                        return self.index_value(arr, [self.deref(v), self.deref(w)], name)
+                    return fi2
 
                 def fi(fr):
                     arr = base(fr)
@@ -871,9 +952,11 @@ class Compiler:
         if tgt.kind == "name" and tgt.low in ctx.locals and ctx.locals[tgt.low] in V.COERCE:
             low = tgt.low
             f = V.COERCE[ctx.locals[low]]
+            exact = V.EXACT_TYPE.get(ctx.locals[low])
 
             def fa(fr):
-                fr.v[low].v = f(val(fr))
+                x = val(fr)
+                fr.v[low].v = x if type(x) is exact else f(x)
             self.emit(ctx, fa)
             return
 
@@ -1054,7 +1137,9 @@ class Compiler:
         self.place(ctx, top)
         if st.pre and cond is not None:
             def test(fr):
-                c = truth(cond(fr))
+                c = cond(fr)
+                if c is not True and c is not False:
+                    c = truth(c)
                 if c == until:
                     return out.pc
                 return None
