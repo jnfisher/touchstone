@@ -204,8 +204,10 @@ fn native_character_writes_loadable_file() {
 
 #[test]
 fn item_manager_limits() {
-    let mut m = mmec::Mmec::default();
-    m.carried = (1..=60).map(|i| ItemStack { item: i, qty: 0 }).collect();
+    let m = mmec::Mmec {
+        carried: (1..=60).map(|i| ItemStack { item: i, qty: 0 }).collect(),
+        ..mmec::Mmec::default()
+    };
     let text = String::from_utf8(mmec::write(&m)).unwrap();
     let line = text.lines().find(|l| l.starts_with("IM_CARRIED=")).unwrap();
     assert_eq!(line.matches('|').count(), 50);

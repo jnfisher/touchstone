@@ -51,7 +51,7 @@ wrote loads and saves back byte for byte.
   `LoadCharacter` run in the import handler: learned spells the class cannot use (`SpellIsUsable`)
   are dropped and `learned_class` set; a bless number is kept only for a bless spell and only once
   (`EquipBlessSpell`); a class or race number not in the database becomes "nothing picked".
-  - `POST /api/characters/import?name=` raw body (or `multipart/form-data` with a `file` part).
+  - `POST /api/characters/import?name=` raw body (the page sends the file's bytes; the file name goes in `file`).
     Name: `name` query, else PlayerInfo Name, else the uploaded file name without `.mmec`; an
     invalid name gets a 422 that says so. Replaces an existing character of that name only with
     `overwrite=true` (409 otherwise). Answers the saved DTO.
