@@ -1067,7 +1067,9 @@ class Compiler:
         self.place(ctx, top)
         if st.pre and cond is not None:
             def test(fr):
-                c = truth(cond(fr))
+                c = cond(fr)
+                if c is not True and c is not False:
+                    c = truth(c)
                 if c == until:
                     return out.pc
                 return None
