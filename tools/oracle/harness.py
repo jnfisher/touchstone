@@ -312,7 +312,7 @@ class Env:
             return False
 
         for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors",
-                  "LV_AssignRowSeqIfMissing"):
+                  "LV_AssignRowSeqIfMissing", "Load", "EnsureAppForeground"):
             it.bind_proc(n, noop)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
