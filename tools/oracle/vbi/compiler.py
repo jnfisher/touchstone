@@ -205,6 +205,18 @@ class Compiler:
             return lambda fr: V.neg(e(fr))
         return lambda fr: V.not_(e(fr))
 
+    @staticmethod
+    def _variant_vs_text(var, lit, ctx):
+        """var is a name of a parameter declared As Variant (or untyped), lit a String literal."""
+        if getattr(lit, "kind", None) != "lit" or type(lit.value) is not str:
+            return False
+        if getattr(var, "kind", None) != "name" or ctx.proc is None:
+            return False
+        for prm in ctx.proc.params:
+            if prm.low == var.low:
+                return (prm.typespec is None or prm.typespec.low == "variant") and not prm.is_array
+        return False
+
     def x_bin(self, node, ctx):
         op = node.op
         a = self.cx(node.l, ctx)
@@ -242,6 +254,18 @@ class Compiler:
             return lambda fr: fn(a(fr), b(fr))
         if op in LOGIC:
             return lambda fr: V.logic(op, a(fr), b(fr))
+        if op in ("=", "<>") and (self._variant_vs_text(node.l, node.r, ctx) or self._variant_vs_text(node.r, node.l, ctx)):
+            # A Variant (a parameter declared without a type) against a String literal compares as text,
+            # not as numbers: `v = ""` is False for a numeric v, never a Type mismatch (NzLong relies on it).
+            want = op == "="
+
+            def veq(fr):
+                x, y = a(fr), b(fr)
+                if x is NULL or y is NULL:
+                    raise VBError(94)
+                same = V.c_str(x) == V.c_str(y)
+                return same == want
+            return veq
         if op == "=":
             def eq(fr):
                 x, y = a(fr), b(fr)

@@ -7,12 +7,14 @@ use touchstone_vb6::{Currency, Vb6Error};
 
 use crate::RulesError;
 
+mod dispatch;
 mod helpers;
 mod model_a;
 mod model_b;
 mod model_c;
 mod model_d;
 
+pub use dispatch::{ExpPerHourSettings, calc_exp_per_hour, clamp_knob};
 pub use helpers::{
     SEC_PER_MEDI_TICK, SEC_PER_REGEN_TICK, SEC_PER_REST_TICK, SEC_PER_ROUND, ceph_b_saturate,
     ceph_b_smooth_step, ceph_c_ceil, clamp_dbl, max_dbl, min_dbl, safe_div,
