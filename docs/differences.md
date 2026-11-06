@@ -238,3 +238,22 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   history entry, so the browser's back button keeps its own list.
 - The data version (`LoadInfo`'s version label, creation date, NMR version) is shown in an info popover, with the row
   counts. MME's "this database lacks features" warnings for old NMR versions are not shown.
+
+## Quicksilver: rest and meditate regeneration (Q-008)
+
+Under `Profile::Quicksilver` only; the stock rules are untouched.
+
+- MME's assumption that a character rests (HP) or meditates (mana), never both, no longer holds: Quicksilver
+  resting restores mana at 3 times the standing rate, meditating at 5 times and heals as resting does. The Char tab
+  magic panel shows a "Rest Ticks" line (mana per 21-second rest tick) and its "Medi. Ticks" counts the mana
+  regeneration buffs (MME's meditation tick does not). Both ticks are averages over the carry cycle: the game pays
+  whole mana and carries the remainder, the panel shows the exact mean (a rest tick of 4.2 is 4, 4, 4, 4, 5 ...).
+- `CalcManaRegen` keeps its MME meaning, `meditating` flag included. The Quicksilver payments are separate functions
+  (`calc_rest_mana_regen`, `calc_meditate_mana_regen`), because MME's meditation tick has no Quicksilver counterpart
+  and the neutral balance cannot reproduce it.
+- `CalcManaRecoveryRounds` under Quicksilver models one mode at a time on MME's 5-second grid: meditating when the
+  caller passes a meditation rate, resting otherwise (a character without the Meditate ability rests). The standing
+  tick keeps its 30-second phase from the start, which the game's global slow tick does not (it may fall anywhere in
+  the first 30 seconds), so a recovery time can differ from the game's by up to one tick's worth of time.
+- The recovery model still ignores combat and HP: the game ends rest and meditate when both bars are full, and
+  meditating needs HP below full or mana below full to start. The hit point panel is unchanged.

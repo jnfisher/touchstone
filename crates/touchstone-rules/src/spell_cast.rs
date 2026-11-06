@@ -21,8 +21,12 @@ use touchstone_vb6::{Currency, Vb6Error};
 
 use crate::Profile;
 use crate::accuracy::get_spell_hit_cap;
+use crate::quicksilver::Balance;
 use crate::spells::{MinMaxRequest, SpellText, get_current_spell_min_max};
-use crate::stats::{get_class_magery, get_class_magery_lvl};
+use crate::stats::{
+    QS_MEDITATE_TICK_SECS, QS_REST_TICK_SECS, QS_SLOW_SECS, get_class_magery, get_class_magery_lvl,
+    qs_boost_tick,
+};
 
 type Res<T> = Result<T, Vb6Error>;
 
@@ -398,14 +402,90 @@ fn oom_inner(
 /// Port of modMain CalcManaRecoveryRounds: 5-second rounds to go from no mana to `percentage`
 /// (MME's default 95) of the maximum while meditating (a 30-second regen tick of `regen_rate` and
 /// a 10-second tick of `meditate_rate`), or 999 if that is not reached. A VB6 error gives 0.
+///
+/// Quicksilver (R10): resting and meditating both restore mana, so the character is always doing
+/// one of the two. `meditate_rate > 0` means meditating (`meditate_mana_mult` times the standing
+/// `regen_rate` a minute), otherwise resting (`rest_mana_mult` times); the amounts come from
+/// `regen_rate` and the balance, see [`calc_mana_recovery_rounds_qs`].
 #[must_use]
 pub fn calc_mana_recovery_rounds(
+    profile: Profile,
     max_mana: i32,
     regen_rate: i32,
     meditate_rate: i32,
     percentage: i16,
 ) -> i32 {
-    recovery_inner(max_mana, regen_rate, meditate_rate, percentage).unwrap_or(0)
+    match profile {
+        Profile::Stock => {
+            recovery_inner(max_mana, regen_rate, meditate_rate, percentage).unwrap_or(0)
+        }
+        Profile::Quicksilver(b) => {
+            calc_mana_recovery_rounds_qs(b, meditate_rate > 0, max_mana, regen_rate, percentage)
+        }
+    }
+}
+
+/// The Quicksilver form of [`calc_mana_recovery_rounds`], with the mode explicit. The same 5-second
+/// rounds, the standing tick of `regen_rate` every 30 s, plus the rest tick (every 21 s) or the
+/// meditate tick (every 15 s) that [`qs_boost_tick`] sizes, carry included.
+#[must_use]
+pub fn calc_mana_recovery_rounds_qs(
+    balance: &Balance,
+    meditating: bool,
+    max_mana: i32,
+    regen_rate: i32,
+    percentage: i16,
+) -> i32 {
+    recovery_inner_qs(balance, meditating, max_mana, regen_rate, percentage).unwrap_or(0)
+}
+
+fn recovery_target(max_mana: i32, percentage: i16) -> Res<i32> {
+    if percentage > 0 {
+        clng(vb::fix(
+            f64::from(max_mana) * (f64::from(percentage) / 100.0),
+        ))
+    } else {
+        Ok(max_mana)
+    }
+}
+
+fn recovery_inner_qs(
+    balance: &Balance,
+    meditating: bool,
+    max_mana: i32,
+    regen_rate: i32,
+    percentage: i16,
+) -> Res<i32> {
+    let target = recovery_target(max_mana, percentage)?;
+    if target <= 0 {
+        return Ok(0);
+    }
+    let (mult, period) = if meditating {
+        (balance.meditate_mana_mult, QS_MEDITATE_TICK_SECS)
+    } else {
+        (balance.rest_mana_mult, QS_REST_TICK_SECS)
+    };
+    let (mut mana, mut rounds, mut t, mut carry) = (0i32, 0i32, 0i32, 0i32);
+    let (mut next_regen, mut next_boost) = (QS_SLOW_SECS, period);
+    while mana < target && rounds < 999 {
+        rounds += 1;
+        t = vb::add_i32(t, ROUND_SECS)?;
+        while t >= next_regen {
+            mana = vb::add_i32(mana, regen_rate)?;
+            next_regen = vb::add_i32(next_regen, QS_SLOW_SECS)?;
+            if mana >= target {
+                break;
+            }
+        }
+        while t >= next_boost {
+            mana = vb::add_i32(mana, qs_boost_tick(regen_rate, mult, period, &mut carry))?;
+            next_boost = vb::add_i32(next_boost, period)?;
+            if mana >= target {
+                break;
+            }
+        }
+    }
+    Ok(if mana < target { 999 } else { rounds })
 }
 
 fn recovery_inner(max_mana: i32, regen_rate: i32, meditate_rate: i32, percentage: i16) -> Res<i32> {

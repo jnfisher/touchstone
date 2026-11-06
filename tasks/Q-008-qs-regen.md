@@ -9,10 +9,8 @@ touches:
   - crates/touchstone-rules/src/spell_cast.rs     # calc_mana_recovery_rounds
   - crates/touchstone-rules/src/char_panel.rs
   - crates/touchstone-rules/tests/all/quicksilver_regen.rs
-  - crates/touchstone-rules/tests/all/quicksilver_identity.rs
   - crates/touchstone-rules/tests/all/main.rs
   - crates/touchstone-rules/tests/all/spell_cast.rs   # call sites gain a profile
-  - crates/touchstone-rules/tests/all/quicksilver_balance.rs
   - tools/qs-vectors/src/regen.rs
   - tools/qs-vectors/src/main.rs
   - fixtures/quicksilver/regen.json
@@ -63,10 +61,13 @@ as the HP recovery. Under `Profile::Stock` nothing changes by a byte. Engine vec
    carry included) and `recovery` (a second-by-second simulation from no mana to a target, in rounds).
    The `neutral` column is the same code at multiples of 1 (no extra mana), which is what stock MME
    answers with `meditate_rate = 0`, so `standing`, `hp` and `recovery` are screened against stock.
-6. **Tests** (`tests/all/quicksilver_regen.rs`): header against `Balance`, every column above,
+6. **Identity harness**: R10 is structural and has no neutral setting, so no family is added there;
+   `calc_mana_regen` stays stock under both profiles, which keeps the stats fixtures and Q-003's tests
+   passing under `Balance::NEUTRAL` without change.
+7. **Tests** (`tests/all/quicksilver_regen.rs`): header against `Balance`, every column above,
    stock/neutral screening, panel under Quicksilver and Stock, and the identity of the HP panel.
    Existing stock tests call the changed signature with `Profile::Stock`.
-7. **docs/differences.md**: append the note on Q-008 (MME's "rest or meditate, never both" assumption
+8. **docs/differences.md**: append the note on Q-008 (MME's "rest or meditate, never both" assumption
    no longer holds; the recovery model is one mode at a time on a 5 s grid).
 
 ## Done when
