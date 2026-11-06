@@ -352,7 +352,7 @@ fn ref_json(r: &LocationRow) -> RefJson {
     }
 }
 
-fn references(list: LocationList, refresh: Option<bool>) -> (Vec<RefJson>, Vec<i32>) {
+pub(crate) fn references(list: LocationList, refresh: Option<bool>) -> (Vec<RefJson>, Vec<i32>) {
     let LocationList {
         mut rows,
         sorts,
@@ -366,7 +366,7 @@ fn references(list: LocationList, refresh: Option<bool>) -> (Vec<RefJson>, Vec<i
 }
 
 /// `GetLairInfo` while no monster calculation has run: the lair cache as loaded.
-struct StoredLairs<'a>(&'a LairCache);
+pub(crate) struct StoredLairs<'a>(pub(crate) &'a LairCache);
 
 impl LocationLairs for StoredLairs<'_> {
     fn get_lair_info(&mut self, group_index: &str, max_regen: i16) -> LairInfo {
