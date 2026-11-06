@@ -403,7 +403,8 @@ class Interpreter:
         for k, v in enumerate(vals):
             nm = names[k]
             if nm is None:
-                if pos >= np_:
+                if pos >= np_ or params[pos].paramarray:
+                    # the ParamArray parameter itself takes every positional argument from its own place on
                     if np_ and params[-1].paramarray:
                         extra = (extra or []) + [v]
                         continue

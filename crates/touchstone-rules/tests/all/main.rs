@@ -15,6 +15,7 @@ mod exp;
 mod exp_per_hour;
 mod filters;
 mod filters_sm;
+mod find_best;
 mod game_text;
 mod gear;
 mod hit_calc;

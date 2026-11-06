@@ -65,12 +65,25 @@ def _enum_lines(code, name):
     raise ValueError("enum %s not found in the form" % name)
 
 
+def _type_lines(code, name):
+    pat = re.compile(r"^(Public |Private )?Type %s\s*$" % re.escape(name), re.I)
+    for i, line in enumerate(code):
+        if pat.match(line.rstrip("\r")):
+            for j in range(i, len(code)):
+                if re.match(r"^End Type\s*$", code[j].rstrip("\r"), re.I):
+                    return [re.sub(r"^Private ", "Public ", l.rstrip("\r")) if k == 0 else l.rstrip("\r")
+                            for k, l in enumerate(code[i:j + 1])]
+    raise ValueError("type %s not found in the form" % name)
+
+
 def build_source(raw, spec):
-    """spec: {"decls": [name], "enums": [name], "procs": [name], "cuts": {proc: {"cut": line, "append": [lines]}}, "subs": {proc: {line: new}}}"""
+    """spec: {"decls": [name], "enums": [name], "types": [name], "procs": [name], "cuts": {proc: {"cut": line, "append": [lines]}}, "subs": {proc: {line: new}}}"""
     _, code = _code_lines(raw)
     out = ["Option Explicit", "Option Base 0"]
     for n in spec.get("enums", []):
         out += _enum_lines(code, n)
+    for n in spec.get("types", []):
+        out += _type_lines(code, n)
     out += [_decl_line(code, n) for n in spec.get("decls", [])]
     out += spec.get("extra", [])        # declarations of a module the scenario does not load (list-sort enum)
     for name in spec["procs"]:

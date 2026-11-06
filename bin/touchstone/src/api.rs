@@ -58,6 +58,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/character/equip", post(equip::equip_route))
         .route("/api/character/equip-state", post(equip::equip_state_route))
+        .route("/api/character/find-best", post(equip::find_best_route))
         .route("/api/item-manager/rows", post(item_manager::rows_route))
         .route("/api/item-manager/action", post(item_manager::action_route))
         .route("/api/item-manager/delete", post(item_manager::delete_route))
