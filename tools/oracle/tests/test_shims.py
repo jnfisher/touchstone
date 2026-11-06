@@ -198,6 +198,28 @@ class RecordingListViewTests(unittest.TestCase):
         self.assertEqual(int(combo.vb_get("NewIndex", [])), 1)
 
 
+class ComboShimTests(unittest.TestCase):
+    """Combo `clear`, ListView column headers and `UBound` of a control array (the list filters' shims)."""
+
+    def test_clear_empties_the_list_and_deselects(self):
+        c = shims.ControlShim({"List": ["a", "b"], "ItemData": [5, 6], "ListIndex": 1})
+        self.assertEqual(V.int_value(c.vb_get("ListCount", [])), 2)
+        c.vb_get("clear", [])
+        self.assertEqual(V.int_value(c.vb_get("ListCount", [])), 0)
+        self.assertEqual(V.int_value(c.vb_get("ListIndex", [])), -1)
+        c.vb_get("AddItem", ["(none)", V.I16(0)])
+        self.assertEqual(V.int_value(c.vb_get("NewIndex", [])), 0)
+
+    def test_column_header_tag_can_be_set(self):
+        lv = shims.RecordingListViewShim()
+        lv.vb_get("ColumnHeaders", [V.I16(21)]).vb_set("Tag", [], "s")
+        self.assertEqual(lv.vb_get("ColumnHeaders", [V.I16(21)]).vb_get("Tag", []), "s")
+
+    def test_control_array_ubound(self):
+        form = shims.FormShim({"cmbEquip": {"$array": {"0": {}, "19": {}}}})
+        self.assertEqual(V.int_value(form.vb_get("cmbEquip", []).vb_get("UBound", [])), 19)
+
+
 class ScenarioTests(unittest.TestCase):
     def test_grid_is_cartesian_and_ids_are_stable(self):
         s = {"grids": [{"name": "g", "axes": {"a": [1, 2], "b": ["x", "y"]}, "case": {"proc": "P", "args": ["$a", "$b"]}}]}

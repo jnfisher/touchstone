@@ -412,7 +412,16 @@ async fn pinned(id: &str, tab: &str, extra: Value, with_character: bool, out: &s
         let number = key.unwrap_or_else(|| row[0].as_str().unwrap().parse().unwrap());
         let Some(mine) = listed.iter().find(|r| r["number"] == number) else {
             // the fixture world has no cast-by or class lists, so SpellIsInGame drops some
-            // sampled spells; every other tab lists its sample
+            // sampled spells; every other tab lists its sample, except that the global filter
+            // keeps a character's weapons to the ones it can use (and a backstab list to the ones
+            // that can backstab)
+            if tab == "weapons" && with_character {
+                assert!(
+                    not_listed_by_mme(&fx, id, number, &body),
+                    "{id}: record {number} is not listed"
+                );
+                continue;
+            }
             assert_eq!(tab, "spells", "{id}: record {number} is not listed");
             continue;
         };
@@ -435,6 +444,37 @@ async fn pinned(id: &str, tab: &str, extra: Value, with_character: bool, out: &s
         checked += 1;
     }
     assert!(checked > 0, "{id}: nothing was compared");
+}
+
+/// Why MME leaves a sampled weapon out for the level 50 warrior: fixtures/rules/filters.json
+/// (`ladder-c1-l50-plain`, FilterWeapons with the global filter on) does not list it, or the list
+/// is a backstab list and the weapon lacks the backstab ability (116).
+fn not_listed_by_mme(fx: &Value, id: &str, number: i64, body: &Value) -> bool {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/rules/filters.json");
+    let text = std::fs::read_to_string(path).unwrap();
+    let line = text
+        .lines()
+        .find(|l| l.contains("\"id\":\"ladder-c1-l50-plain\""))
+        .unwrap();
+    let case: Value = serde_json::from_str(line.trim_end_matches(',')).unwrap();
+    assert!(
+        id.starts_with("warrior-"),
+        "{id}: only the warrior is pinned"
+    );
+    let usable = case["outputs"]["weapons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| w.as_str().unwrap().split(':').next().unwrap() == number.to_string());
+    let backstab = body["options"]["attack"] == 4;
+    let can_backstab = fx["header"]["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r[0] == number)
+        .is_some_and(|r| r[16].as_array().unwrap().iter().any(|a| a[0] == 116));
+    !usable || (backstab && !can_backstab)
 }
 
 async fn post_to(fx: &Value, tab: &str, body: &Value) -> (StatusCode, Value) {
@@ -520,16 +560,6 @@ async fn the_loaded_character_changes_the_lists() {
     )
     .await;
     pinned(
-        "warrior-weapons-backstab",
-        "weapons",
-        json!({"options": {"calc_combat": true, "attack": 4,
-            "vs_ac": "10", "vs_dr": "3", "vs_dodge": "10"}}),
-        true,
-        "rows",
-        false,
-    )
-    .await;
-    pinned(
         "warrior-spells",
         "spells",
         json!({"options": {"level": 50}}),
@@ -547,6 +577,50 @@ async fn the_loaded_character_changes_the_lists() {
         false,
     )
     .await;
+}
+
+/// FilterWeapons asks a character without class or race stealth whether to calculate a backstab anyway; the
+/// endpoint answers yes, so the rows are the forced calculation. Expected rows: fixtures/rules/filters.json,
+/// `ladder-c1-l50-weapons-combat-4` (`full`: the same warrior, the same boxes, the dialog's default answer).
+#[tokio::test]
+async fn backstab_without_stealth_is_calculated_anyway() {
+    let fx = fixture();
+    let c = case(&fx, "warrior-weapons-plain");
+    let body = json!({"character": character(&fx, c),
+        "options": {"calc_combat": true, "attack": 4, "vs_ac": "25", "vs_dr": "4", "vs_dodge": "8"}});
+    let (status, got) = post_to(&fx, "weapons", &body).await;
+    assert_eq!(status, StatusCode::OK, "{got}");
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/rules/filters.json");
+    let text = std::fs::read_to_string(path).unwrap();
+    let line = text
+        .lines()
+        .find(|l| l.contains("\"id\":\"ladder-c1-l50-weapons-combat-4\""))
+        .unwrap();
+    let want: Value = serde_json::from_str(line.trim_end_matches(',')).unwrap();
+    let full = want["outputs"]["full"].as_array().unwrap();
+    assert!(full.len() > 20);
+    let listed = got["rows"].as_array().unwrap();
+    for row in full {
+        let number: i64 = row[0].as_str().unwrap().parse().unwrap();
+        let mine = listed
+            .iter()
+            .find(|r| {
+                r["number"] == number && (number > 0 || r["cells"][1]["text"] == "Punch (Surprise)")
+            })
+            .unwrap_or_else(|| panic!("record {number} is not listed"));
+        for (k, cell) in row[2].as_array().unwrap().iter().enumerate() {
+            let text = match cell {
+                Value::String(t) => t.as_str(),
+                other => other[0].as_str().unwrap(),
+            };
+            assert_eq!(
+                mine["cells"][k + 1]["text"],
+                text,
+                "record {number} cell {k}"
+            );
+        }
+    }
 }
 
 #[tokio::test]
