@@ -39,7 +39,8 @@ fn load() -> (Value, Vec<Value>) {
 }
 
 fn num(v: &Value) -> f64 {
-    v.as_f64().unwrap_or_else(|| panic!("number expected, got {v}"))
+    v.as_f64()
+        .unwrap_or_else(|| panic!("number expected, got {v}"))
 }
 
 fn of_kind<'a>(cases: &'a [Value], kind: &'a str) -> impl Iterator<Item = &'a Value> {
@@ -66,10 +67,22 @@ fn exphr_header_and_ids() {
     assert!(of_kind(&cases, "cycle").count() > 0 && of_kind(&cases, "recovery").count() > 0);
     let v = Balance::V120;
     let n = Balance::NEUTRAL;
-    assert_eq!(h["balance_keys"]["rest_mana_mult"]["v120"], v.rest_mana_mult);
-    assert_eq!(h["balance_keys"]["meditate_mana_mult"]["v120"], v.meditate_mana_mult);
-    assert_eq!(h["balance_keys"]["rest_mana_mult"]["neutral"], n.rest_mana_mult);
-    assert_eq!(h["balance_keys"]["meditate_mana_mult"]["neutral"], n.meditate_mana_mult);
+    assert_eq!(
+        h["balance_keys"]["rest_mana_mult"]["v120"],
+        v.rest_mana_mult
+    );
+    assert_eq!(
+        h["balance_keys"]["meditate_mana_mult"]["v120"],
+        v.meditate_mana_mult
+    );
+    assert_eq!(
+        h["balance_keys"]["rest_mana_mult"]["neutral"],
+        n.rest_mana_mult
+    );
+    assert_eq!(
+        h["balance_keys"]["meditate_mana_mult"]["neutral"],
+        n.meditate_mana_mult
+    );
 }
 
 /// The 210-second cycle (30, 21 and 15 second ticks all divide it): mana is exact, so the rate
@@ -94,7 +107,9 @@ fn cycle_mana_matches_engine() {
         // stock Model D's passive mana in the same 210 seconds
         let stock = f64::from(standing) / 30.0 * 210.0;
         if (stock - num(&c["neutral"]["mana"])).abs() > 1e-6 {
-            bad.push(format!("{id}: neutral column is not the stock passive rate"));
+            bad.push(format!(
+                "{id}: neutral column is not the stock passive rate"
+            ));
         }
     }
     report("cycle mana", of_kind(&cases, "cycle").count(), &bad);
@@ -154,7 +169,10 @@ fn recovery_matches_engine_within_the_tick_allowance() {
         }
     }
     report("recovery", of_kind(&cases, "recovery").count(), &bad);
-    assert!(hp_bound > 100 && mp_bound > 100, "both bars should limit sometimes");
+    assert!(
+        hp_bound > 100 && mp_bound > 100,
+        "both bars should limit sometimes"
+    );
 }
 
 #[test]
@@ -208,13 +226,25 @@ fn models_a_to_c_are_unsupported_under_quicksilver() {
         model_b(&input, &knobs(), v120()),
         model_c(&input, &knobs(), v120()),
     ] {
-        assert!(matches!(result, Err(RulesError::Unsupported(_))), "{result:?}");
+        assert!(
+            matches!(result, Err(RulesError::Unsupported(_))),
+            "{result:?}"
+        );
     }
     // the neutral balance reads as off: they run as stock
     for (neutral_run, stock_run) in [
-        (model_a(&input, &knobs(), neutral()), model_a(&input, &knobs(), Profile::Stock)),
-        (model_b(&input, &knobs(), neutral()), model_b(&input, &knobs(), Profile::Stock)),
-        (model_c(&input, &knobs(), neutral()), model_c(&input, &knobs(), Profile::Stock)),
+        (
+            model_a(&input, &knobs(), neutral()),
+            model_a(&input, &knobs(), Profile::Stock),
+        ),
+        (
+            model_b(&input, &knobs(), neutral()),
+            model_b(&input, &knobs(), Profile::Stock),
+        ),
+        (
+            model_c(&input, &knobs(), neutral()),
+            model_c(&input, &knobs(), Profile::Stock),
+        ),
     ] {
         assert_eq!(neutral_run, stock_run);
     }
@@ -233,7 +263,10 @@ fn dispatch_runs_model_d_alone_and_says_so() {
     let qs = calc_exp_per_hour(&input, &all, v120()).expect("no error, only a notice");
     let alone = calc_exp_per_hour(&input, &only_d, v120()).unwrap();
     assert_eq!(qs.s_notice, QS_MODEL_NOTICE);
-    assert!(alone.s_notice.is_empty(), "Model D chosen: nothing to explain");
+    assert!(
+        alone.s_notice.is_empty(),
+        "Model D chosen: nothing to explain"
+    );
     // the same figures either way: Model D alone, and its own record
     let mut qs_figures = qs.clone();
     qs_figures.s_notice.clear();
@@ -243,14 +276,26 @@ fn dispatch_runs_model_d_alone_and_says_so() {
     assert!(alone.n_exp_per_hour > 0.0);
 
     // only A to C ticked: Model D still runs, with the notice
-    let only_abc = ExpPerHourSettings { model_d: false, ..all };
+    let only_abc = ExpPerHourSettings {
+        model_d: false,
+        ..all
+    };
     let abc = calc_exp_per_hour(&input, &only_abc, v120()).unwrap();
     assert_eq!(abc.s_notice, QS_MODEL_NOTICE);
     assert_eq!(abc.n_exp_per_hour, d.n_exp_per_hour);
 
     // no model ticked: the empty record, as in stock
-    let none = ExpPerHourSettings { model_a: false, model_b: false, model_c: false, model_d: false, ..all };
-    assert_eq!(calc_exp_per_hour(&input, &none, v120()).unwrap(), Default::default());
+    let none = ExpPerHourSettings {
+        model_a: false,
+        model_b: false,
+        model_c: false,
+        model_d: false,
+        ..all
+    };
+    assert_eq!(
+        calc_exp_per_hour(&input, &none, v120()).unwrap(),
+        Default::default()
+    );
 
     // Stock and neutral: the four models, no notice
     for p in [Profile::Stock, neutral()] {
@@ -284,13 +329,22 @@ fn model_d_recovers_both_bars_together() {
     let input = lair_input();
     let stock = model_d(&input, &knobs(), Profile::Stock).unwrap();
     let qs = model_d(&input, &knobs(), v120()).unwrap();
-    assert!(stock.n_hitpoint_recovery > 0.0 && stock.n_mana_recovery > 0.0, "{stock:?}");
-    assert!(qs.n_time_recovering < stock.n_time_recovering, "{qs:?} vs {stock:?}");
+    assert!(
+        stock.n_hitpoint_recovery > 0.0 && stock.n_mana_recovery > 0.0,
+        "{stock:?}"
+    );
+    assert!(
+        qs.n_time_recovering < stock.n_time_recovering,
+        "{qs:?} vs {stock:?}"
+    );
     assert!(qs.n_exp_per_hour > stock.n_exp_per_hour);
     let sum = qs.n_hitpoint_recovery + qs.n_mana_recovery;
     assert!((sum - qs.n_time_recovering).abs() < 1e-9, "{qs:?}");
     // meditating (a meditation rate) restores more mana than resting: never slower
-    let meditating = ExpPerHourInput { n_meditate_rate: 4, ..input };
+    let meditating = ExpPerHourInput {
+        n_meditate_rate: 4,
+        ..input
+    };
     let med = model_d(&meditating, &knobs(), v120()).unwrap();
     assert!(med.n_time_recovering <= qs.n_time_recovering + 1e-9);
 }
@@ -306,6 +360,9 @@ fn model_d_mana_only_uses_the_rest_multiple() {
     let stock = model_d(&input, &knobs(), Profile::Stock).unwrap();
     let qs = model_d(&input, &knobs(), v120()).unwrap();
     assert_eq!(qs.n_hitpoint_recovery, 0.0);
-    assert!(stock.n_mana_recovery > qs.n_mana_recovery, "{stock:?} {qs:?}");
+    assert!(
+        stock.n_mana_recovery > qs.n_mana_recovery,
+        "{stock:?} {qs:?}"
+    );
     assert!(qs.n_mana_recovery > 0.0);
 }

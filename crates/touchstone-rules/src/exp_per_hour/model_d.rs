@@ -244,8 +244,7 @@ pub fn model_d(
     med_mp_ps += passive_mp_ps;
     if let Some(b) = qs {
         // rest or meditate: the mode the character can do; the rate holds the standing ticks already
-        med_mp_ps =
-            qs_recovery_mana_per_sec(b, input.n_meditate_rate > 0, input.n_char_mp_regen);
+        med_mp_ps = qs_recovery_mana_per_sec(b, input.n_meditate_rate > 0, input.n_char_mp_regen);
     }
 
     let hp_max = f64::from(input.n_char_hp);

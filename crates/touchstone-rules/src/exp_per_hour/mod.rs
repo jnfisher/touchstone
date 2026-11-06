@@ -27,9 +27,7 @@ pub use helpers::{
 pub use model_a::model_a;
 pub use model_b::model_b;
 pub use model_c::model_c;
-pub use model_d::{
-    ceph_d_overkill_frac, model_d, qs_recovery_mana_per_sec, qs_recovery_secs,
-};
+pub use model_d::{ceph_d_overkill_frac, model_d, qs_recovery_mana_per_sec, qs_recovery_secs};
 
 /// The arguments of `CalcExpPerHour`, in MME's order and with MME's VB6 types (the model
 /// arguments that are narrower in a model's own signature are checked there).

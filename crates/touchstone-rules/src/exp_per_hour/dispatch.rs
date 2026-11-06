@@ -170,13 +170,11 @@ pub fn calc_exp_per_hour(
     // Quicksilver restores HP and mana together (R10), which Models A to C cannot express: Model D runs
     // alone, and the reader is told in plain text rather than given an error.
     let mut notice = String::new();
-    if regen_on(profile).is_some() {
-        if on.iter().any(|&m| m) {
-            if on[..3].iter().any(|&m| m) {
-                notice = QS_MODEL_NOTICE.to_string();
-            }
-            on = [false, false, false, true];
+    if regen_on(profile).is_some() && on.iter().any(|&m| m) {
+        if on[..3].iter().any(|&m| m) {
+            notice = QS_MODEL_NOTICE.to_string();
         }
+        on = [false, false, false, true];
     }
     for (x, slot) in results.iter_mut().enumerate() {
         if !on[x] {
