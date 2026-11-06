@@ -6,6 +6,7 @@ mod abilities;
 mod ability_text;
 mod accuracy;
 mod attack;
+mod calculators;
 mod char_panel;
 mod character;
 mod exp;

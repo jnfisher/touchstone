@@ -7,6 +7,7 @@ pub mod abilities;
 pub mod ability_text;
 pub mod accuracy;
 pub mod attack;
+pub mod calculators;
 pub mod char_panel;
 pub mod character;
 pub mod exp;
