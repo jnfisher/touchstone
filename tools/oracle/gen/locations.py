@@ -182,7 +182,7 @@ def main():
     someroom = sorted(rooms)[:1][0]
     r1, r2, r3 = ("%d/%d" % k for k in sorted(rooms)[100:103])
     shop_n = sorted(n for n in shops if shops[n]["stock"] and shops[n]["type"] != 8)[3]
-    stocked = shops[shop_n]["stock"][0][0]
+    stocked = next(sl[0] for sl in shops[shop_n]["stock"] if items.get(sl[0], (0, 0, 0))[2] > 0)
     selling = sorted(n for n in shops if shops[n]["stock"])[1]
     chest = sorted(n for n, v in items.items() if v[1] == 8 and v[4])[:6]
     lair_g = sorted(g for g in lairs)[:6]
@@ -335,10 +335,14 @@ def main():
     for cid, steps, forms, glb in hand:
         add("hand-" + cid, steps, forms, glb)
 
+    # ExtractRoomActions: the text after the first colon, trimmed
+    for k, t in enumerate(("Cast: pre-681, post-0", "no colon", "", ":", "a:b:c", "x:   spaced  ", "12/73 (Cast: x)", ":" + "y" * 1100)):
+        cases.append({"id": "extract-%d" % k, "proc": "ExtractRoomActions", "args": [t]})
+
     # ---- the table of lair answers: real group indexes, invented fixed numbers
     wanted = set()
     for cs in cases:
-        for st in cs["steps"]:
+        for st in cs.get("steps", []):
             for m in re.finditer(r"\[([\d\-]+)\]", st["args"][0]):
                 wanted.add(m.group(1))
     # also the groups of the lair-bearing Obtained From strings reached through chests and shops: the
@@ -357,7 +361,7 @@ def main():
     # ---- closure of the records the cases can reach
     texts = []
     for cs in cases:
-        for st in cs["steps"]:
+        for st in cs.get("steps", []):
             texts.append(st["args"][0])
             if st["args"][4]:
                 texts.append("item #%d" % st["args"][4])
@@ -397,7 +401,7 @@ def main():
     for t in texts:                    # an aux item is looked up for its value
         pass
     for cs in cases:
-        for st in cs["steps"]:
+        for st in cs.get("steps", []):
             if st["args"][4]:
                 need["item"].add(st["args"][4])
     for g in sorted(wanted):
