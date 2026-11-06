@@ -37,9 +37,16 @@ describe('request', () => {
 		expect(evaluateBody(undefined, mirror).character).toBeUndefined();
 		expect(evaluateBody(undefined, mirror).global_filter.use_character).toBe(false);
 	});
+	it('can keep a complete character the bar does not mirror, for the monsters list', () => {
+		expect(evaluateBody(picked, own, {}, true)).toEqual({ character: picked, global_filter: own, options: {} });
+		// never an unfinished one: the server would refuse it
+		expect(evaluateBody(newCharacter('x'), own, {}, true).character).toBeUndefined();
+		expect(evaluateBody(undefined, own, {}, true).character).toBeUndefined();
+	});
 	it('knows the tabs it serves', () => {
 		expect(isEvalTab('weapons')).toBe(true);
-		expect(isEvalTab('monsters')).toBe(false);
+		expect(isEvalTab('monsters')).toBe(true);
+		expect(isEvalTab('rooms')).toBe(false);
 	});
 });
 
@@ -64,6 +71,9 @@ describe('column mapping', () => {
 		const cls = defs[1].cellClass as (p: { data: EvalRow }) => string | undefined;
 		expect(cls({ data: row })).toBe('ts-cell-above');
 		expect(colorClass(0x80)).toBe('ts-cell-below');
+		// a monster cell calculated against the character, and a row that fails the filter
+		expect(colorClass(193 + 232 * 65536)).toBe('ts-cell-calc');
+		expect(colorClass(192 + 192 * 256 + 192 * 65536)).toBe('ts-cell-nomatch');
 		expect(colorClass(undefined)).toBeUndefined();
 		expect(colorClass(0x123456)).toBeUndefined();
 	});

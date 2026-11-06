@@ -14,6 +14,8 @@ touches:
   - web/src/lib/evaluate.ts
   - web/src/lib/detail.ts
   - web/src/lib/components/
+  - web/src/app.css
+  - web/src/lib/grid/DataGrid.svelte
   - web/src/lib/
   - docs/differences.md
   - tasks/P4-08-monsters-explorer.md

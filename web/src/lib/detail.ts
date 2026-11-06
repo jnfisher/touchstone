@@ -4,10 +4,10 @@
 // shapes the request, groups the rows for display and resolves reference links.
 import type { CharacterDoc } from './character';
 import type { EvalOptions } from './evaluate';
-import { wireFilter, type GlobalFilter, type WireFilter } from './globalfilter';
+import { characterReady, wireFilter, type GlobalFilter, type WireFilter } from './globalfilter';
 import type { SectionSlug } from './sections';
 
-export type PaneKind = 'items' | 'spells' | 'shops' | 'classes' | 'races';
+export type PaneKind = 'items' | 'spells' | 'shops' | 'classes' | 'races' | 'monsters';
 
 /** The explorer tabs that have a server pane, and the pane each uses. */
 const PANE_OF: Partial<Record<SectionSlug, PaneKind>> = {
@@ -17,7 +17,8 @@ const PANE_OF: Partial<Record<SectionSlug, PaneKind>> = {
 	spells: 'spells',
 	shops: 'shops',
 	classes: 'classes',
-	races: 'races'
+	races: 'races',
+	monsters: 'monsters'
 };
 
 export function paneKind(slug: string): PaneKind | undefined {
@@ -46,6 +47,25 @@ export interface RefRow {
 	cells: RefCell[];
 	target: RefTarget | null;
 }
+/** A sub-item of a monster pane line (MME's `ListSubItems`). */
+export interface LineCell {
+	text: string;
+	tag?: string;
+	/** The VB `ForeColor` MME gave the cell. */
+	color?: number;
+	bold?: boolean;
+}
+/** A line of the monster pane: MME's `lvMonsterDetail` item. */
+export interface PaneLine {
+	label: string;
+	/** The ListItem's tag, lower case: `item`, `spell`, `monster`, `room`, `greet_text`, `plain`, ... */
+	kind: string;
+	color?: number;
+	bold?: boolean;
+	cells: LineCell[];
+	/** The record the line stands for, to link to. */
+	target: RefTarget | null;
+}
 export interface Compare {
 	label: string;
 	text: string;
@@ -56,6 +76,8 @@ export interface Pane {
 	text: string;
 	rows: PaneRow[];
 	references: RefRow[];
+	/** Monsters: the pane's list, line by line. */
+	lines?: PaneLine[];
 	compare: Compare[];
 	charm?: number;
 	charm_label?: string;
@@ -71,15 +93,25 @@ export interface PaneRequest {
 	show_sell?: boolean;
 }
 
-/** The request body: the same character and bar as the lists, plus the shop pane's boxes. */
+/**
+ * The request body: the same character and bar as the lists, plus the shop pane's boxes and, for a
+ * monster, the lair/party boxes. `keepCharacter` sends a complete character the bar does not mirror
+ * (its attack choice still decides the monster pane's damage lines).
+ */
 export function paneBody(
 	doc: CharacterDoc | undefined,
 	filter: GlobalFilter,
-	extra: { charm?: number; showCharm?: boolean; showSell?: boolean } = {}
+	extra: {
+		charm?: number;
+		showCharm?: boolean;
+		showSell?: boolean;
+		options?: EvalOptions;
+		keepCharacter?: boolean;
+	} = {}
 ): PaneRequest {
 	const global_filter = wireFilter(filter, doc);
-	const body: PaneRequest = { global_filter, options: {} };
-	if (global_filter.use_character && doc) body.character = doc;
+	const body: PaneRequest = { global_filter, options: extra.options ?? {} };
+	if (doc && (global_filter.use_character || (extra.keepCharacter && characterReady(doc)))) body.character = doc;
 	if (extra.charm !== undefined) body.charm = extra.charm;
 	if (extra.showCharm) body.show_charm = true;
 	if (extra.showSell) body.show_sell = true;
