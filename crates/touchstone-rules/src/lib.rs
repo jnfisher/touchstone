@@ -17,6 +17,7 @@ pub mod game_text;
 pub mod gear;
 pub mod hit_calc;
 pub mod item_value;
+pub mod lairs;
 pub mod monster_glue;
 pub mod monster_sim;
 pub mod pipeline;

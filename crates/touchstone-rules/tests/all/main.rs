@@ -16,6 +16,7 @@ mod game_text;
 mod gear;
 mod hit_calc;
 mod item_value;
+mod lairs;
 mod monster_glue;
 mod monster_sim;
 mod pipeline;
