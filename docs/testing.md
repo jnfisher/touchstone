@@ -47,7 +47,8 @@ in for it:
   rule's own card checks the `v120` column.
 - **Identity harness.** `tests/all/quicksilver_identity.rs` runs the MME fixtures through
   `Profile::Quicksilver(&Balance::NEUTRAL)` and expects the MME answers. A card that makes a family
-  parametric adds that family's fixture test there. It covers the stats, accuracy, attack, char_panel, spell_cast and character fixtures (and more, as cards
+  parametric adds that family's fixture test there. The `weave` family (Q-013a) has no MME counterpart: `tests/all/quicksilver_weave.rs` checks its `v120` column through
+  `quicksilver::weave` and that Stock and NEUTRAL weave nothing. It covers the stats, accuracy, attack, char_panel, spell_cast and character fixtures (and more, as cards
   add them); the spell_cast run gives the caster a casting stat, class and level so the neutral balance has something to undo.
 
 ## No manual verification

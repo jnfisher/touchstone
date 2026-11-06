@@ -393,3 +393,24 @@ Under `Profile::Quicksilver` only; the stock rules are untouched.
 - A cancelled monster damage calculation stores nothing, not even the monsters it had finished; MME's progress form has
   no cancel. The stored arrays and the "already asked" flags stay as they were.
 - Under Quicksilver the character editor cuts a typed stat to the training maximum; stock keeps MME's three digits.
+
+## Quicksilver: the weave pick and volley (Q-013a)
+
+Under `Profile::Quicksilver` only; the stock rules are untouched. MME has no weave, so the arithmetic follows
+Quicksilver's integer forms and `fixtures/quicksilver/weave.json` pins it exactly.
+
+- Quicksilver's pick considers auto-combat spells in the character's spellbook. MME's spell rows carry no spell
+  type and touchstone has no spellbook, so a candidate is an instant single-target damage spell that the class can
+  learn and use at the level and alignment (`spell_is_usable` with "learnable"). The two agree on every player
+  damage spell in the stock and 1.20 data; a learnable general-type spell would be offered where the engine would not.
+- The character is assumed to know every such spell. A character who has not yet learned the best one weaves
+  with it all the same.
+- A spell's strength range uses the engine's integer growth (`inc * level / levels`). MME's currency form
+  (`spells::get_current_spell_min_max`) can come out one lower at some levels, so a weave volley and the spell's
+  own detail line may differ by one.
+- Magic resistance and the "Alter spell damage" bonus apply in the engine's integer forms (truncating), not
+  through `calculate_resist_damage`, which rounds. They differ by under one point per hit.
+- A proc is one expected volley with the target assumed to survive every hit and a single resist roll over the
+  whole proc, as the engine rolls it. The chance, the killing-blow question and the round are Q-013b and Q-014.
+- A slot with its own value deals that value; the proc's power, the class weave share and the target's element
+  resistance only reach slots that use the rolled strength, as in the engine.
