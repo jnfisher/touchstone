@@ -5,6 +5,7 @@
 
 mod balance;
 mod v120;
+pub mod weave;
 
 pub use balance::{
     Anchors, Balance, BalanceError, ClassMeleePct, ClassSpellPct, ClassWeavePct, LevelPct,
