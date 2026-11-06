@@ -2,13 +2,15 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use arc_swap::ArcSwap;
 use axum::body::Bytes;
 use serde::Serialize;
 use touchstone_model::World;
+use touchstone_rules::Profile;
+use touchstone_rules::lairs::LairCache;
 
 use crate::settings::{self, Settings};
 
@@ -36,6 +38,8 @@ pub struct Loaded {
     pub world: World,
     pub tables: Vec<TableJson>,
     pub info: InfoJson,
+    /// MME's `LoadLairInfo` cache, built when a reference list first needs it.
+    lair_cache: OnceLock<LairCache>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,6 +115,7 @@ impl Loaded {
         Ok(Self {
             world,
             tables,
+            lair_cache: OnceLock::new(),
             info: InfoJson {
                 source,
                 loaded_at: iso_now(),
@@ -119,6 +124,14 @@ impl Loaded {
                 version,
                 counts,
             },
+        })
+    }
+
+    /// The lair cache of this load.
+    pub fn lair_cache(&self) -> &LairCache {
+        self.lair_cache.get_or_init(|| {
+            let nmr = crate::detail::nmr_ver(&self.world.info.nmr_version);
+            LairCache::load(&self.world, Profile::Stock, nmr)
         })
     }
 

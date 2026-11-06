@@ -90,3 +90,15 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   such a spell, so it is not exercised by the fixture.
 - ListView sorting is not run: the row counts of each `SortListView` / `LV_RefreshSort` request are returned.
 - GreaterMUD and Paramud branches (aura-item AC/DR line, cast-on-kill percent, Ganghouse value) are not ported.
+
+## Detail panes (P4-DP)
+
+- Reference lists are sorted by the server (`/api/detail`): each `SortListView` request sorts the rows held at that
+  moment by first-column text, ignoring case; an item's final refresh sorts by the first column's tag, highest first
+  (shop rows ahead with Shops First). Rows with equal keys keep their order; MME's ListView leaves that order undefined.
+- Lair rows in reference lists use the lair cache as loaded (mobs, spawn chance, average exp). The damage figures
+  ("Dmg Out", clear-round damage) are what a monster-tab calculation stores in the cache, so they read as zero here
+  until the monster explorer computes them.
+- The weapon list's per-row attack type (the row tag MME passes as `nAttackTypeMUD`) is not on the evaluate wire;
+  the item pane takes it as `attack_type` and the page leaves it unset (normal attack).
+- A character used through the global filter bar always counts as `chkGlobalFilter` on, whatever flag it was saved with.
