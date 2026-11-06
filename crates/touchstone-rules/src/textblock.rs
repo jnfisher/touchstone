@@ -80,7 +80,7 @@ fn replace_cmd(s: &str) -> String {
 }
 
 /// `AutoAppend` of modSyntaxsFunc.
-fn auto_append(base: &str, add: &str, glue: &str) -> String {
+pub(crate) fn auto_append(base: &str, add: &str, glue: &str) -> String {
     if !base.is_empty() {
         if !trim(add).is_empty() {
             format!("{base}{glue}{add}")

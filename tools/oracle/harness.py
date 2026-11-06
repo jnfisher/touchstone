@@ -171,6 +171,7 @@ class Env:
         shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra, db_only) if database else None
         self.rec = shims.Recorder()
+        self.tip = None
         self.msgbox_answers = []
         self.stubbed = []       # scenario stubs that replace a procedure of a loaded module (ExpandCombo)
         it = self.it = Interpreter()
@@ -232,6 +233,16 @@ class Env:
                     self.it.bind(name, shims.ControlProxy(self, name))
         specs = spec if isinstance(spec, list) else [spec]
         self.it.bind("objToolTip", shims.NoopShim())
+        if any(one.get("tooltip_recorder") for one in specs):
+            # the map cell tooltip text is what the room family reads back ("%tip"); ScaleMode constants of ConvertScale's arguments
+            self.tip = shims.TipShim()
+            self.it.bind("objToolTip", self.tip)
+            for n, v in (("vbTwips", 1), ("vbPixels", 3), ("vbModeless", 0), ("vbModal", 1)):
+                self.it.bind(n, V.I32(v))
+        for n in [n for one in specs for n in one.get("record_procs", [])]:
+            # a procedure the code under test calls for its effect on the screen: the call and its arguments are the output
+            self.it.bind_proc(n, lambda it_, *a, n=n: self.rec.add("call", name=n, args=[
+                V.c_str(x) if isinstance(x, str) else V.int_value(x) for x in a if x is not V.MISSING]) and None)
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         self.it.bind_proc("RGB", lambda it_, r, g, b: V.mk_i32(V.int_value(r) + 256 * V.int_value(g) + 65536 * V.int_value(b)))
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
@@ -432,6 +443,8 @@ class Env:
         it.depth = 0
         it.rnd.state = 0x50000 if rnd is None else rnd & 0xFFFFFF
         self.rec.events.clear()
+        if self.tip is not None:
+            self.tip.text = None
         self.saved = {}
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
@@ -741,6 +754,12 @@ class Env:
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
+        if expr.startswith("%flv."):
+            # the recording ListView of another form: "%flv.frmResults.lvResults"
+            _, fname, cname = expr.split(".")
+            return self.it.externals[fname.lower()].vb_get(cname, []).dump(encode)
+        if expr == "%tip":
+            return self.tip.text if self.tip is not None else None
         if expr.startswith("%lvn."):
             # a frmMain recording ListView reduced to Text and Tag per row (the record number and the attack kind)
             # as "number" or "number:tag" strings, to keep the fixtures small

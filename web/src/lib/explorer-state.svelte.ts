@@ -12,3 +12,6 @@ export const selection = {
 /** The Shops tab's charm box and buy/sell checks. One value for every shop, as in MME (its charm
  * box mirrors the character's Charm); it starts at 0 and with "Show Buying" checked. */
 export const shopView = $state({ charm: 0, buying: true, selling: false });
+
+/** A room-command row followed from another tab (`ShowRoomCmdRoomList`): the Rooms tab lists its rooms. */
+export const roomsView = $state<{ list?: { key: string; rowText: string; percent: string } }>({});

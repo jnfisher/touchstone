@@ -331,6 +331,13 @@ fn target_of(r: &LocationRow) -> Option<Target> {
                 None
             }
         }
+        // GotoLocation: a room command row opens its room, or the list of rooms when it has several
+        // (a key with `|` or `-`)
+        LocationKind::RoomCmd => (tag.contains('/')).then(|| Target {
+            table: "rooms",
+            number: 0,
+            key: Some(tag.to_owned()),
+        }),
         _ => None,
     }
 }

@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_damage, monster_sim, panes, paste, settings,
+    item_manager, monster_damage, monster_sim, panes, paste, rooms, settings,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -98,6 +98,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/paste/party/continue",
             post(paste::party_continue_route),
         )
+        .route("/api/rooms/find-text", get(rooms::find_text_route))
+        .route("/api/rooms/find-exits", post(rooms::find_exits_route))
+        .route("/api/rooms/cmd-rooms", post(rooms::cmd_rooms_route))
+        .route("/api/rooms/{map}/{room}", get(rooms::room_route))
         .route("/api/clipboard/character", post(clipboard::character_route))
         .route("/api/clipboard/monster", post(clipboard::monster_route))
         .route("/api/clipboard/shop", post(clipboard::shop_route))

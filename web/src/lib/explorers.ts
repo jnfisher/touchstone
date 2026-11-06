@@ -2,7 +2,7 @@
 // MME's headers, the detail pane, and the computed columns that are still to come (`pending`).
 // Column order and headers follow modMain's Add*2LV row builders; record filters follow the
 // Filter* procedures in frmMain with MME's default "only in-game" setting.
-import type { ClassRec, Item, Monster, Race, Room, Shop, Spell, TableName, TableTypes } from './api';
+import type { ClassRec, Item, Monster, Race, Shop, Spell, TableName, TableTypes } from './api';
 import type { EvalTab } from './evaluate';
 import type { SectionSlug } from './sections';
 
@@ -239,68 +239,6 @@ const classes: Explorer<'classes'> = {
 	detail: (c) => titleOnly(c.name)
 };
 
-// ---------- rooms ----------
-
-const EXITS = [
-	['n', 'N'],
-	['s', 'S'],
-	['e', 'E'],
-	['w', 'W'],
-	['ne', 'NE'],
-	['nw', 'NW'],
-	['se', 'SE'],
-	['sw', 'SW'],
-	['u', 'U'],
-	['d', 'D']
-] as const;
-
-const rooms: Explorer<'rooms'> = {
-	slug: 'rooms',
-	table: 'rooms',
-	needs: [],
-	// MME has no room list (rooms are reached by map and room number), so every room is listed.
-	include: () => true,
-	columns: [
-		num<Room>('map', 'Map', (r) => r.map_number, 70),
-		num<Room>('room', 'Room', (r) => r.room_number, 75),
-		str<Room>('name', 'Name', (r) => text(r.name), 260),
-		num<Room>('light', 'Light', (r) => r.light, 70),
-		num<Room>('shop', 'Shop', (r) => r.shop, 70),
-		num<Room>('npc', 'NPC', (r) => r.npc, 70),
-		num<Room>('cmd', 'CMD', (r) => r.cmd, 70),
-		num<Room>('spell', 'Spell', (r) => r.spell, 70),
-		str<Room>('lair', 'Lair', (r) => text(r.lair), 160),
-		num<Room>('delay', 'Delay', (r) => r.delay, 70),
-		str<Room>('placed', 'Placed', (r) => text(r.placed), 160),
-		...EXITS.map(([k, label]) => str<Room>(k, label, (r) => (r[k] === '0' ? '' : r[k]), 90))
-	],
-	rowId: (r) => `${r.map_number}/${r.room_number}`,
-	title: (r) => `${r.map_number}/${r.room_number} ${text(r.name)}`,
-	pending: [],
-	detail: (r) => {
-		const exits = EXITS.filter(([k]) => r[k] !== '0').map(([k, label]) => row(label, r[k]));
-		const out = [
-			group(text(r.name) || `Room ${r.room_number}`, [
-				row('Map', r.map_number),
-				row('Room', r.room_number),
-				row('Light', r.light),
-				row('Shop', r.shop),
-				row('NPC', r.npc),
-				row('CMD', r.cmd),
-				row('Spell', r.spell),
-				row('Delay', r.delay)
-			])
-		];
-		if (exits.length) out.push(group('Exits', exits));
-		const where = [
-			...(r.lair ? [row('Lair', r.lair, true)] : []),
-			...(r.placed ? [row('Placed', r.placed, true)] : [])
-		];
-		if (where.length) out.push(group('Spawns', where));
-		return out;
-	}
-};
-
 // ---------- registry ----------
 
 export type AnyExplorer = Explorer<TableName>;
@@ -313,8 +251,7 @@ export const EXPLORERS: Partial<Record<SectionSlug, AnyExplorer>> = {
 	shops,
 	items: sundry,
 	races,
-	classes,
-	rooms
+	classes
 } as unknown as Partial<Record<SectionSlug, AnyExplorer>>;
 
 export function explorerFor(slug: string): AnyExplorer | undefined {

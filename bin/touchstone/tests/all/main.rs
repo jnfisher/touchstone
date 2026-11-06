@@ -15,6 +15,7 @@ mod monster_sim;
 mod monsters;
 mod panes;
 mod paste;
+mod rooms;
 mod settings;
 
 mod health {
