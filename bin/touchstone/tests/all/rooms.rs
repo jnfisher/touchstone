@@ -276,6 +276,7 @@ fn world(data: &Value, nmr: f64) -> World {
         info: Info {
             nmr_version: format!("v{nmr}"),
             dat_file_version: "v1.11p".to_owned(),
+            content_version: None,
             date: String::new(),
             time: String::new(),
             custom: String::new(),

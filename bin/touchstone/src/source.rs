@@ -11,6 +11,7 @@ use anyhow::{Context, bail};
 use touchstone_data::silvermere::{self, Silvermere};
 
 use crate::config::{Config, SourceConfig, SourceKind};
+use crate::profile::ProfileChoice;
 use crate::state::{AppState, Loaded, SourceInfo};
 
 /// A live silvermere database plus what is needed to rebuild from it.
@@ -19,6 +20,7 @@ pub struct LiveSource {
     seen_version: AtomicI64,
     loads: AtomicU64,
     info: SourceInfo,
+    rules: ProfileChoice,
 }
 
 pub struct Started {
@@ -35,6 +37,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
              (see packaging/touchstone.example.toml)"
         );
     };
+    let rules = ProfileChoice::new(&cfg.rules)?;
     match src.kind {
         SourceKind::Mdb => {
             let sqlite = resolve_mdb(src, &cfg.data_dir)?;
@@ -44,7 +47,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
                 kind: "mdb",
                 path: src.path.display().to_string(),
             };
-            let loaded = Loaded::build(world, info, None, 1)?;
+            let loaded = Loaded::build_with(world, info, None, 1, &rules)?;
             Ok(Started {
                 state: AppState::with_data_dir(loaded, cfg.data_dir.clone()),
                 live: None,
@@ -59,7 +62,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
                 kind: "silvermere",
                 path: src.path.display().to_string(),
             };
-            let loaded = Loaded::build(world, info.clone(), Some(version), 1)?;
+            let loaded = Loaded::build_with(world, info.clone(), Some(version), 1, &rules)?;
             Ok(Started {
                 state: AppState::with_data_dir(loaded, cfg.data_dir.clone()),
                 live: Some(Arc::new(LiveSource {
@@ -67,6 +70,7 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
                     seen_version: AtomicI64::new(version),
                     loads: AtomicU64::new(1),
                     info,
+                    rules,
                 })),
             })
         }
@@ -87,7 +91,16 @@ impl LiveSource {
         }
         let world = handle.load_world()?;
         let n = self.loads.load(Ordering::Relaxed) + 1;
-        let loaded = Loaded::build(world, self.info.clone(), Some(version), n)?;
+        let loaded =
+            match Loaded::build_with(world, self.info.clone(), Some(version), n, &self.rules) {
+                Ok(l) => l,
+                Err(e) => {
+                    // The game will not change this content under us; asking again every poll
+                    // would only repeat the message. A later commit is looked at afresh.
+                    self.seen_version.store(version, Ordering::Relaxed);
+                    return Err(e.context("keeping the previous game data"));
+                }
+            };
         state.swap(loaded);
         // Only after the swap: a failed attempt is retried on the next poll.
         self.seen_version.store(version, Ordering::Relaxed);

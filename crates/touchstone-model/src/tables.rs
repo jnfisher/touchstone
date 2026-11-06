@@ -50,6 +50,10 @@ impl Class {
 pub struct Info {
     pub nmr_version: String,
     pub dat_file_version: String,
+    /// Quicksilver's structured content version (`world_import.content_version`), the only thing
+    /// a rules profile may be chosen from. `dat_file_version` is a display caption. `None` for
+    /// the `.mdb` and for silvermere databases without Quicksilver's migration.
+    pub content_version: Option<String>,
     pub date: String,
     pub time: String,
     pub custom: String,

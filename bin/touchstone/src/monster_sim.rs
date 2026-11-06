@@ -320,6 +320,7 @@ pub struct SimJson {
 /// `cmdRunSim_Click` over `world`, for the monster and defender in `req`, with `chr` the evaluated
 /// character when the request has one.
 pub fn run(
+    profile: Profile,
     world: &World,
     req: &SimReq,
     chr: Option<&CharSimInputs>,
@@ -348,7 +349,6 @@ pub fn run(
     let rounds_box = val(&req.rounds.0).min(MAX_ROUNDS);
     let rounds = clng(rounds_box).map_err(|_| bad("rounds is out of range"))?;
 
-    let profile = Profile::Stock;
     let env = GlueEnv {
         profile,
         nmr_ver: nmr_ver(&world.info.nmr_version),
@@ -494,12 +494,13 @@ pub fn run(
 
 pub async fn sim_route(State(app): State<Arc<AppState>>, Body(req): Body<SimReq>) -> ApiResult {
     let loaded = app.current();
+    let profile = loaded.profile;
     let chr = match &req.defender.character {
-        Some(dto) => Some(refresh(&loaded.world, dto)?.1.sim_inputs()),
+        Some(dto) => Some(refresh(profile, &loaded.world, dto)?.1.sim_inputs()),
         None => None,
     };
     // Half a million rounds is real work; keep it off the async threads.
-    let out = tokio::task::spawn_blocking(move || run(&loaded.world, &req, chr.as_ref()))
+    let out = tokio::task::spawn_blocking(move || run(profile, &loaded.world, &req, chr.as_ref()))
         .await
         .map_err(fail)??;
     json(&out)
@@ -521,7 +522,10 @@ pub async fn defender_route(
     Body(req): Body<DefenderQuery>,
 ) -> ApiResult {
     let loaded = app.current();
-    let chr = refresh(&loaded.world, &req.character)?.1.sim_inputs();
+    let profile = loaded.profile;
+    let chr = refresh(profile, &loaded.world, &req.character)?
+        .1
+        .sim_inputs();
     json(&DefenderJson {
         class: chr.class,
         defender: Boxes::from_character(&chr)?,

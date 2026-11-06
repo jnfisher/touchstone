@@ -81,20 +81,29 @@ fn rule(dto: &CharacterDto) -> ListRule {
     }
 }
 
-fn flags(world: &World, dto: &CharacterDto, eq: &[i32; EQUIP_SLOTS]) -> Vec<bool> {
+fn flags(
+    profile: Profile,
+    world: &World,
+    dto: &CharacterDto,
+    eq: &[i32; EQUIP_SLOTS],
+) -> Vec<bool> {
     let who = dto.class.map(|_| usable_by(dto));
-    slot_flags(Profile::Stock, world, who.as_ref(), eq).to_vec()
+    slot_flags(profile, world, who.as_ref(), eq).to_vec()
 }
 
 fn slots(dto: &CharacterDto) -> Result<[i32; EQUIP_SLOTS], (StatusCode, String)> {
     Ok(dto.to_character().map_err(bad)?.equipped)
 }
 
-pub fn equip(world: &World, req: EquipRequest) -> Result<EquipResponse, (StatusCode, String)> {
+pub fn equip(
+    profile: Profile,
+    world: &World,
+    req: EquipRequest,
+) -> Result<EquipResponse, (StatusCode, String)> {
     let mut dto = req.character;
     let eq = slots(&dto)?;
     let out: EquipOutcome = match req.slot {
-        Some(slot) => set_slot(Profile::Stock, world, &eq, slot, req.item, &rule(&dto))
+        Some(slot) => set_slot(profile, world, &eq, slot, req.item, &rule(&dto))
             .map_err(|e| unprocessable(e.to_string()))?,
         None => {
             if req.item != 0 && world.get_item(req.item).is_none() {
@@ -116,7 +125,7 @@ pub fn equip(world: &World, req: EquipRequest) -> Result<EquipResponse, (StatusC
         }
     };
     dto.equipped = out.equipped.to_vec();
-    let flags = flags(world, &dto, &out.equipped);
+    let flags = flags(profile, world, &dto, &out.equipped);
     Ok(EquipResponse {
         character: dto,
         messages: out.messages,
@@ -126,12 +135,16 @@ pub fn equip(world: &World, req: EquipRequest) -> Result<EquipResponse, (StatusC
     })
 }
 
-pub fn equip_state(world: &World, dto: &CharacterDto) -> Result<EquipState, (StatusCode, String)> {
+pub fn equip_state(
+    profile: Profile,
+    world: &World,
+    dto: &CharacterDto,
+) -> Result<EquipState, (StatusCode, String)> {
     let eq = slots(dto)?;
     let rule = rule(dto);
     let choices = (0..EQUIP_SLOTS)
         .map(|slot| {
-            slot_list(Profile::Stock, world, slot, &rule)
+            slot_list(profile, world, slot, &rule)
                 .into_iter()
                 .filter_map(|n| world.get_item(n))
                 .map(|i| Choice {
@@ -143,7 +156,7 @@ pub fn equip_state(world: &World, dto: &CharacterDto) -> Result<EquipState, (Sta
         .collect();
     Ok(EquipState {
         choices,
-        flags: flags(world, dto, &eq),
+        flags: flags(profile, world, dto, &eq),
     })
 }
 
@@ -152,7 +165,8 @@ pub async fn equip_route(
     Body(req): Body<EquipRequest>,
 ) -> ApiResult {
     let loaded = state.current();
-    json(&equip(&loaded.world, req)?)
+    let profile = loaded.profile;
+    json(&equip(profile, &loaded.world, req)?)
 }
 
 pub async fn equip_state_route(
@@ -160,7 +174,8 @@ pub async fn equip_state_route(
     Body(dto): Body<CharacterDto>,
 ) -> ApiResult {
     let loaded = state.current();
-    json(&equip_state(&loaded.world, &dto)?)
+    let profile = loaded.profile;
+    json(&equip_state(profile, &loaded.world, &dto)?)
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -225,11 +240,11 @@ fn criterion_of(code: i32) -> Result<Criterion, (StatusCode, String)> {
 
 /// MME's combos are sorted by their text; a case-insensitive compare of "Name (number)" stands in for the
 /// Windows sort (docs/differences.md).
-fn combo_lists(world: &World, dto: &CharacterDto) -> Vec<Vec<i32>> {
+fn combo_lists(profile: Profile, world: &World, dto: &CharacterDto) -> Vec<Vec<i32>> {
     let rule = rule(dto);
     (0..EQUIP_SLOTS)
         .map(|slot| {
-            let mut v: Vec<(String, i32)> = slot_list(Profile::Stock, world, slot, &rule)
+            let mut v: Vec<(String, i32)> = slot_list(profile, world, slot, &rule)
                 .into_iter()
                 .filter_map(|n| world.get_item(n))
                 .map(|i| {
@@ -246,6 +261,7 @@ fn combo_lists(world: &World, dto: &CharacterDto) -> Vec<Vec<i32>> {
 }
 
 pub fn find_best(
+    profile: Profile,
     world: &World,
     body: FindBestBody,
 ) -> Result<FindBestResponse, (StatusCode, String)> {
@@ -253,7 +269,7 @@ pub fn find_best(
     let equipped = slots(&dto)?;
     let lists = match body.slot_lists {
         Some(l) => l,
-        None => combo_lists(world, &dto),
+        None => combo_lists(profile, world, &dto),
     };
     if lists.len() > EQUIP_SLOTS {
         return Err(unprocessable("more than 20 slot lists"));
@@ -278,13 +294,13 @@ pub fn find_best(
         },
     };
     let res = if body.next {
-        find_best::next_best(Profile::Stock, world, &req)
+        find_best::next_best(profile, world, &req)
     } else {
         let c = body
             .criterion
             .ok_or_else(|| unprocessable("a Find Best needs a criterion"))?;
         find_best::find_best(
-            Profile::Stock,
+            profile,
             world,
             &req,
             criterion_of(c)?,
@@ -293,7 +309,7 @@ pub fn find_best(
     }
     .map_err(|e| unprocessable(e.to_string()))?;
     dto.equipped = res.equipped.to_vec();
-    let flags = flags(world, &dto, &res.equipped);
+    let flags = flags(profile, world, &dto, &res.equipped);
     let winners = res
         .winners
         .iter()
@@ -329,5 +345,6 @@ pub async fn find_best_route(
     Body(req): Body<FindBestBody>,
 ) -> ApiResult {
     let loaded = state.current();
-    json(&find_best(&loaded.world, req)?)
+    let profile = loaded.profile;
+    json(&find_best(profile, &loaded.world, req)?)
 }

@@ -46,9 +46,14 @@ impl NameLookup for WorldNames<'_> {
     }
 }
 
-fn env<'a>(world: &'a World, names: &'a WorldNames<'a>, hide: bool) -> AbilityEnv<'a> {
+fn env<'a>(
+    profile: Profile,
+    world: &'a World,
+    names: &'a WorldNames<'a>,
+    hide: bool,
+) -> AbilityEnv<'a> {
     AbilityEnv {
-        profile: Profile::Stock,
+        profile,
         names,
         textblocks: world,
         spells: &world.spells,
@@ -157,10 +162,9 @@ pub struct AbilityName {
 
 /// The ability combos' items (`sAbilityList`): every number MME lists, in number order.
 pub async fn ability_list(State(state): State<Arc<AppState>>) -> ApiResult {
-    let list = touchstone_rules::ability_text::get_ability_list(
-        Profile::Stock,
-        state.hide_record_numbers(),
-    );
+    let profile = state.current().profile;
+    let list =
+        touchstone_rules::ability_text::get_ability_list(profile, state.hide_record_numbers());
     let rows: Vec<AbilityName> = list
         .into_iter()
         .enumerate()
@@ -182,8 +186,9 @@ pub async fn abilities(
 ) -> ApiResult {
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     let names = WorldNames(world);
-    let env = env(world, &names, state.hide_record_numbers());
+    let env = env(profile, world, &names, state.hide_record_numbers());
     let missing = || not_found(format!("no {table} record {number}"));
     let mut class_ok = Vec::new();
     // Each pane's MME loop decides which slots print and with which flags.
@@ -282,6 +287,7 @@ pub async fn spell_effect(
 ) -> ApiResult {
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     let sp = world
         .get_spell(number)
         .ok_or_else(|| not_found(format!("no spell {number}")))?;
@@ -297,12 +303,13 @@ pub async fn spell_effect(
         (min != 0 || max != 0).then_some(Range { min, max })
     };
     let names = WorldNames(world);
-    let effect = env(world, &names, state.hide_record_numbers()).pull_spell_eq(&PullArgs {
-        calc_level: true,
-        level: lvl,
-        spell: number,
-        ..PullArgs::default()
-    });
+    let effect =
+        env(profile, world, &names, state.hide_record_numbers()).pull_spell_eq(&PullArgs {
+            calc_level: true,
+            level: lvl,
+            spell: number,
+            ..PullArgs::default()
+        });
     json(&EffectJson {
         number,
         level,
@@ -353,11 +360,12 @@ pub async fn monster_max_damage(
 ) -> ApiResult {
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     let m = world
         .get_monster(number)
         .ok_or_else(|| not_found(format!("no monster {number}")))?;
     let env = GlueEnv {
-        profile: Profile::Stock,
+        profile,
         nmr_ver: nmr_ver(&world.info.nmr_version),
     };
     let mut sim = MonsterSimInput::default();

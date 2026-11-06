@@ -776,6 +776,8 @@ fn accepts_quicksilver_9001_and_reads_content_version() {
     );
     let w = load(&path);
     assert_eq!(w.info.dat_file_version, "1.20.0-test");
+    // The structured value a rules profile is chosen from.
+    assert_eq!(w.info.content_version.as_deref(), Some("1.20.0-test"));
     assert_eq!(
         (w.info.date.as_str(), w.info.time.as_str()),
         ("2026-10-14", "09:30:15")
@@ -822,6 +824,7 @@ fn an_empty_world_loads() {
     let w = load(&path);
     assert!(w.items.is_empty() && w.rooms.is_empty());
     assert_eq!(w.info.dat_file_version, "silvermere");
+    assert_eq!(w.info.content_version, None);
 }
 
 #[test]

@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
-use touchstone_rules::Profile;
 use touchstone_rules::chests::{ChestResult, chest_contents, sorted_by_chance};
 use touchstone_rules::locations::LocationOptions;
 use touchstone_rules::spell_book::{
@@ -61,8 +60,10 @@ pub async fn counters_route(
     State(state): State<Arc<AppState>>,
     Body(req): Body<CountersRequest>,
 ) -> ApiResult {
-    let world = &state.current().world;
-    let avg = compute_avg_level_max_stats(Profile::Stock, &world.races).all_stats;
+    let loaded = state.current();
+    let profile = loaded.profile;
+    let world = &loaded.world;
+    let avg = compute_avg_level_max_stats(profile, &world.races).all_stats;
     let from = match &req.tag {
         Some(tag) => NegateFrom::Pane { tag },
         None => NegateFrom::List {
@@ -253,9 +254,11 @@ pub async fn book_route(
     State(state): State<Arc<AppState>>,
     Body(req): Body<BookRequest>,
 ) -> ApiResult {
-    let world = &state.current().world;
+    let loaded = state.current();
+    let profile = loaded.profile;
+    let world = &loaded.world;
     let env = UsableEnv {
-        profile: Profile::Stock,
+        profile,
         spells: &world.spells,
         classes: &world.classes,
         nmr_ver: nmr_ver(&world.info.nmr_version),
