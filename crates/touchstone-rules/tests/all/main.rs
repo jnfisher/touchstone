@@ -8,6 +8,7 @@ mod accuracy;
 mod attack;
 mod calculators;
 mod char_panel;
+mod chests;
 mod character;
 mod class_race_builder;
 mod clipboard;

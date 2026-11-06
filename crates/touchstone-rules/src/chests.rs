@@ -127,9 +127,11 @@ pub fn chest_contents(world: &World, item_number: i32, hide_record_numbers: bool
         }
         if x > pos {
             let text: String = chars[pos..x].iter().collect();
-            if let Ok(tb) = touchstone_vb6::clng(val(&text)) {
-                get_chest_items(world, &mut chest, tb, &mut nest, None);
-            }
+            // `Long` overflow: the handler ends the procedure before any row is made
+            let Ok(tb) = touchstone_vb6::clng(val(&text)) else {
+                return ChestResult::Rows(Vec::new());
+            };
+            get_chest_items(world, &mut chest, tb, &mut nest, None);
         }
     }
     let mut rows = Vec::new();
