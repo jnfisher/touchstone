@@ -143,3 +143,16 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
   replay of it does nothing but record the criterion for Next Best.
 - The "last find best" values of each slot are not kept between clicks in MME either: Next Best recomputes them
   from the worn items. Only the last menu entry and the exclusion list persist.
+
+## Rooms tab (P4-13)
+
+- The graphical map (frmMap, the cell grid, its drawing and the map buttons) is not built; the Rooms tab shows the text MME
+  produces for the centre room: the title, the reference list (`MapGetRoomLoc`) and the cell tooltip text (`MapMapExits`).
+  "Route to room" needs the reachability module and is not offered.
+- Find (`cmdMapFindText_Click`) jumps to one hit at a time in MME. The server lists every hit up to a limit (default 100,
+  at most 1000) by running the same scan; the limit is not MME's.
+- The tooltip's lair numbers come from the lair cache as loaded and its damage lines from each monster's stored average
+  damage ("(default)"), because nothing calculates monster damage here. MME caches its last `GetLairInfo` answer between
+  rooms; the port asks afresh, which gives the same text.
+- MapGetRoomLoc compares each existing row's Tag with the teleport's `map/room` text; a numeric Tag (NPC, shop, placed item,
+  room spell) makes that a type mismatch that ends the procedure, so such rooms lose their command rows. Reproduced.
