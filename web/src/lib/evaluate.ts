@@ -5,6 +5,7 @@ import type { ColDef } from 'ag-grid-community';
 import type { CharacterDoc } from './character';
 import { characterReady, wireFilter, type GlobalFilter, type WireFilter } from './globalfilter';
 import type { MonsterControls } from './monsters';
+import type { DamagePrompt } from './monsterdamage';
 
 export type EvalTab = 'weapons' | 'armour' | 'spells' | 'monsters' | 'items' | 'races' | 'classes' | 'shops';
 
@@ -31,6 +32,11 @@ export interface EvalTable {
 	rows: EvalRow[];
 	/** Monsters: some record was filtered out, so MME's caption reads "*Monsters*". */
 	filtered?: boolean;
+	/**
+	 * Monsters in lair mode: MME would ask whether to calculate the monster damage first and stopped there, so
+	 * there are no rows. Ask, act on the answer, and ask for the list again.
+	 */
+	prompt?: DamagePrompt;
 }
 
 /** The view toggles of the tabs; MME's defaults when absent. */

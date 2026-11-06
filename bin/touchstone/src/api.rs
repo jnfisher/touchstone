@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, monster_sim, panes, paste, settings,
+    item_manager, monster_damage, monster_sim, panes, paste, settings,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -47,6 +47,22 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/class-race-builder/spellbook",
             post(class_race_builder::spellbook_route),
+        )
+        .route(
+            "/api/monster-damage/calculate",
+            post(monster_damage::calculate_route),
+        )
+        .route(
+            "/api/monster-damage/clear",
+            post(monster_damage::clear_route),
+        )
+        .route(
+            "/api/monster-damage/dismiss",
+            post(monster_damage::dismiss_route),
+        )
+        .route(
+            "/api/monster-damage/status",
+            get(monster_damage::status_route),
         )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))

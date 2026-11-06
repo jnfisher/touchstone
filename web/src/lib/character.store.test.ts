@@ -147,6 +147,23 @@ describe("applying a pasted character", () => {
   });
 });
 
+describe("replace epoch (the calculated monster damage is cleared when it moves)", () => {
+  it("moves on a load, new and paste, not on an edit", async () => {
+    const { client, raw } = fakeClient();
+    raw.get.mockResolvedValue({ ...newDoc("Zed"), level: 3 });
+    const s = createCharacterStore(client);
+    const start = s.replaceEpoch;
+    s.edit((d) => (d.level = 9));
+    expect(s.replaceEpoch).toBe(start);
+    s.startNew();
+    expect(s.replaceEpoch).toBe(start + 1);
+    await s.load("Zed");
+    expect(s.replaceEpoch).toBe(start + 2);
+    await s.applyPasted({ ...newDoc("Amy"), level: 4 });
+    expect(s.replaceEpoch).toBe(start + 3);
+  });
+});
+
 describe("shared store and opening the last character", () => {
   it("hands out one store", () => {
     expect(getCharacterStore()).toBe(getCharacterStore());

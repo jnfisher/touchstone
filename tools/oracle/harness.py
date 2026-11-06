@@ -312,7 +312,7 @@ class Env:
             return False
 
         for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "RefreshLearnedSpellColors",
-                  "LV_AssignRowSeqIfMissing"):
+                  "LV_AssignRowSeqIfMissing", "Load", "EnsureAppForeground"):
             it.bind_proc(n, noop)
 
         def set_clipboard_text(it_, text=""):
