@@ -9,6 +9,8 @@
 	import SpellEffect from '$lib/components/SpellEffect.svelte';
 	import SplitPane from '$lib/components/SplitPane.svelte';
 	import { getCharacterStore, openLastCharacter } from '$lib/character.svelte';
+	import { getCompareStore } from '$lib/compare.svelte';
+	import { COMPARE_KINDS, type CompareKind } from '$lib/compare';
 	import { linkFor, paneBody, paneClient, paneKind, type Pane, type RefTarget } from '$lib/detail';
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
@@ -25,7 +27,19 @@
 	import DataGrid from '$lib/grid/DataGrid.svelte';
 
 	type Row = TableTypes[TableName];
-	let { explorer, title }: { explorer: AnyExplorer; title: string } = $props();
+	let {
+		explorer,
+		title,
+		list
+	}: {
+		explorer: AnyExplorer;
+		title: string;
+		/**
+		 * The Compare tab's list: show exactly these records in this order (the explorer's rows for them, no
+		 * filter), with Remove and Clear in place of "Add to compare".
+		 */
+		list?: { numbers: number[]; onRemove: (index: number) => void; onClear: () => void };
+	} = $props();
 
 	let table = $state.raw<Row[]>();
 	let nmr = $state(0);
@@ -58,7 +72,16 @@
 	const rows = $derived(table && !computedTab ? listRows(explorer, table, { nmr }) : []);
 	const columnDefs = $derived(toColDefs(explorer.columns, explorer.defaultSort));
 	const slug = $derived(explorer.slug);
-	const selectedId = $derived(selection.get(slug));
+	const selKey = $derived(list ? `compare:${slug}` : slug);
+	const selectedRaw = $derived(selection.get(selKey));
+	// A compare list always has a row selected, as MME clicks the first one after a change.
+	const selectedId = $derived(
+		list && !list.numbers.includes(Number(selectedRaw)) ? list.numbers[0] : selectedRaw
+	);
+	const compareKind = $derived(
+		(COMPARE_KINDS as readonly string[]).includes(slug) ? (slug as CompareKind) : undefined
+	);
+	const cmp = getCompareStore();
 
 	// The server builds these lists (MME's columns and cells for the current character). The
 	// character store is shared with the Character tab; edits re-fetch after a short pause.
@@ -67,7 +90,18 @@
 	let evaluated = $state.raw<{ tab: string; table: EvalTable }>();
 	let evalError = $state<string>();
 	const payload = $derived(evaluated && evaluated.tab === computedTab ? evaluated.table : undefined);
-	const evalRows = $derived(payload?.rows ?? []);
+	type KeyedRow = EvalRow & { key?: string };
+	// A saved list can hold a record twice; the grid needs a distinct id for each row.
+	const evalRows = $derived.by((): KeyedRow[] => {
+		const rows = payload?.rows ?? [];
+		if (!list) return rows;
+		const seen = new Map<number, number>();
+		return rows.map((r) => {
+			const k = seen.get(r.number) ?? 0;
+			seen.set(r.number, k + 1);
+			return { ...r, key: k === 0 ? String(r.number) : `${r.number}#${k}` };
+		});
+	});
 	const evalDefs = $derived(payload ? evalColDefs(payload.columns, explorer.defaultSort) : []);
 	$effect(() => {
 		const tab = computedTab;
@@ -77,7 +111,10 @@
 		const body = evaluateBody(
 			$state.snapshot(store.doc),
 			$state.snapshot(bar.filter),
-			isMonsters ? { monsters: $state.snapshot(monsterBoxes.controls) } : {},
+			{
+				...(isMonsters ? { monsters: $state.snapshot(monsterBoxes.controls) } : {}),
+				...(list ? { numbers: $state.snapshot(list.numbers) } : {})
+			},
 			isMonsters
 		);
 		const ctl = new AbortController();
@@ -189,6 +226,43 @@
 		>
 			{detailHidden ? 'Show details' : 'Hide details'}
 		</button>
+		{#if list}
+			<button
+				type="button"
+				class="bg-background border-input hover:bg-accent h-8 rounded-md border px-3 text-sm disabled:opacity-50"
+				disabled={selectedId === undefined}
+				data-testid="compare-remove"
+				onclick={() => {
+					const at = list.numbers.indexOf(Number(selectedId));
+					if (at >= 0) list.onRemove(at);
+				}}
+			>
+				Remove
+			</button>
+			<button
+				type="button"
+				class="bg-background border-input hover:bg-accent h-8 rounded-md border px-3 text-sm"
+				data-testid="compare-clear"
+				onclick={() => {
+					// cmdCompareClear_Click asks "Are you sure?" with No as the default
+					if (confirm(`Clear the saved ${title.toLowerCase()} list?`)) list.onClear();
+				}}
+			>
+				Clear
+			</button>
+		{:else if compareKind}
+			{@const on = selectedId !== undefined && cmp.has(compareKind, Number(selectedId))}
+			<button
+				type="button"
+				class="bg-background border-input hover:bg-accent h-8 rounded-md border px-3 text-sm disabled:opacity-50"
+				disabled={selectedId === undefined || !(Number(selectedId) > 0)}
+				aria-pressed={on}
+				data-testid="compare-toggle"
+				onclick={() => cmp.toggle(compareKind, Number(selectedId))}
+			>
+				{on ? 'Remove from compare' : 'Add to compare'}
+			</button>
+		{/if}
 		{#if explorer.pending.length}
 			<span class="text-muted-foreground text-xs" data-testid="pending">
 				Needs a character, coming later: {explorer.pending.join(', ')}
@@ -196,7 +270,7 @@
 		{/if}
 	</div>
 
-	{#if slug === 'monsters'}
+	{#if slug === 'monsters' && !list}
 		<MonsterFilters />
 	{/if}
 
@@ -214,11 +288,11 @@
 						<DataGrid
 							rows={evalRows}
 							columnDefs={evalDefs}
-							getRowId={(r: EvalRow) => String(r.number)}
+							getRowId={(r: KeyedRow) => r.key ?? String(r.number)}
 							selectedId={selectedId === undefined ? undefined : String(selectedId)}
 							quickFilter={search}
-							storageKey={slug}
-							onSelect={(r: EvalRow) => selection.set(slug, r.number)}
+							storageKey={list ? `compare-${slug}` : slug}
+							onSelect={(r: EvalRow) => selection.set(selKey, r.number)}
 							onCount={(n) => (shown = n)}
 							onWidth={(w) => (gridWidth = w)}
 						/>
@@ -230,7 +304,7 @@
 						selectedId={selectedId === undefined ? undefined : String(selectedId)}
 						quickFilter={search}
 						storageKey={slug}
-						onSelect={(r) => selection.set(slug, explorer.rowId(r))}
+						onSelect={(r) => selection.set(selKey, explorer.rowId(r))}
 						onCount={(n) => (shown = n)}
 						onWidth={(w) => (gridWidth = w)}
 					/>
