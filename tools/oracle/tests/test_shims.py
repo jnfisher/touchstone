@@ -238,5 +238,44 @@ class EncodeTests(unittest.TestCase):
         self.assertIs(type(harness.decode(70000)), V.I32)
 
 
+class DictionaryTests(unittest.TestCase):
+    SRC = '''Option Explicit
+Type T
+    sKey As String
+End Type
+Public d As Object
+Public Function KeyCount(ByRef t As T) As Long
+    Set d = New Dictionary
+    d.CompareMode = 1
+    If Len(t.sKey) > 0 Then d.Add t.sKey, 1
+    If d.Exists("ABC") Then KeyCount = d.Count
+End Function
+Public Function KeyCountBinary() As Long
+    Set d = New Dictionary
+    d.Add "abc", 1
+    If d.Exists("ABC") Then KeyCountBinary = 10 Else KeyCountBinary = d.Count
+End Function
+Public Function Run() As Long
+    Dim t As T
+    t.sKey = "abc"
+    Run = KeyCount(t)
+End Function
+'''
+
+    def evaluate(self, name):
+        it = Interpreter()
+        it.new_hooks["dictionary"] = shims.DictionaryShim
+        it.load_source('Attribute VB_Name = "modD"\n' + self.SRC, "modD", "bas")
+        it.ensure_ready()
+        return V.int_value(it.call(name))
+
+    def test_text_compare_ignores_case_and_a_type_member_can_be_the_key(self):
+        # Len() of a Type member passed on ByRef used to see the reference cell, not the text
+        self.assertEqual(self.evaluate("Run"), 1)
+
+    def test_binary_compare_is_the_default(self):
+        self.assertEqual(self.evaluate("KeyCountBinary"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
