@@ -192,6 +192,7 @@ class Env:
         self.db = shims.Database(database, db_extra, db_only) if database else None
         self.rec = shims.Recorder()
         self.tip = None
+        self.map = None         # the map family's drawing recorder (scenario frm key "map_recorder")
         self.msgbox_answers = []
         self.stubbed = []       # scenario stubs that replace a procedure of a loaded module (ExpandCombo)
         it = self.it = Interpreter()
@@ -267,6 +268,19 @@ class Env:
             self.tip = shims.TipShim()
             self.it.bind("objToolTip", self.tip)
             for n, v in (("vbTwips", 1), ("vbPixels", 3), ("vbModeless", 0), ("vbModal", 1)):
+                self.it.bind(n, V.I32(v))
+        if any(one.get("map_recorder") for one in specs):
+            self.map = shims.MapRecorder()
+
+            def draw(it_, label, shape, size, color):
+                self.map.draws.append([label.index, int(V.int_value(shape)), int(V.int_value(size)), int(V.int_value(color))])
+
+            def was(it_, cell, mp, rm):
+                self.map.was.append([int(V.int_value(cell)), int(V.int_value(mp)), int(V.int_value(rm))])
+            self.it.bind_proc("MapDrawOnRoom", draw)
+            self.it.bind_proc("MapRecClear", lambda it_: self.map.clear())
+            self.it.bind_proc("MapRecWas", was)
+            for n, v in (("vbHourglass", 11), ("vbDefault", 0), ("vbInformation", 64)):
                 self.it.bind(n, V.I32(v))
         for n in [n for one in specs for n in one.get("record_procs", [])]:
             # a procedure the code under test calls for its effect on the screen: the call and its arguments are the output
@@ -482,6 +496,8 @@ class Env:
         self.rec.events.clear()
         if self.tip is not None:
             self.tip.text = None
+        if self.map is not None:
+            self.map.clear()
         self.saved = {}
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
@@ -815,6 +831,8 @@ class Env:
             # the recording ListView of another form: "%flv.frmResults.lvResults"
             _, fname, cname = expr.split(".")
             return self.it.externals[fname.lower()].vb_get(cname, []).dump(encode)
+        if expr.startswith("%map."):
+            return self.read_map(expr[5:])
         if expr == "%tip":
             return self.tip.text if self.tip is not None else None
         if expr.startswith("%lvn."):
@@ -873,6 +891,37 @@ class Env:
             lo, hi = (int(x) for x in idx.split(".."))
             return [encode(self.get(obj, prop, [V.I16(i)])) for i in range(lo, hi + 1)]
         return encode(self.get(obj, prop, [V.I16(int(x)) for x in idx.split(",")]))
+
+    def read_map(self, prefix):
+        """The map grid after the steps (family map): `%map.<prefix>` for the cut code whose variables carry the prefix.
+        cells = [cell, map, room, state, BackColor] for every cell that holds or held a room or has a colour;
+        alts = [cell, altMap, altRoom, altState] for the ALT_ copies that are set; draws (packed) and was as recorded."""
+        def arr(n):
+            return self.it.get_global(prefix + n).data
+
+        def num(n):
+            return int(V.int_value(self.it.get_global(prefix + n)))
+        cr, us, acr, aus = arr("CellRoom"), arr("UnchartedCells"), arr("ALT_CellRoom"), arr("ALT_UnchartedCells")
+        labels = self.it.externals["frmmain"].controls.get("lblroomcell", {})
+        cells, alts = [], []
+        for i in range(len(us)):
+            cell = i + 1
+            lab = labels.get(cell)
+            back = int(V.int_value(lab.props["backcolor"])) if lab is not None and "backcolor" in lab.props else 0xFFFFFF
+            vis = lab is not None and lab.props.get("visible") is True
+            row = [cell, int(cr[2 * i]), int(cr[2 * i + 1]), int(us[i]), back]
+            alt = [cell, int(acr[2 * i]), int(acr[2 * i + 1]), int(aus[i])]
+            if vis != (row[1] != 0):
+                raise OracleFatal("map cell %d: Visible disagrees with CellRoom" % cell)
+            if any(row[1:4]) or back != 0xFFFFFF:
+                cells.append(row)
+            if any(alt[1:]):
+                alts.append(alt)
+        # draws are packed into one integer each: cell << 12 | shape << 8 | size << 4 | QBColor
+        draws = [(c << 12) | (sh << 8) | (sz << 4) | col for c, sh, sz, col in self.map.draws]
+        return {"cells": cells, "alts": alts, "draws": draws, "was": list(self.map.was),
+                "center": num("nMapCenterCell"), "last": num("sMapSECorner"), "row": num("nMapRowLength"),
+                "passes": num("nOverwritePasses"), "start": [num("nMapStartMap"), num("nMapStartRoom")]}
 
     def run_case(self, case, setup):
         self.loaded_forms = list(case.get("loaded_forms", setup.get("loaded_forms", [])))
