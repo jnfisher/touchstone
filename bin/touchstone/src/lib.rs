@@ -19,6 +19,7 @@ pub mod paste;
 pub mod profile;
 pub mod reach;
 pub mod rooms;
+pub mod route;
 pub mod settings;
 pub mod source;
 pub mod spell_tools;

@@ -216,3 +216,72 @@ async fn a_paste_saves_its_carried_and_stash_rows() {
         json!([{ "item": 298, "qty": 1 }])
     );
 }
+
+/// `PUT /api/settings` with `hide_record_numbers` switched.
+async fn put_hide(app: &axum::Router, hide: bool) {
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+    let get = Request::builder()
+        .uri("/api/settings")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(get).await.unwrap();
+    let bytes = http_body_util::BodyExt::collect(res.into_body())
+        .await
+        .unwrap()
+        .to_bytes();
+    let mut s: Value = serde_json::from_slice(&bytes).unwrap();
+    s["hide_record_numbers"] = json!(hide);
+    let put = Request::builder()
+        .method("PUT")
+        .uri("/api/settings")
+        .header("content-type", "application/json")
+        .body(Body::from(s.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(put).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn rows_follow_the_hide_record_numbers_setting() {
+    let (_d, app) = app();
+    let req = json!({ "character": { "level": 1, "carried": [{ "item": 325, "qty": 1 }] } });
+    let (_, shown) = post(&app, "/api/item-manager/rows", &req).await;
+    put_hide(&app, true).await;
+    let (_, hidden) = post(&app, "/api/item-manager/rows", &req).await;
+    // the shop cell is GetShopRoomNames(shop, 0, bHideRecordNumbers)
+    let shop = |v: &Value| v["rows"][0]["subs"][9]["text"].as_str().unwrap().to_owned();
+    assert_eq!(
+        shop(&shown),
+        "Junkyard, Entrance (1/168), Portal Room (1/2337)"
+    );
+    assert_eq!(shop(&hidden), "Junkyard, Entrance, Portal Room");
+    // a request that says so overrides the setting
+    let mut over = req.clone();
+    over["hide_record_numbers"] = json!(false);
+    let (_, back) = post(&app, "/api/item-manager/rows", &over).await;
+    assert_eq!(shop(&back), shop(&shown));
+    // adding an item follows the setting too
+    let add = json!({ "character": { "level": 1 }, "rows": [], "item": 325 });
+    let (_, added) = post(&app, "/api/item-manager/add", &add).await;
+    assert_eq!(shop(&added), "Junkyard, Entrance, Portal Room");
+}
+
+#[tokio::test]
+async fn paste_rows_follow_the_hide_record_numbers_setting() {
+    let (_d, app) = app();
+    // a paste with no text still rebuilds the Item Manager from the saved lists
+    let req =
+        json!({ "character": { "level": 1, "carried": [{ "item": 325, "qty": 1 }] }, "text": "" });
+    let shop = |v: &Value| v["rows"][0]["subs"][9]["text"].as_str().unwrap().to_owned();
+    let (st, shown) = post(&app, "/api/paste/character", &req).await;
+    assert_eq!(st, StatusCode::OK, "{shown}");
+    put_hide(&app, true).await;
+    let (_, hidden) = post(&app, "/api/paste/character", &req).await;
+    assert_eq!(
+        shop(&shown),
+        "Junkyard, Entrance (1/168), Portal Room (1/2337)"
+    );
+    assert_eq!(shop(&hidden), "Junkyard, Entrance, Portal Room");
+}

@@ -198,3 +198,21 @@ async fn the_chosen_attack_reaches_the_evaluation() {
     let (_, back) = call(&e.app, "GET", "/api/characters/Zed", None).await;
     assert_eq!(back["attack"], req["attack"]);
 }
+
+#[tokio::test]
+async fn spell_names_follow_the_hide_record_numbers_setting() {
+    let e = env();
+    let (mut req, _) = request(&e.fx, CASE);
+    req["attack"] = attack(json!({"attack_type": 3, "spell_num": 17, "spell_lvl": 20}));
+    let body = json!({ "character": req });
+    let (_, shown) = call(&e.app, "POST", "/api/character/combat-preview", Some(&body)).await;
+    let (_, mut settings) = call(&e.app, "GET", "/api/settings", None).await;
+    settings["hide_record_numbers"] = json!(true);
+    let (status, _) = call(&e.app, "PUT", "/api/settings", Some(&settings)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, hidden) = call(&e.app, "POST", "/api/character/combat-preview", Some(&body)).await;
+    // GetCurrentAttackName(long) names the spell with GetSpellName(n, bHideRecordNumbers)
+    let long = |v: &Value| v["attack_name_long"].as_str().unwrap().to_owned();
+    assert!(long(&shown).contains("(17)"), "{}", long(&shown));
+    assert!(!long(&hidden).contains("(17)"), "{}", long(&hidden));
+}

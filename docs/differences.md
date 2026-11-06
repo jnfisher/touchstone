@@ -385,6 +385,15 @@ Under `Profile::Quicksilver` only; the stock rules are untouched.
 - `calc_true_average` is unchanged: its inputs are numbers the caller supplies, and MME has no class there.
 - The neutral balance already holds every class share at 100 and `opportunist_pct` at 0, so nothing is added.
 
+## F-001: follow-ups bundle
+
+- The route dialog lists MME's rows as `ShowRouteResults` prints them, so room names there always carry their
+  `(map/room)` numbers; only the spell, item, class and race names inside a step label follow the hide-record-numbers
+  setting, as in MME. The page opens the Rooms tab on a row where MME opens the map.
+- A cancelled monster damage calculation stores nothing, not even the monsters it had finished; MME's progress form has
+  no cancel. The stored arrays and the "already asked" flags stay as they were.
+- Under Quicksilver the character editor cuts a typed stat to the training maximum; stock keeps MME's three digits.
+
 ## Quicksilver: the weave pick and volley (Q-013a)
 
 Under `Profile::Quicksilver` only; the stock rules are untouched. MME has no weave, so the arithmetic follows

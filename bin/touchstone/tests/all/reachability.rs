@@ -433,3 +433,141 @@ async fn reachable_only_hides_unreachable_monsters() {
         assert_eq!(a.len() - b.len(), expect_gone.len(), "{id}");
     }
 }
+
+// ---- the route dialog (POST /api/reachability/route) ----
+
+/// ReachRoomRoute and ReachRoute outputs of the fixture, `route.refs[i]` = [source map, source room, source name,
+/// step maps, step rooms, step flags, step labels, steps, coin steps, alt steps, alt coin steps, alt source].
+fn route_ref(fx: &Value, id: &str, k: usize) -> Value {
+    case(fx, id)["outputs"]["route.refs"][k].clone()
+}
+
+#[tokio::test]
+async fn room_route_dialog_follows_the_fixture_route() {
+    let fx = fixture();
+    let app = router(world(&fx["header"]["data"]));
+    // room_route_30 entry 1: ReachRoomRoute(1, 1403, 30); the route is found (outputs.route[1])
+    assert_eq!(case(&fx, "room_route_30")["outputs"]["route"][1], true);
+    let want = route_ref(&fx, "room_route_30", 1);
+    let steps = want[7].as_i64().unwrap();
+    let flags = want[5].as_array().unwrap();
+    let labelled = flags.iter().filter(|f| f.as_i64() != Some(0)).count();
+    let body = json!({"map": 1, "room": 1403, "level": 30});
+    let (st, v) = call(&app, "POST", "/api/reachability/route", Some(&body)).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v["message"].is_null(), "{v}");
+    let caption = v["caption"].as_str().unwrap();
+    assert!(caption.starts_with("Route to "), "{caption}");
+    assert!(caption.contains("(1/1403)"), "{caption}");
+    assert!(
+        caption.contains(&format!(": {steps} steps from {}", s(&want[2]))),
+        "{caption}"
+    );
+    let rows = v["rows"].as_array().unwrap();
+    assert_eq!(rows[0]["step"], 0);
+    assert_eq!(rows[0]["map"], want[0]);
+    assert_eq!(rows[0]["room"], want[1]);
+    let last = rows.last().unwrap();
+    assert_eq!(last["step"], steps);
+    assert_eq!(last["room"], 1403);
+    // a row for every action, listed at the room it is taken from
+    let actions = rows
+        .iter()
+        .filter(|r| r["text"].as_str().unwrap().contains(" -- "))
+        .count();
+    assert_eq!(actions, labelled);
+
+    // a room that cannot be routed to is MME's message box
+    let body = json!({"map": 1, "room": 99999, "level": 30});
+    let (_, v) = call(&app, "POST", "/api/reachability/route", Some(&body)).await;
+    assert_eq!(v["message"], "No route information for this room.");
+    assert_eq!(v["rows"].as_array().unwrap().len(), 0);
+    // the start room: "Routes start at this room"
+    let body = json!({"map": 1, "room": 297, "level": 30});
+    let (_, v) = call(&app, "POST", "/api/reachability/route", Some(&body)).await;
+    assert_eq!(
+        v["message"],
+        "Routes start at this room: Bank of Godfrey (1/297)."
+    );
+}
+
+#[tokio::test]
+async fn monster_route_dialog_follows_the_fixture_route() {
+    let fx = fixture();
+    let app = router(world(&fx["header"]["data"]));
+    // route_30 entry 0: ReachRoute(45, 30), found
+    let c = case(&fx, "route_30");
+    assert_eq!(c["outputs"]["route"][0], true);
+    let monster = c["inputs"]["steps"][0]["each"][0][0].as_i64().unwrap();
+    let want = route_ref(&fx, "route_30", 0);
+    let steps = want[7].as_i64().unwrap();
+    let body = json!({"monster": monster, "level": 30});
+    let (st, v) = call(&app, "POST", "/api/reachability/route", Some(&body)).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let caption = v["caption"].as_str().unwrap();
+    assert!(caption.starts_with("Route to "), "{caption}");
+    assert!(
+        caption.contains(&format!(": {steps} steps from {}", s(&want[2]))),
+        "{caption}"
+    );
+    let rows = v["rows"].as_array().unwrap();
+    assert_eq!(rows.last().unwrap()["step"], steps);
+    // the fixture's step labels reach the rows, listed at the room each action leaves
+    assert!(
+        rows.iter().any(|r| r["text"].as_str().unwrap().contains(
+            "Temple Foyer (1/2316) -- go W (Alignment: Saint to Seedy) -> Temple Hall (1/520)"
+        )),
+        "{v}"
+    );
+
+    // neither a monster nor a room
+    let (st, _) = call(
+        &app,
+        "POST",
+        "/api/reachability/route",
+        Some(&json!({"level": 1})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    // a monster that is not in the game has no route information
+    let body = json!({"monster": 424_242, "level": 30});
+    let (_, v) = call(&app, "POST", "/api/reachability/route", Some(&body)).await;
+    assert_eq!(v["message"], "No route information for this monster.");
+}
+
+#[test]
+fn route_labels_name_their_numbers() {
+    use touchstone::route::format_route_label;
+    let fx = fixture();
+    let w = world(&fx["header"]["data"]);
+    // FormatRouteLabel: tolls with thousands separators, spell #0 is "none", class and race wording
+    assert_eq!(
+        format_route_label(&w, "go N (Toll: 1500)", false),
+        "go N (Toll: 1,500 gold)"
+    );
+    assert_eq!(
+        format_route_label(&w, "cast spell #0 here", false),
+        "cast spell #none here"
+    );
+    assert_eq!(
+        format_route_label(&w, "go E (Class: 1 OK, 0 NO)", false),
+        "go E (Class Only: Warrior(1))"
+    );
+    assert_eq!(
+        format_route_label(&w, "go E (Class: 1 OK, 0 NO)", true),
+        "go E (Class Only: Warrior)"
+    );
+    assert_eq!(
+        format_route_label(&w, "go E (Race: 0 OK, 1 NO)", false),
+        "go E (NOT Race: Human(1))"
+    );
+    // a missing record is its number, and a run of ten digits is left alone
+    assert_eq!(
+        format_route_label(&w, "item #5000000", false),
+        "item #5000000"
+    );
+    assert_eq!(
+        format_route_label(&w, "item #12345678901", false),
+        "item #12345678901"
+    );
+}

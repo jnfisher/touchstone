@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The Rooms tab (F12), text half: a room by map and room number, the room name finder, the
+	// The Rooms tab (F9 here, F12 in MME), text half: a room by map and room number, the room name finder, the
 	// rooms-with-these-exits finder, and the room's references, exits and tooltip text.
 	import { goto } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
@@ -25,6 +25,7 @@
 		type RoomRefRow
 	} from '$lib/rooms';
 	import { roomsMemory } from './rooms-memory.svelte';
+	import { openRoute } from '$lib/routeactions.svelte';
 
 	const settings = getSettingsStore();
 	const mem = roomsMemory;
@@ -86,6 +87,17 @@
 			return;
 		}
 		void open(m, r);
+	}
+
+	/** `cmdRoomsButtons_Click` case 6 (`ShowRoomRoute`): the route to the shown room, listed in a dialog whose rows open their rooms. */
+	async function routeToRoom() {
+		if (!info) return;
+		busy = true;
+		try {
+			await openRoute({ map: info.map, room: info.room }, (m, r) => void open(m, r));
+		} finally {
+			busy = false;
+		}
 	}
 
 	function back() {
@@ -223,6 +235,7 @@
 				<input class={inputCls} inputmode="numeric" aria-label="Room number" bind:value={roomText} /></label>
 			<Button type="submit" size="default">Go</Button>
 			<Button type="button" variant="outline" onclick={back} data-testid="back">Go back</Button>
+			<Button type="button" variant="outline" disabled={!info} onclick={() => void routeToRoom()} data-testid="route-to-room">Route to room</Button>
 		</form>
 
 		<form

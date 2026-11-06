@@ -211,7 +211,17 @@ export interface Lair {
 	avg_dodge: number;
 }
 
+/** `GET /api/info`'s `profile`: which rules the load follows. */
+export interface InfoProfile {
+	name: 'stock' | 'quicksilver';
+	setting: string;
+	content_version: string | null;
+	balance_overrides: string[];
+}
+
 export interface Info {
+	/** Which rules the server follows for this load; older servers left it out. */
+	profile?: InfoProfile;
 	counts: Record<string, number>;
 	data_version: number | null;
 	load_count: number;

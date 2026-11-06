@@ -42,6 +42,8 @@ pub struct ItemManagerRequest {
     pub answers: Vec<Answer>,
     /// The item to add, for `/add`.
     pub item: i32,
+    /// `bHideRecordNumbers`: the route fills in the setting when this is left out.
+    pub hide_record_numbers: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,7 +72,13 @@ fn load_rows(
     let rows = match &req.rows {
         Some(r) if r.len() > MAX_ROWS => return Err(format!("at most {MAX_ROWS} rows")),
         Some(r) => r.iter().map(row_from_json).collect(),
-        None => rows_from_stacks(profile, world, &req.character, &ch),
+        None => rows_from_stacks(
+            profile,
+            world,
+            &req.character,
+            &ch,
+            req.hide_record_numbers.unwrap_or(false),
+        ),
     };
     Ok((rows, ch))
 }
@@ -263,6 +271,7 @@ pub fn add(
             &ch,
             &mut rows,
             &[(req.item, "Manual", "MANUAL", 1)],
+            req.hide_record_numbers.unwrap_or(false),
         );
         for e in log {
             if let touchstone_rules::game_text::Event::HandledError { source, number } = e {
@@ -287,9 +296,11 @@ macro_rules! route {
     ($name:ident, $f:ident) => {
         pub async fn $name(
             State(state): State<Arc<AppState>>,
-            Body(req): Body<ItemManagerRequest>,
+            Body(mut req): Body<ItemManagerRequest>,
         ) -> ApiResult {
             let loaded = state.current();
+            req.hide_record_numbers
+                .get_or_insert_with(|| state.hide_record_numbers());
             json(&$f(loaded.profile, &loaded.world, &req).map_err(bad)?)
         }
     };

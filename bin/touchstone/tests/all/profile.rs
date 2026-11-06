@@ -187,3 +187,73 @@ async fn the_real_quicksilver_database_runs_the_1_20_rules() {
     let started = source::start(&cfg).unwrap();
     assert_eq!(started.state.current().profile, Profile::Stock);
 }
+
+async fn get_json(state: &std::sync::Arc<touchstone::AppState>, uri: &str) -> (StatusCode, Value) {
+    let res = touchstone::app(state.clone())
+        .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+fn app_with(
+    setting: ProfileSetting,
+) -> (std::sync::Arc<touchstone::AppState>, touchstone_model::Race) {
+    use touchstone::profile::ProfileChoice;
+    use touchstone::state::{Loaded, SourceInfo};
+    let fx = crate::paste::fixture("paste_char");
+    let world = crate::paste::char_world(&fx["header"]["data"]);
+    let race = world.races[0].clone();
+    let choice = ProfileChoice::new(&RulesConfig {
+        profile: setting,
+        quicksilver_balance: None,
+    })
+    .unwrap();
+    let source = SourceInfo {
+        kind: "mdb",
+        path: "test".into(),
+    };
+    let loaded = Loaded::build_with(world, source, None, 1, &choice).unwrap();
+    let dir = tempfile::TempDir::new().unwrap().keep();
+    (touchstone::AppState::with_data_dir(loaded, dir), race)
+}
+
+#[tokio::test]
+async fn stat_caps_are_empty_for_stock_and_the_soft_cap_for_quicksilver() {
+    let (stock, race) = app_with(ProfileSetting::Stock);
+    let uri = format!("/api/races/{}/stat-caps", race.number);
+
+    // stock: MME's boxes have no ceiling in the price, so there is nothing to limit
+    let (st, v) = get_json(&stock, &uri).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["soft_caps"], false);
+    assert_eq!(v["stats"], serde_json::json!([]));
+    let (st, _) = get_json(&stock, "/api/races/987654/stat-caps").await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    // Quicksilver 1.20: the soft cap is the race maximum or 90 if that is higher, and training goes 30 beyond it
+    // (docs/quicksilver-profile.md R14; the same functions price the creation points)
+    let (qs, _) = app_with(ProfileSetting::Quicksilver);
+    let (st, v) = get_json(&qs, &uri).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["soft_caps"], true);
+    let maxes = [
+        race.x_str, race.x_int, race.x_wil, race.x_agl, race.x_hea, race.x_chm,
+    ];
+    let mins = [
+        race.m_str, race.m_int, race.m_wil, race.m_agl, race.m_hea, race.m_chm,
+    ];
+    let stats = v["stats"].as_array().unwrap();
+    assert_eq!(stats.len(), 6);
+    for (k, s) in stats.iter().enumerate() {
+        let race_max = maxes[k].max(mins[k]);
+        assert_eq!(s["race_max"], race_max, "stat {k}");
+        assert_eq!(s["soft_cap"], race_max.max(90), "stat {k}");
+        assert_eq!(s["train_max"], race_max.max(90) + 30, "stat {k}");
+    }
+}

@@ -36,6 +36,7 @@
 		type AnyExplorer,
 		type Lookups
 	} from '$lib/explorers';
+	import { openRoute } from '$lib/routeactions.svelte';
 	import { isRoomList } from '$lib/rooms';
 	import { toColDefs } from '$lib/grid/columns';
 	import DataGrid from '$lib/grid/DataGrid.svelte';
@@ -562,6 +563,7 @@
 							canCompare={slug === 'weapons' || slug === 'armour'}
 							onLink={follow}
 							onMenu={paneMenu}
+							onRoute={slug === 'monsters' ? (alt) => void openRoute({ monster: Number(selectedId), alt }) : undefined}
 						>
 							{#snippet before()}
 								{#if isShops}<ShopControls note={shopNote} />{/if}

@@ -9,6 +9,7 @@ export interface ChoiceQuestion {
 }
 
 import type { ResultsDialog } from './spelltools';
+import type { RouteDialogData } from './routedialog';
 
 export interface PromptQuestion {
 	title: string;
@@ -17,7 +18,14 @@ export interface PromptQuestion {
 	resolve: (value: string | undefined) => void;
 }
 
+/** The route window: the server's rows, and what a click on a row does (default: the Rooms tab shows the room). */
+export interface RouteWindow {
+	data: RouteDialogData;
+	onRoom?: (map: number, room: number) => void;
+}
+
 let results = $state.raw<ResultsDialog | undefined>();
+let route = $state.raw<RouteWindow | undefined>();
 let prompting = $state<PromptQuestion | undefined>();
 let fallback = $state<{ text: string; note?: string } | undefined>();
 let question = $state<ChoiceQuestion | undefined>();
@@ -41,6 +49,16 @@ export const dialogs = {
 	},
 	closeResults() {
 		results = undefined;
+	},
+	get route() {
+		return route;
+	},
+	/** MME's route results window (`ShowRouteResults`), or the message box when there is no route. */
+	showRoute(data: RouteDialogData, onRoom?: (map: number, room: number) => void) {
+		route = { data, onRoom };
+	},
+	closeRoute() {
+		route = undefined;
 	},
 	get prompt() {
 		return prompting;
