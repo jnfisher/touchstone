@@ -564,6 +564,9 @@ pub async fn calc_exp(
 pub struct CoinReq {
     /// Which box was typed in (0 top, 1 bottom); the other is the answer.
     source: usize,
+    /// The box that gets the answer; absent is the other box. A coin button converts its own
+    /// row, so it names the same box as the source.
+    destination: Option<usize>,
     /// What the typed box holds.
     #[serde(default)]
     text: Text,
@@ -619,7 +622,10 @@ pub async fn calc_coin(Body(req): Body<CoinReq>) -> ApiResult {
     if !matches!(force, 0 | 1 | 10 | 100 | 10_000 | 1_000_000) {
         return Err(bad("force_source must be a coin's copper value"));
     }
-    let destination = 1 - req.source;
+    let destination = req.destination.unwrap_or(1 - req.source);
+    if destination > 1 {
+        return Err(bad("destination must be 0 (top box) or 1 (bottom box)"));
+    }
     let out = core(&CoinInput {
         source_index: req.source,
         destination_index: destination,
@@ -629,6 +635,7 @@ pub async fn calc_coin(Body(req): Body<CoinReq>) -> ApiResult {
         force_source: force,
     });
     let mut weights = [String::new(), String::new()];
+    // CalcCoin does not rewrite the source box; MME's change handler labels each box on its own.
     weights[req.source] = weight_label(&req.text.0);
     weights[destination] = weight_label(&out.destination_text);
     json(&CoinJson {

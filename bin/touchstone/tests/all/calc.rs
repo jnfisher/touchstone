@@ -465,21 +465,25 @@ mod calc_coin {
     }
 
     #[tokio::test]
-    async fn a_coin_button_converts_the_amount_it_held() {
-        // optCoinTop_Click: CalcCoin(0, 0, eCurrentCoin(0)); 100 copper re-read as silver is 10.
+    async fn a_coin_button_converts_its_own_box() {
+        // optCoinTop_Click: CalcCoin(0, 0, eCurrentCoin(0)). The box held 100 copper; silver is
+        // picked now, so it reads 10 silver, and the box's coin is now silver (10 copper).
         let (_, v) = post(
             "/api/calc/coin",
-            json!({"source": 0, "text": "100", "top": 1, "bottom": 0, "force_source": 1}),
+            json!({"source": 0, "destination": 0, "text": "100", "top": 1, "force_source": 1}),
         )
         .await;
-        assert_eq!(v["destination_text"], "100");
+        assert_eq!(v["destination"], 0);
+        assert_eq!(v["destination_text"], "10");
+        assert_eq!(v["current_coin"], 10);
+        assert_eq!(v["weights"][0], "Weight: 3");
+        // Back from gold to copper: 2 gold is 200 copper.
         let (_, v) = post(
             "/api/calc/coin",
-            json!({"source": 0, "text": "100", "top": 2, "bottom": 0, "force_source": 10}),
+            json!({"source": 1, "destination": 1, "text": "2", "bottom": 0, "force_source": 100}),
         )
         .await;
-        // 100 silver is 1000 copper, which the bottom (copper) box shows.
-        assert_eq!(v["destination_text"], "1000");
+        assert_eq!(v["destination_text"], "200");
     }
 
     #[tokio::test]
@@ -500,6 +504,7 @@ mod calc_coin {
             json!({"source": 0, "text": "1", "top": 5}),
             json!({"source": 0, "text": "1", "bottom": 9}),
             json!({"source": 0, "text": "1", "force_source": 7}),
+            json!({"source": 0, "text": "1", "destination": 2}),
             json!({"text": "1"}),
         ] {
             assert_eq!(
