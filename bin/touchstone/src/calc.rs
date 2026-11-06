@@ -22,13 +22,13 @@ const TRAINING: i32 = 8;
 /// Longest level range one `/api/exp` call returns; MME's levels stop near 255.
 const MAX_LEVELS: i32 = 1000;
 
-type ApiResult = Result<Response, (StatusCode, String)>;
+pub(crate) type ApiResult = Result<Response, (StatusCode, String)>;
 
-fn bad(msg: impl Into<String>) -> (StatusCode, String) {
+pub(crate) fn bad(msg: impl Into<String>) -> (StatusCode, String) {
     (StatusCode::BAD_REQUEST, msg.into())
 }
 
-fn not_found(msg: impl Into<String>) -> (StatusCode, String) {
+pub(crate) fn not_found(msg: impl Into<String>) -> (StatusCode, String) {
     (StatusCode::NOT_FOUND, msg.into())
 }
 
@@ -36,7 +36,7 @@ fn fail(e: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
 }
 
-fn json<T: Serialize>(v: &T) -> ApiResult {
+pub(crate) fn json<T: Serialize>(v: &T) -> ApiResult {
     Ok(([(CACHE_CONTROL, "no-cache")], Json(v)).into_response())
 }
 

@@ -14,6 +14,7 @@ from vbi.objects import VBArray, UDTInstance, ClsInstance, Var
 from vbi.values import NULL, EMPTY, NOTHING
 import shims
 import scenario as scn_mod
+import frm as frm_mod
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -165,13 +166,15 @@ class _Dump:
 # ----------------------------------------------------------------------------- environment
 
 class Env:
-    def __init__(self, mme, database=None, modules=None):
+    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None):
         self.mme = mme
-        self.db = shims.Database(database) if database else None
+        self.db = shims.Database(database, db_extra) if database else None
         self.rec = shims.Recorder()
         it = self.it = Interpreter()
         for f in (modules or MODULES):
             it.load_file(os.path.join(mme, f))
+        if frm:
+            self._load_form_procs(mme, frm)
         it.ensure_ready()
         for name in SHIMMED_PROCS:
             it.procs.pop(name.lower(), None)
@@ -184,6 +187,19 @@ class Env:
                 continue
             for low, cell in m.cells.items():
                 self.cells.append((cell, m.varmap[low], m))
+
+    def _load_form_procs(self, mme, spec):
+        """Scenario key "frm": procedures and variables cut out of a form (see frm.py), loaded as one
+        module. The form's controls, named bare in that code, forward to the frmMain shim."""
+        raw = open(os.path.join(mme, spec.get("file", "frmMain.frm")), "rb").read()
+        self.it.load_source(frm_mod.build_source(raw, spec), name="frmMainProcs", kind="bas")
+        for name in frm_mod.control_names(raw):
+            self.it.bind(name, shims.ControlProxy(self, name))
+        self.it.bind("objToolTip", shims.NoopShim())
+        self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
+        self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
+        for n in spec.get("stub_procs", []):                          # display-only helpers (tool-tip text)
+            self.it.bind_proc(n, lambda it_, *a: "")
 
     # -- shims
     def _msgbox(self, it, *a):
@@ -218,8 +234,38 @@ class Env:
             it.bind_proc(n, zero)
         it.bind_proc("HandleError", handle_error)
         it.procs.pop("handleerror", None)
+        # RegExpFindv2 drives VBScript.RegExp, which the interpreter does not model; the same
+        # matching is done here with Python's re (ASCII classes, as in VBScript).
+        it.bind_proc("RegExpFindv2", self._regexp_find)
+        it.procs.pop("regexpfindv2", None)
         it.bind_proc("EnsureDatabaseConnection", false)
         it.procs.pop("ensuredatabaseconnection", None)
+
+    def _regexp_find(self, it, look_in, pattern, match_case=True, multiline=False, allow_empty=False):
+        """modSyntaxsFunc RegExpFindv2: every match with its non-empty submatches (empty ones too when
+        allowed). No match gives one element with empty text and a one-element empty submatch array."""
+        def val(x, default):
+            x = x.v if hasattr(x, "v") and not isinstance(x, (str, int, float)) else x
+            return default if x is V.MISSING else x
+        look_in, pattern = V.c_str(val(look_in, "")), V.c_str(val(pattern, ""))
+        flags = re.ASCII | (0 if val(match_case, True) else re.IGNORECASE) | (re.MULTILINE if val(multiline, False) else 0)
+        keep = -1 if val(allow_empty, False) else 0
+        found = list(re.finditer(pattern, look_in, flags))
+        factory = lambda: it.new_udt("regexmatches")
+        arr = VBArray("regexmatches", None, factory)
+        arr.dynamic = True
+        arr.allocate([(0, max(len(found), 1) - 1)])
+        for i, m in enumerate(found or [None]):
+            u = arr.get((i,))
+            subs = []
+            if m is not None:
+                u.set_field("sfullmatch", m.group(0))
+                subs = [g or "" for g in m.groups() if len(g or "") > keep]
+            sm = u.fields["ssubmatches"]
+            sm.allocate([(0, max(len(subs), 1) - 1)])
+            for j, t in enumerate(subs):
+                sm.set((j,), t)
+        return arr
 
     # -- per-case state
     def reset(self, rnd=None):
@@ -283,7 +329,12 @@ class Env:
         for name, val in spec.get("fields", {}).items():
             cur = u.fields[name.lower()]
             if isinstance(cur, VBArray):
-                if val:
+                if val and cur.bounds is not None and not getattr(cur, "dynamic", False):
+                    # fixed array (`nMAPlusSkill(1 To 3)`): keep its bounds, fill from the lower one
+                    lo = cur.bounds[0][0]
+                    for i, x in enumerate(val):
+                        cur.set((lo + i,), decode(x))
+                elif val:
                     cur.allocate([(0, len(val) - 1)])
                     for i, x in enumerate(val):
                         cur.set((i,), decode(x))
@@ -342,9 +393,23 @@ class Env:
 
     _READ = re.compile(r"^(?P<obj>[A-Za-z_]\w*)\.(?P<prop>\w+)(?:\[(?P<idx>[^\]]*)\])?$")
 
+    _CTL = re.compile(r"^%c\.(?P<ctl>\w+)(?:\((?P<ci>\d+)\))?\.(?P<prop>\w+)(?:\[(?P<lo>\d+)\.\.(?P<hi>\d+)\])?$")
+
     def read(self, objs, expr):
         if expr == "%rnd":
             return self.it.rnd.state
+        if expr.startswith("%c."):
+            # a frmMain control property: "%c.txtCharStats.Tag[0..5]" over a control array, "%c.lblX(3).Caption" for one element
+            m = self._CTL.match(expr)
+            if not m:
+                raise OracleFatal("bad read expression %r" % expr)
+            form = self.it.externals["frmmain"]
+
+            def one(args):
+                return encode(form.vb_get(m["ctl"], args).vb_get(m["prop"], []))
+            if m["lo"] is not None:
+                return [one([V.I16(i)]) for i in range(int(m["lo"]), int(m["hi"]) + 1)]
+            return one([V.I16(int(m["ci"]))] if m["ci"] is not None else [])
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
         m = self._READ.match(expr)
@@ -360,8 +425,12 @@ class Env:
 
     def run_case(self, case, setup):
         self.reset(case.get("rnd"))
-        self.set_forms(setup.get("forms"))
-        self.set_forms(case.get("forms"))
+        # a case's controls replace the family-wide setup's controls of the same name, form by form
+        forms = {}
+        for src in (setup.get("forms"), case.get("forms")):
+            for fname, props in (src or {}).items():
+                forms.setdefault(fname, {}).update(props)
+        self.set_forms(forms)
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
         objs = {}
@@ -384,7 +453,7 @@ class Env:
             err = {"number": e.number, "description": e.description}
         except OracleUnbound as e:
             raise OracleFatal("case %s: unbound %s %s" % (case["id"], e.name, e.detail or ""))
-        for name, expr in (case.get("read") or {}).items():
+        for name, expr in (case["read"] if "read" in case else setup.get("read") or {}).items():
             try:
                 out[name] = self.read(objs, expr)
             except VBError as e:
@@ -419,8 +488,11 @@ def build_fixture(family, mme=None, sdir=None):
     scn = json.loads(raw)
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
-    env = Env(mme, database, MODULES + list(scn.get("modules", [])))  # "modules": extra MME files a family needs
+    env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"))
+    # "modules": extra MME files a family needs; "frm": procedures cut from a form; "db_extra": invented rows
     setup = {"globals": scn.get("globals", {}), "forms": scn.get("forms", {})}
+    if "read" in scn:                       # family-wide default reads; a case's own "read" replaces them
+        setup["read"] = scn["read"]
     header = {
         "family": family,
         "description": scn.get("description", ""),
@@ -433,6 +505,8 @@ def build_fixture(family, mme=None, sdir=None):
         "notes": scn.get("notes", []),
         "case_count": len(cases),
     }
+    if "data" in scn:
+        header["data"] = scn["data"]      # tables the Rust test needs once, shared by every case
     lines = ['{"header":' + _Dump.dumps(header) + ',', '"cases":[']
     for i, c in enumerate(cases):
         res = env.run_case(c, setup)

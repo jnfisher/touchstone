@@ -3,11 +3,14 @@
 mod fixture;
 
 mod abilities;
+mod ability_text;
 mod accuracy;
 mod character;
+mod attack;
 mod exp;
 mod exp_per_hour;
 mod game_text;
+mod gear;
 mod item_value;
 mod monster_sim;
 mod spell_cast;
