@@ -94,9 +94,10 @@ data = {
                  "exp": classes[n]["ExpTable"], "combat": classes[n]["CombatLVL"], "mt": classes[n]["MageryType"],
                  "ml": classes[n]["MageryLVL"], "wt": classes[n]["WeaponType"], "at": classes[n]["ArmourType"],
                  "ab": ab(classes[n])} for n in sorted(used_classes)],
-    "races": [{"n": n, "name": races[n]["Name"], "mhea": races[n]["mHEA"], "xhea": races[n]["xHEA"],
-               "magl": races[n]["mAGL"], "xagl": races[n]["xAGL"], "hp": races[n]["HPPerLVL"],
-               "exp": races[n]["ExpTable"], "cp": races[n]["BaseCP"], "ab": ab(races[n])}
+    "races": [{"n": n, "name": races[n]["Name"], "hp": races[n]["HPPerLVL"],
+               "exp": races[n]["ExpTable"], "cp": races[n]["BaseCP"], "ab": ab(races[n]),
+               # mINT mWIL mSTR mHEA mAGL mCHM, then the x column: the server derives its own average from them
+               "stats": [races[n][k] for k in ("mINT", "mWIL", "mSTR", "mHEA", "mAGL", "mCHM", "xINT", "xWIL", "xSTR", "xHEA", "xAGL", "xCHM")]}
               for n in sorted(used_races)],
 }
 
