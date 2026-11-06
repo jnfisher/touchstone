@@ -209,6 +209,17 @@ export function createCharacterStore(
         return "error";
       }
     },
+    /**
+     * Takes a pasted character as the open one. The previous character is saved first (MME saves
+     * before a paste). A pasted name that differs from the stored one is a different character:
+     * the old file stays, the new one is saved beside it.
+     */
+    async applyPasted(next: CharacterDoc) {
+      await flush();
+      const keep = next.name !== "" && next.name === storedName ? storedName : undefined;
+      replace(fromServer(next), keep);
+      scheduleSave();
+    },
     /** Replace the document wholesale (tests, imports). */
     set(next: Partial<CharacterDoc>) {
       replace(fromServer(next), undefined);
