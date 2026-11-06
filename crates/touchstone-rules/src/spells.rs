@@ -72,6 +72,22 @@ fn cur_str(c: Currency) -> String {
     }
 }
 
+/// `For y = nMin + 1 To nMax` with a Long counter and Currency bounds: the start is converted
+/// to Long (error 6 outside its range), the limit stays a Currency, and a counter that would
+/// leave the Long range ends the loop (the oracle's For does this; see `s_for` in the VB6
+/// interpreter).
+fn for_to(n_min: Currency, n_max: Currency, mut body: impl FnMut(i32)) -> Res<()> {
+    let mut y = cur_clng(Currency::from_scaled(n_min.scaled() + 10_000))?;
+    while cur_long(y) <= n_max {
+        body(y);
+        match y.checked_add(1) {
+            Some(next) => y = next,
+            None => break,
+        }
+    }
+    Ok(())
+}
+
 fn find(spells: &[Spell], number: i32) -> Option<&Spell> {
     spells.iter().find(|s| s.number == number)
 }
@@ -436,35 +452,41 @@ fn min_max_inner(spell: &Spell, avg: f64, w: &mut SpellMinMaxDur, req: &MinMaxRe
             (&mut w.n_max, max_incr, max_lvls)
         };
         let mut text = String::new();
-        if ov || lvls == zero || incr == zero {
-            if boosted {
-                *val = fix_cur(val.checked_mul(bonus)?);
-            }
-            text = cur_str(*val);
-        } else {
-            let per = incr.checked_div(lvls)?;
-            if !w.use_level {
-                w.no_header = true;
-                text = format!("{}+({}*lvl)", cur_str(*val), cur_str(round2_cur(per)));
-                if boosted {
-                    text.push_str(&bonus_text);
-                }
-            }
-            if w.use_level || level > 0 {
-                *val = val.checked_add(fix_cur(per.checked_mul(cur_long(i32::from(level)))?))?;
+        // The text is stored even when a later step overflows: MME has assigned sMin/sMax by then.
+        let step: Res<()> = (|| {
+            if ov || lvls == zero || incr == zero {
                 if boosted {
                     *val = fix_cur(val.checked_mul(bonus)?);
                 }
-                if w.use_level {
-                    text = cur_str(*val);
+                text = cur_str(*val);
+            } else {
+                let per = incr.checked_div(lvls)?;
+                if !w.use_level {
+                    w.no_header = true;
+                    text = format!("{}+({}*lvl)", cur_str(*val), cur_str(round2_cur(per)));
+                    if boosted {
+                        text.push_str(&bonus_text);
+                    }
+                }
+                if w.use_level || level > 0 {
+                    let grown = per.checked_mul(cur_long(i32::from(level)))?;
+                    *val = val.checked_add(fix_cur(grown))?;
+                    if boosted {
+                        *val = fix_cur(val.checked_mul(bonus)?);
+                    }
+                    if w.use_level {
+                        text = cur_str(*val);
+                    }
                 }
             }
-        }
+            Ok(())
+        })();
         if is_min {
             w.s_min = text;
         } else {
             w.s_max = text;
         }
+        step?;
     }
     if dur_lvls == zero || dur_incr == zero {
         w.s_dur = cur_str(w.n_dur);
@@ -677,8 +699,6 @@ impl SpellEnv<'_> {
         let mut does_damage = false;
         let mut gets_bonus = false;
         let mut non_magical = false;
-        let range =
-            |lo: Currency, hi: Currency| -> Res<(i32, i32)> { Ok((cur_clng(lo)?, cur_clng(hi)?)) };
 
         for slot in &sp.abilities {
             let abil = slot.ability;
@@ -745,7 +765,6 @@ impl SpellEnv<'_> {
                         }
                         164 => end_cast_pct = format!("{v}% "),
                         151 => {
-                            let (lo, hi) = range(n_min, n_max)?;
                             if quick {
                                 let t = if n_max > n_min {
                                     format!(
@@ -758,6 +777,7 @@ impl SpellEnv<'_> {
                                 };
                                 end_one = auto_append(&end_one, &t);
                             } else if n_min >= n_max {
+                                let lo = cur_clng(n_min)?;
                                 let t = format!(
                                     "{end_cast_pct}EndCast [{}, {}]",
                                     self.text.spell_name(lo),
@@ -765,43 +785,41 @@ impl SpellEnv<'_> {
                                 );
                                 end_one = auto_append(&end_one, &t);
                             } else {
+                                let lo = cur_clng(n_min)?;
                                 let mut t = format!(
                                     "{end_cast_pct}EndCast [{{{}, {}}}",
                                     self.text.spell_name(lo),
                                     self.pull(a, level, lo)
                                 );
-                                for y in
-                                    (cur_clng(Currency::from_scaled(n_min.scaled() + 10_000))?)..=hi
-                                {
+                                for_to(n_min, n_max, |y| {
                                     t.push_str(&format!(
                                         " OR {{{}, {}}}",
                                         self.text.spell_name(y),
                                         self.pull(a, level, y)
                                     ));
-                                }
+                                })?;
                                 t.push(']');
                                 end_one = auto_append(&end_one, &t);
                             }
                         }
                         12 => {
-                            let (lo, hi) = range(n_min, n_max)?;
                             if quick {
                                 detail = auto_append(&detail, "Summon");
                             } else if n_min >= n_max {
+                                let lo = cur_clng(n_min)?;
                                 detail = auto_append(
                                     &detail,
                                     &format!("Summon {}", self.text.monster_name(lo)),
                                 );
                             } else {
+                                let lo = cur_clng(n_min)?;
                                 detail = auto_append(
                                     &detail,
                                     &format!("Summons{{{}", self.text.monster_name(lo)),
                                 );
-                                let from =
-                                    cur_clng(Currency::from_scaled(n_min.scaled() + 10_000))?;
-                                for y in from..=hi {
+                                for_to(n_min, n_max, |y| {
                                     detail.push_str(&format!(" OR {}", self.text.monster_name(y)));
-                                }
+                                })?;
                                 detail.push('}');
                             }
                         }
@@ -857,10 +875,13 @@ impl SpellEnv<'_> {
                         }
                     }
                 } else {
-                    let v16 = to_i16(v)?;
+                    // Only the calls into GetAbilityStats (an Integer parameter) can overflow.
+                    let v16 = || to_i16(v);
                     match abil {
                         148 | 140 => {
-                            let t = self.text.ability_stats(ab16, v16, true, a.percent_column);
+                            let t = self
+                                .text
+                                .ability_stats(ab16, v16()?, true, a.percent_column);
                             detail = auto_append(&detail, &t);
                         }
                         12 => {
@@ -875,21 +896,27 @@ impl SpellEnv<'_> {
                         }
                         164 => end_cast_pct = format!("{v}% "),
                         151 => {
-                            let t =
-                                self.text
-                                    .ability_stats(ab16, v16, a.calc_level, a.percent_column);
+                            let t = self.text.ability_stats(
+                                ab16,
+                                v16()?,
+                                a.calc_level,
+                                a.percent_column,
+                            );
                             end_one = auto_append(&end_one, &format!("{end_cast_pct}{t}"));
                         }
                         _ if list_end_two => {
                             end_two = auto_append(
                                 &end_two,
-                                &self.text.ability_stats(ab16, v16, true, false),
+                                &self.text.ability_stats(ab16, v16()?, true, false),
                             );
                         }
                         _ => {
-                            let t =
-                                self.text
-                                    .ability_stats(ab16, v16, a.calc_level, a.percent_column);
+                            let t = self.text.ability_stats(
+                                ab16,
+                                v16()?,
+                                a.calc_level,
+                                a.percent_column,
+                            );
                             detail = auto_append(&detail, &t);
                         }
                     }
