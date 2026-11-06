@@ -43,6 +43,9 @@ export function createCharacterStore(
   let saved = $state.raw<CharacterSummary[]>([]);
   let saveStatus = $state<SaveStatus>("idle");
   let saveError = $state<string>();
+  /** Counts the times a different character was opened (load, new, import, delete), so the Item
+   * Manager can rebuild its list as LoadCharacter does; a paste or an edit does not count. */
+  let epoch = $state(0);
   /** The name the character is stored under on the server, if it is stored. */
   let storedName: string | undefined;
 
@@ -146,6 +149,9 @@ export function createCharacterStore(
     get storedName() {
       return storedName;
     },
+    get loadEpoch() {
+      return epoch;
+    },
     /** Apply an edit to the character; re-evaluates and autosaves. */
     edit(change: (d: CharacterDoc) => void) {
       change(doc);
@@ -165,12 +171,15 @@ export function createCharacterStore(
       }
     },
     startNew() {
+      epoch++;
       replace(newCharacter(), undefined);
     },
     async load(name: string) {
       await flush();
       try {
-        replace(await client.get(name), name);
+        const next = await client.get(name);
+        epoch++;
+        replace(next, name);
       } catch (e) {
         saveError = message(e);
       }
@@ -186,6 +195,7 @@ export function createCharacterStore(
           return;
         }
       }
+      epoch++;
       replace(newCharacter(), undefined);
       saved = await client.list().catch(() => saved);
     },
@@ -200,6 +210,7 @@ export function createCharacterStore(
       await flush();
       try {
         const next = await client.importMmec(file, overwrite);
+        epoch++;
         replace(next, next.name);
         saveStatus = "saved";
         saved = await client.list().catch(() => saved);

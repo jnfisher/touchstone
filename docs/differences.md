@@ -59,6 +59,19 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - `FilterSpells` and `FilterMonsters` are not part of `filter_all` (card P3-30), nor is the `RefreshAll` that
   `FilterAll` ends with.
 
+## Item Manager (P4-19)
+
+- `LV_CopySelectedActionsToClipboard` builds its text in memory; a flag with a quantity near 2 billion would
+  make VB6 run out of memory (error 7) long before it finished. The port returns error 7 past one million
+  commands instead of allocating gigabytes.
+- The Item Manager request takes at most 2000 rows and 64 answers; MME's ListView has no limit but the list
+  holds what one character carries, stashes or sees.
+- `SaveCharacter` keeps the saved quantity in an Integer, so a CARRIED/STASH row with a quantity past 32767 is
+  run-time error 6 there. The Item Manager and paste endpoints leave the saved `carried`/`stash` lists as they
+  were for such a list and say why in `messages`; the rows themselves still change.
+- The selection is the page's state and `lvItemManager_ItemClick` (the detail pane) is not ported: delete reports
+  the row MME selects next.
+
 ## Monster Attack Simulator window (P4-28b)
 
 - MME calls `Randomize` at the top of `RunSim`, so every run in MME rolls differently. touchstone seeds the
@@ -68,3 +81,12 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - The form fixes the combat log at 100 rounds; the endpoint takes `log_rounds` (0 to 1000, default 100).
 - Vile ward is GreaterMUD-only. The endpoint accepts and ignores it, as the form hides the box off GreaterMUD.
 - The party defenses (lair filter party of two or more) are not offered; the window runs for one character.
+
+## Item detail (P3-35)
+
+- The ListView rows `GetAbilityStats` and `PullSpellEQ` add (spell, summon, textblock and teleport rows) are walked in
+  `detail/item.rs` for rows only. The fixture exercises spell, summon and textblock rows; the
+  teleport branch (spells with both a room and a map ability) is ported from the same MME code but no stock item casts
+  such a spell, so it is not exercised by the fixture.
+- ListView sorting is not run: the row counts of each `SortListView` / `LV_RefreshSort` request are returned.
+- GreaterMUD and Paramud branches (aura-item AC/DR line, cast-on-kill percent, Ganghouse value) are not ported.
