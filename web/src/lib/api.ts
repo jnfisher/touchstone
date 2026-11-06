@@ -1,3 +1,4 @@
+import type { RefRow } from './detail';
 /** Types matching the server's JSON (snake_case field names of the `touchstone-model` structs). */
 
 export interface AbilitySlot {
@@ -355,6 +356,74 @@ export interface BuilderSpellbook {
 	magery_level: number | null;
 }
 
+/** `POST /api/spells/counters`: the spells and items that negate, dispel or kill a spell. */
+export interface CounterRow {
+	table: 'items' | 'spells';
+	number: number;
+	text: string;
+}
+export interface Counters {
+	/** MME asks "Cast spell at a certain level?" first: ask, then send `level_answer`. */
+	ask_level: boolean;
+	level: number;
+	rows: CounterRow[];
+}
+export interface CountersRequest {
+	spell: number;
+	/** The monster pane row's tag (`number` or `number@level`). */
+	tag?: string;
+	level_answer?: number;
+}
+
+/** `GET /api/spells/{n}/casts`: what casts a spell. Rows link to the records. */
+export interface SpellCasts {
+	status: 'found' | 'nothing' | 'missing';
+	caption: string;
+	rows: RefRow[];
+}
+
+/** `GET /api/items/{n}/chest`: a container's contents, most likely first. */
+export interface ChestRow {
+	text: string;
+	percent: number;
+	item_text: string;
+	item: number;
+}
+export interface Chest {
+	status: 'rows' | 'no_item' | 'not_container' | 'no_data';
+	message: string | null;
+	rows: ChestRow[];
+}
+
+/** The Spell Book window's controls, as `POST /api/spell-book/list` takes them. */
+export interface SpellBookRequest {
+	class: number;
+	level: string;
+	alignment: number;
+	magery: number;
+	magery_level: number;
+	filter_on: boolean;
+	global_level: string;
+	global_class: number;
+	char_magery: number;
+	char_magery_level: number;
+}
+export interface SpellBookList {
+	spells: number[];
+	uses_character: boolean;
+	aborted: boolean;
+	sort_ascending: boolean;
+}
+export interface SpellBookClass {
+	magery_level: number | null;
+	magery: number | null;
+}
+export interface SpellBookCopy {
+	alignment: number | null;
+	level: string | null;
+	class: number | null;
+}
+
 /** `GET /api/abilities/{table}/{n}`: MME's ability text for a record, one line per printed slot. */
 export type AbilityTable = 'items' | 'spells' | 'races' | 'classes' | 'monsters';
 export interface AbilityLine {
@@ -493,6 +562,30 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		},
 		async builderSpellbook(cls: number): Promise<BuilderSpellbook> {
 			return postJson('/api/class-race-builder/spellbook', { class: cls });
+		},
+		async spellCounters(req: CountersRequest): Promise<Counters> {
+			return postJson('/api/spells/counters', req);
+		},
+		async spellCasts(n: number, hideRecordNumbers = false): Promise<SpellCasts> {
+			return getJson(`/api/spells/${n}/casts?hide_record_numbers=${hideRecordNumbers}`);
+		},
+		async itemChest(n: number, hideRecordNumbers = false): Promise<Chest> {
+			return getJson(`/api/items/${n}/chest?hide_record_numbers=${hideRecordNumbers}`);
+		},
+		async spellBookList(req: SpellBookRequest): Promise<SpellBookList> {
+			return postJson('/api/spell-book/list', req);
+		},
+		async spellBookClass(cls: number): Promise<SpellBookClass> {
+			return postJson('/api/spell-book/class', { class: cls });
+		},
+		async spellBookCopy(req: {
+			filter_on: boolean;
+			alignment: number;
+			level_text: string;
+			class_index: number;
+			class: number;
+		}): Promise<SpellBookCopy> {
+			return postJson('/api/spell-book/copy-global', req);
 		},
 		async abilities(table: AbilityTable, n: number): Promise<Abilities> {
 			return getJson(abilitiesPath(table, n));

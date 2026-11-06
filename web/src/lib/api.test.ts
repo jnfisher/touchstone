@@ -76,6 +76,20 @@ describe('computed endpoints', () => {
 		expect(f.mock.calls[0][1]?.body).toBe('{"class":9}');
 	});
 
+	it('builds the spell tool requests', async () => {
+		const f = vi.fn(async (_p: string, _i?: RequestInit) => res(200, { rows: [] }));
+		const api = createApi(f as unknown as typeof fetch);
+		await api.spellCounters({ spell: 57, level_answer: 12 });
+		expect(f.mock.calls[0][0]).toBe('/api/spells/counters');
+		expect(f.mock.calls[0][1]?.body).toBe('{"spell":57,"level_answer":12}');
+		await api.spellCasts(34, true);
+		expect(f.mock.calls[1][0]).toBe('/api/spells/34/casts?hide_record_numbers=true');
+		await api.itemChest(906);
+		expect(f.mock.calls[2][0]).toBe('/api/items/906/chest?hide_record_numbers=false');
+		await api.spellBookClass(9);
+		expect(f.mock.calls[3][0]).toBe('/api/spell-book/class');
+	});
+
 	it('fetches shop prices fresh each time', async () => {
 		const f = vi.fn(async (_p: string) => res(200, { shop: 3, items: [] }));
 		const api = createApi(f as unknown as typeof fetch);

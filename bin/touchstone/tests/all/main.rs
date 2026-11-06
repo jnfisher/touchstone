@@ -18,6 +18,7 @@ mod paste;
 mod reachability;
 mod rooms;
 mod settings;
+mod spell_tools;
 
 mod health {
     use axum::body::Body;

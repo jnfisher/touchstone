@@ -260,6 +260,8 @@ class Env:
                     self.it.bind(name, shims.ControlProxy(self, name))
         specs = spec if isinstance(spec, list) else [spec]
         self.it.bind("objToolTip", shims.NoopShim())
+        if "frmprogressbar" not in self.it.externals:      # the progress bar of a long search is only drawn
+            self.it.bind("frmProgressBar", shims.ChainNoopShim())
         if any(one.get("tooltip_recorder") for one in specs):
             # the map cell tooltip text is what the room family reads back ("%tip"); ScaleMode constants of ConvertScale's arguments
             self.tip = shims.TipShim()
@@ -361,7 +363,7 @@ class Env:
             it_.externals["clipboard"].text = text
             return True
         it.bind_proc("SetClipboardText", set_clipboard_text)
-        for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
+        for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos", "LockWindowUpdate"):
             it.bind_proc(n, zero)
         it.bind_proc("HandleError", handle_error)
         it.procs.pop("handleerror", None)
@@ -372,6 +374,11 @@ class Env:
             rec.add("sort_listview", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
                     data_type=V.int_value(kind), ascending=bool(ascending))
         it.bind_proc("SortListView", sort_listview)
+
+        def sort_by_tag(it_, lv, column, kind, ascending):
+            rec.add("sort_listview_by_tag", rows=len(getattr(lv, "rows", [])), column=V.int_value(column),
+                    data_type=V.int_value(kind), ascending=bool(ascending))
+        it.bind_proc("SortListViewByTag", sort_by_tag)
 
         def refresh_sort(shops_first):
             # LV_RefreshSort / LV_RefreshSort_ShopsFirst (item detail, P3-35): the same skipped feature; only the request
@@ -800,6 +807,10 @@ class Env:
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
+        if expr.startswith("%lvf."):
+            # a recording ListView of another form: "%lvf.frmResults.lvResults" -> [text, tag, cells] per row
+            fname, ctl = expr[5:].split(".", 1)
+            return self.it.externals[fname.lower()].vb_get(ctl, []).dump(encode)
         if expr.startswith("%flv."):
             # the recording ListView of another form: "%flv.frmResults.lvResults"
             _, fname, cname = expr.split(".")
@@ -881,6 +892,8 @@ class Env:
                     cur[k] = v
         self.set_forms(forms)
         self.inputbox_answers = list(case.get("inputbox") or [])
+        if "work_list" in case:      # the list a menu handler works on (objWorkingListView)
+            self.it.bind("objWorkingListView", shims.PickListShim(case["work_list"]))
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
         while self.pending_setup:
