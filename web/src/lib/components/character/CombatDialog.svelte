@@ -101,6 +101,8 @@
 	const tabBtn = (on: boolean) =>
 		`h-8 rounded-md px-3 text-sm ${on ? 'bg-secondary text-secondary-foreground font-medium' : 'text-muted-foreground'}`;
 	const sel = `${inputCls} min-w-0`;
+	// inputCls is full width; a fixed-width box needs that class swapped, not added to
+	const narrow = (w: string) => inputCls.replace('w-full', w);
 	const group = 'flex flex-col gap-2 rounded-md border p-3';
 </script>
 
@@ -161,18 +163,18 @@
 										<div class="min-w-0 flex-1">{@render picker(opts.attack_any, form.anySpell, (n) => (form!.anySpell = n), form.radio !== 3, 'combat-any-spell')}</div>
 										<label class="flex items-center gap-1 text-sm">
 											<span class={labelCls}>Level</span>
-											<input class="{inputCls} w-20" inputmode="numeric" disabled={form.radio !== 3} value={form.spellLvl} oninput={(e) => (form!.spellLvl = boxInt(e.currentTarget.value, 0, 9999))} data-testid="combat-spell-lvl" />
+											<input class={narrow('w-20')} inputmode="numeric" disabled={form.radio !== 3} value={form.spellLvl} oninput={(e) => (form!.spellLvl = boxInt(e.currentTarget.value, 0, 9999))} data-testid="combat-spell-lvl" />
 										</label>
 									{:else if k === 4}
-										<select class="{sel} w-40" disabled={form.radio !== 4} value={form.martialArt} onchange={(e) => (form!.martialArt = Number(e.currentTarget.value))} data-testid="combat-ma" aria-label="Martial art">
+										<select class={narrow('w-40')} disabled={form.radio !== 4} value={form.martialArt} onchange={(e) => (form!.martialArt = Number(e.currentTarget.value))} data-testid="combat-ma" aria-label="Martial art">
 											{#each MARTIAL_ARTS as m, j (j)}<option value={j}>{m}</option>{/each}
 										</select>
 									{:else if k === 5}
 										<label class="flex items-center gap-1 text-sm"><span class={labelCls}>Physical</span>
-											<input class="{inputCls} w-24" inputmode="numeric" disabled={form.radio !== 5} value={form.manualP} oninput={(e) => (form!.manualP = boxInt(e.currentTarget.value, 0, 999999))} data-testid="combat-manual-p" />
+											<input class={narrow('w-24')} inputmode="numeric" disabled={form.radio !== 5} value={form.manualP} oninput={(e) => (form!.manualP = boxInt(e.currentTarget.value, 0, 999999))} data-testid="combat-manual-p" />
 										</label>
 										<label class="flex items-center gap-1 text-sm"><span class={labelCls}>Magic</span>
-											<input class="{inputCls} w-24" inputmode="numeric" disabled={form.radio !== 5} value={form.manualM} oninput={(e) => (form!.manualM = boxInt(e.currentTarget.value, 0, 99999))} data-testid="combat-manual-m" />
+											<input class={narrow('w-24')} inputmode="numeric" disabled={form.radio !== 5} value={form.manualM} oninput={(e) => (form!.manualM = boxInt(e.currentTarget.value, 0, 99999))} data-testid="combat-manual-m" />
 										</label>
 									{/if}
 								</div>
@@ -213,17 +215,17 @@
 									{:else if k === 3}
 										<div class="min-w-0 flex-1">{@render picker(opts.heal_any, form.healAny, (n) => (form!.healAny = n), form.healRadio !== 3, 'combat-heal-any')}</div>
 										<label class="flex items-center gap-1 text-sm"><span class={labelCls}>Level</span>
-											<input class="{inputCls} w-20" inputmode="numeric" disabled={form.healRadio !== 3} value={form.healLvl} oninput={(e) => (form!.healLvl = boxInt(e.currentTarget.value, 0, 9999))} data-testid="combat-heal-lvl" />
+											<input class={narrow('w-20')} inputmode="numeric" disabled={form.healRadio !== 3} value={form.healLvl} oninput={(e) => (form!.healLvl = boxInt(e.currentTarget.value, 0, 9999))} data-testid="combat-heal-lvl" />
 										</label>
 									{:else if k === 4}
-										<input class="{inputCls} w-28" inputmode="numeric" disabled={form.healRadio !== 4} value={form.healManual} oninput={(e) => (form!.healManual = boxInt(e.currentTarget.value, 0, 999999))} data-testid="combat-heal-manual" aria-label="Manual heal" />
+										<input class={narrow('w-28')} inputmode="numeric" disabled={form.healRadio !== 4} value={form.healManual} oninput={(e) => (form!.healManual = boxInt(e.currentTarget.value, 0, 999999))} data-testid="combat-heal-manual" aria-label="Manual heal" />
 									{/if}
 								</div>
 							{/each}
 							<div class="flex items-center gap-2 text-sm">
 								<span class={labelCls}>Rounds to cast over</span>
 								<button type="button" class={btn} disabled={form.healRadio < 2 || form.healRadio > 3} onclick={() => (form!.healRounds = stepRounds(form!.healRounds, -1))} aria-label="Fewer rounds">-</button>
-								<input class="{inputCls} w-16" inputmode="numeric" disabled={form.healRadio < 2 || form.healRadio > 3} value={form.healRounds} oninput={(e) => (form!.healRounds = boxInt(e.currentTarget.value, 1, 99))} data-testid="combat-heal-rounds" />
+								<input class={narrow('w-16')} inputmode="numeric" disabled={form.healRadio < 2 || form.healRadio > 3} value={form.healRounds} oninput={(e) => (form!.healRounds = boxInt(e.currentTarget.value, 1, 99))} data-testid="combat-heal-rounds" />
 								<button type="button" class={btn} disabled={form.healRadio < 2 || form.healRadio > 3} onclick={() => (form!.healRounds = stepRounds(form!.healRounds, 1))} aria-label="More rounds">+</button>
 							</div>
 						</div>
