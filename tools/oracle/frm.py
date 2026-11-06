@@ -9,7 +9,9 @@ form's code section (MME's text, unchanged) and returns one module. Controls the
 A procedure can be cut short: `{"cut": "<line>", "append": ["<vb line>", ...]}` drops everything from
 the first line equal to `cut` (after trimming) up to the procedure's end and puts the appended lines in
 its place. That is how a scenario ends CalcCharacterStats where a later card takes over, and how it
-copies a local the form never stores (nEncumPCT) into a probe control.
+copies a local the form never stores (nEncumPCT) into a probe control. After the appended lines comes
+`Exit Sub`, an error label that reports through HandleError, and `End Sub`; a cut may give its own
+`"tail"` lines instead (the pipeline family keeps the `out:` section of CalcCharacterStats that way).
 
 `{"subs": {proc: {"<line>": "<vb line>"}}}` replaces whole lines of a procedure (matched after trimming) with
 other text, e.g. an InputBox call with a read of a control; a line that is not found is an error.
@@ -76,6 +78,7 @@ def build_source(raw, spec):
         cut = (spec.get("cuts") or {}).get(name)
         if cut:
             idx = next(i for i, l in enumerate(body) if l.strip() == cut["cut"])
-            body = body[:idx] + list(cut.get("append", [])) + ["Exit Sub", "error:", 'Call HandleError("%s")' % name, "End Sub"]
+            default_tail = ["Exit Sub", "error:", 'Call HandleError("%s")' % name, "End Sub"]
+            body = body[:idx] + list(cut.get("append", [])) + list(cut.get("tail", default_tail))
         out += body
     return "\n".join(out) + "\n"

@@ -17,6 +17,7 @@ mod hit_calc;
 mod item_value;
 mod monster_glue;
 mod monster_sim;
+mod pipeline;
 mod spell_cast;
 mod spells;
 mod stats;
