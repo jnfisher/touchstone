@@ -181,6 +181,9 @@ class Env:
         it.ensure_ready()
         for name in SHIMMED_PROCS + self.stubbed:
             it.procs.pop(name.lower(), None)
+        for name in self.stubbed:       # a stub also replaces a Private procedure of a loaded module
+            for m in it.modules.values():
+                m.proc_map.pop(name.lower(), None)
         self._bind_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
         for tn in ("scripting.dictionary", "dictionary"):
@@ -482,6 +485,9 @@ class Env:
             if isinstance(a, dict) and "lv" in a:
                 args.append(lv)
                 continue
+            if isinstance(a, dict) and "key" in a:
+                args.append(self.cur_key)        # the record number a `rows` step is on
+                continue
             if isinstance(a, dict) and str(a.get("ref", "")).startswith("array:"):
                 # ByRef array argument: {"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]};
                 # without bounds the array starts unallocated, as a bare `Dim x() As T` does.
@@ -600,13 +606,16 @@ class Env:
         per, seen = [], []
         for key in spec["keys"]:
             rs.vb_get("seek", ["=", decode(key)])
+            self.cur_key = decode(key)
             lv = lv_shared or shims.RecordingListViewShim()
             if "hwnd" in spec:
                 lv.props["hwnd"] = V.I32(spec["hwnd"])   # a list that is not frmMain's own (its hWnd reads 0)
             before = len(watch.items.get("list", {})) if watch else 0
             args = self.build_args(st.get("args", []), objs, [], lv)
             self.invoke(objs, st["call"], args)
-            if not shared:
+            if spec.get("lv") == "list":
+                per.append(lv.dump_detail(encode))     # every row of the list, with Bold (the detail panes)
+            elif not shared:
                 rows = lv.dump(encode)
                 per.append(rows[0] if rows else None)
             if watch is not None:

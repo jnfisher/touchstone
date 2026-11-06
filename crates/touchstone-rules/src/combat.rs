@@ -587,7 +587,7 @@ pub fn get_damage_output(env: &DamageEnv, req: &DamageRequest) -> DamageOutput {
 }
 
 /// Calls `calculate_attack` for the profile `t` with the arguments `GetDamageOutput` always uses.
-fn attack_with(
+pub(crate) fn attack_with(
     env: &DamageEnv,
     t: &crate::character::CharacterProfile,
     ar: &AttackRequest,
@@ -606,7 +606,7 @@ fn attack_with(
     calculate_attack(env.ctx.profile, &ae, &attack_profile(t), ar, &mut casts)
 }
 
-fn populate(
+pub(crate) fn populate(
     env: &DamageEnv,
     t: &mut crate::character::CharacterProfile,
     force_use_char: bool,
@@ -627,7 +627,7 @@ fn populate(
     );
 }
 
-fn item_ability(env: &DamageEnv, item: i32, ability: i16) -> i32 {
+pub(crate) fn item_ability(env: &DamageEnv, item: i32, ability: i16) -> i32 {
     let slots = env
         .ctx
         .items

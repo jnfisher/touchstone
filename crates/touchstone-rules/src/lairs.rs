@@ -34,7 +34,7 @@ use crate::{Profile, RulesError};
 type Res<T> = Result<T, Vb6Error>;
 
 /// MME's `LAIR_FLAG_RATIO`: share of a lair's mobs that must have a trait for the lair to count as having it.
-const LAIR_FLAG_RATIO: f64 = 0.9;
+pub const LAIR_FLAG_RATIO: f64 = 0.9;
 /// MME's `MAJ_THRESH_PCT`: percent of the lairs that must agree for an accuracy majority.
 const MAJ_THRESH_PCT: i32 = 51;
 

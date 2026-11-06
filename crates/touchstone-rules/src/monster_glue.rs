@@ -713,6 +713,8 @@ pub struct MonsterDamageVsChar {
     /// rounded to one decimal. `None` when MME stored nothing (monster number 0 or below, or a VB
     /// error on the way: the handler skips the store).
     pub cached: Option<Currency>,
+    /// `clsMonAtkSim.nMaxRoundDamage` after the last run (0 when no run finished).
+    pub max_round_damage: i64,
 }
 
 /// `Round(x, 1)` on a Currency: half to even on the fourth-decimal integer.
@@ -745,6 +747,7 @@ fn one_run(
     party: &PartyFilter,
     sim: &mut MonsterSimInput,
     rnd: &mut Rnd,
+    max_out: &std::cell::Cell<i64>,
 ) -> Result<Option<Currency>, RulesError> {
     setup_monster_attack_sim_with_char_stats(
         env,
@@ -761,7 +764,10 @@ fn one_run(
     if sim.number_of_rounds > 0 {
         let mut run = MonsterSim::new(sim.clone());
         match run.run(rnd) {
-            Ok(()) => avg = run.average_damage,
+            Ok(()) => {
+                avg = run.average_damage;
+                max_out.set(run.max_round_damage);
+            }
             Err(RulesError::Vb6(_)) => return Ok(None),
             Err(e) => return Err(e),
         }
@@ -788,9 +794,11 @@ pub fn calculate_monster_damage_vs_char(
     rnd: &mut Rnd,
 ) -> Result<MonsterDamageVsChar, RulesError> {
     let mut ret = Currency::from_scaled(0);
+    let last_max = std::cell::Cell::new(0_i64);
     let none = |damage| MonsterDamageVsChar {
         damage,
         cached: None,
+        max_round_damage: last_max.get(),
     };
     if number <= 0 {
         return Ok(none(ret));
@@ -810,6 +818,7 @@ pub fn calculate_monster_damage_vs_char(
             party,
             sim,
             rnd,
+            &last_max,
         )
     };
 
@@ -860,6 +869,7 @@ pub fn calculate_monster_damage_vs_char(
     Ok(MonsterDamageVsChar {
         damage: ret,
         cached: Some(round_cur_1(ret)),
+        max_round_damage: last_max.get(),
     })
 }
 
