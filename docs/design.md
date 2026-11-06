@@ -92,8 +92,11 @@ the UI fetches whole tables once and filters and sorts in the browser:
 - `POST /api/character/evaluate`: a character in, MME's Char-tab captions and numbers out
   (`pipeline::refresh_all`); 422 "pick a class and race" without both.
 - `GET /api/character/bless-spells?class=&level=&alignment=&all=&include=`: `FilterBlessSpells`.
-- `POST /api/evaluate`: a character in, per-item and per-monster computed columns out (damage,
-  hit chance, exp/hr...), as MME shows them in its lists.
+- `POST /api/evaluate/{weapons,armour,spells,items,races,classes,shops}` with
+  `{character?, options}`: MME's list for that tab (`Add*2LV` rows) as `{columns, rows}`; `cells`
+  line up with `columns` (the `#` column first), each `{text, sort, color?}`. A character is used
+  when sent with `global_filter: true`; without one, MME's no-character view. Cached per request
+  until the data reloads. Monsters (exp/hr, damage) are a later card.
 - `POST /api/calc/{swing,hit,backstab,exp,coin,monster-attack-sim}`: the calculator windows.
 
 Config: `touchstone.toml` (data source, bind address, default `0.0.0.0:8370`, data dir). No
