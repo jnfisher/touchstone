@@ -24,6 +24,7 @@ mod mega_stat;
 mod mmec;
 mod monster_glue;
 mod monster_glue_char;
+mod monster_rows;
 mod monster_sim;
 mod paste_char;
 mod paste_party;

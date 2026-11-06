@@ -27,6 +27,8 @@
 //! Not ported: `InvenAddEquip` (the `AddToInven` argument; it only touches the inventory list)
 //! and the dark-mode colour map `TColor`, which the colours here are the light-theme values of.
 
+pub mod monster;
+
 use std::cell::Cell as StdCell;
 
 use touchstone_model::{Class, Item, Race, Shop, Spell, World};
@@ -72,6 +74,8 @@ impl Cell {
 pub struct Row {
     pub text: String,
     pub tag: Option<String>,
+    /// `ListItem.ForeColor`; `None`: never assigned.
+    pub fore_color: Option<i32>,
     pub cells: Vec<Cell>,
 }
 
@@ -279,6 +283,7 @@ pub fn add_other_item_row(item: &Item) -> Option<Row> {
     Some(Row {
         text: item.number.to_string(),
         tag: None,
+        fore_color: None,
         cells: vec![
             Cell::new(item.name.clone()),
             Cell::new(item_type_text(item.item_type)),
@@ -301,6 +306,7 @@ pub fn add_shop_row(shop: &Shop) -> Option<Row> {
     Some(Row {
         text: shop.number.to_string(),
         tag: None,
+        fore_color: None,
         cells: vec![
             Cell::new(name.clone()),
             Cell::new(shop_type_text(shop.shop_type)),
@@ -345,6 +351,7 @@ pub fn add_race_row(env: &RowEnv, race: &Race) -> Option<Row> {
     let mut row = Row {
         text: race.number.to_string(),
         tag: None,
+        fore_color: None,
         cells: vec![
             Cell::new(race.name.clone()),
             Cell::new(format!("{}%", race.exp_table)),
@@ -376,6 +383,7 @@ pub fn add_class_row(env: &RowEnv, class: &Class) -> Option<Row> {
     let mut row = Row {
         text: class.number.to_string(),
         tag: None,
+        fore_color: None,
         cells: vec![Cell::new(class.name.clone())],
     };
     let _ = class_steps(env, class, &mut row);
@@ -420,6 +428,7 @@ pub fn add_armour_row(item: &Item, ability: i16) -> Option<Row> {
     let mut row = Row {
         text: item.number.to_string(),
         tag: None,
+        fore_color: None,
         cells: Vec::new(),
     };
     let _ = armour_steps(item, ability, &mut row);
@@ -641,6 +650,7 @@ pub fn add_weapon_row(
     let mut row = Row {
         text: number.to_string(),
         tag: Some(attack_type.to_string()),
+        fore_color: None,
         cells: Vec::new(),
     };
     let record = if number > 0 { item } else { None };
@@ -875,6 +885,7 @@ pub fn add_spell_row(
         row: Row {
             text: spell.number.to_string(),
             tag: None,
+            fore_color: None,
             cells: Vec::new(),
         },
         bless_entry: None,

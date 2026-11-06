@@ -299,6 +299,81 @@ def main():
     case("warrior-compare", "warrior", [rows("rows", LAIR_SMALL, hwnd=77)], forms=lair_forms(1))
     case("mage-compare-party", "mage", [rows("rows", LAIR_SMALL, hwnd=77)], forms=lair_forms(3, 1))
 
+    # FilterMonsters passes what it already worked out (exp filter on in lair mode): exp/hr and time recovering,
+    # or just the damage output; AddMonster2LV then skips the CalcExpPerHour call it would have made
+    def cur(x):
+        return {"t": "cur", "v": x}
+
+    regen_lair = [n for n in lairmode if mons[n]["RegenTime"] > 0][:4]
+    keys5 = LAIR_SMALL[:5] + regen_lair
+    for tag, e in (("m", 2500000), ("k", 15000), ("plain", 700), ("zero", 0)):
+        case("warrior-passed-" + tag, "warrior", [rows("rows", keys5, [-9999, cur(e), 0.37])], forms=lair_forms(1))
+    case("mage-passed-party", "mage", [rows("rows", keys5, [-9999, cur(41000), 0.5])], forms=lair_forms(3, 1))
+    case("warrior-passed-recovery-only", "warrior", [rows("rows", keys5, [-9999, cur(-1), 0.25])], forms=lair_forms(1))
+    # damage output passed for the single-monster path, with surprise damage (args 3..7)
+    case("warrior-passed-damage", "warrior", [rows("rows", regen_lair + LAIR_SMALL[:3], [120, cur(-1), -1, 80, 20, 60, 130, 40])],
+         forms=lair_forms(1))
+    case("rogue-passed-damage", "rogue", [rows("rows", regen_lair + LAIR_SMALL[:3], [120, cur(-1), -1])], forms=lair_forms(1))
+    case("mage-grey", "mage", [rows("rows", keys5, [-9999, cur(-1), -1, -9999, 0, 0, 0, 0, True])], forms=lair_forms(1))
+    case("nochar-grey-solo", None, [rows("rows", solo[:12], [-9999, cur(-1), -1, -9999, 0, 0, 0, 0, True])])
+
+    # exp/hr settings (bGlobal_ceph*): one model, recovery only (the resting column shows Lair Exp), show-all text, knobs
+    def ceph(**kw):
+        names = {"a": "bGlobal_cephModelA", "b": "bGlobal_cephModelB", "c": "bGlobal_cephModelC", "d": "bGlobal_cephModelD"}
+        g = {}
+        for k, v in kw.items():
+            if k in names:
+                g[names[k]] = v
+            elif k == "rec":
+                g["bGlobal_cephRecoveryOnly"] = v
+            elif k == "show":
+                g["bGlobal_cephShowAll"] = v
+            elif k == "knobs":
+                g.update(dict(zip(("nGlobal_cephXP_Knob", "nGlobal_cephDMG_Knob", "nGlobal_cephMana_Knob", "nGlobal_cephMove_Knob"), v)))
+        return g
+
+    keys_s = LAIR_SMALL[:8] + regen_lair
+    for tag, g in (("only-a", ceph(a=True, b=False, c=False, d=False)), ("only-d", ceph(a=False, b=False, c=False, d=True)),
+                   ("only-b", ceph(a=False, b=True, c=False, d=False)), ("recovery-only", ceph(rec=True)),
+                   ("show-all", ceph(show=True)), ("knobs", ceph(knobs=(0.5, 1.5, 2.0, 0.25))),
+                   ("none", ceph(a=False, b=False, c=False, d=False))):
+        case("warrior-ceph-" + tag, "warrior", [rows("rows", keys_s)], forms=lair_forms(1), glob_=g)
+    case("mage-ceph-show-all-party", "mage", [rows("rows", keys_s)], forms=lair_forms(2, 0), glob_=ceph(show=True))
+
+    # party size text: rounding, clamping, and an overflow (the row is not built: MME's handler fires)
+    for tag, size in (("half", "2.5"), ("onehalf", "1.5"), ("seven", "7"), ("neg", "-3"), ("junk", "abc")):
+        case("warrior-party-text-" + tag, "warrior", [rows("rows", keys5)], forms=dict(lair_forms(1), txtMonsterLairFilter=arr(
+            {0: {"Text": size}})))
+    case("warrior-party-overflow-events", "warrior", [rows("rows", keys5[:4])], forms=dict(lair_forms(1), txtMonsterLairFilter=arr(
+        {0: {"Text": "40000"}})))
+
+    # tLastAvgLairInfo lives across lists: the main list, then the compare list (resets it), then the main list again
+    case("warrior-lists", "warrior", [rows("main1", LAIR_SMALL[:6]), rows("cmp", LAIR_SMALL[:6], hwnd=9), rows("main2", LAIR_SMALL[:6])],
+         forms=lair_forms(1))
+
+    # older data versions: no lair columns, the script value before 1.83, damage from the Monsters table (1.82) or the simulator (older)
+    def possy_for(ver):
+        out = [0.0] * (top + 1)
+        for n, m in mons.items():
+            es = entries(m)
+            if es and "(lair)" in sb(m):
+                tot = sum(r for _, r in es) if ver >= 1.82 else len(es)
+                out[n] = rnd(tot / len(es), 1)
+        return out
+
+    zeros = [0.0] * (top + 1)
+    for ver, tag in ((1.82, "v182"), (1.75, "v175"), (1.7, "v170")):
+        g = {"nNMRVer": ver, "nMonsterPossy": possy_for(ver), "nMonsterSpawnChance": zeros}
+        if ver < 1.8:
+            # below 1.8 an uncached default damage comes from the simulator (CalculateMonsterAvgDmg), which this family does
+            # not set up; every monster has a cached default instead
+            g["nMonsterDamageVsDefault"] = [(round(mons[n]["AvgDmg"] * 0.9, 1) if n in mons else -1) for n in range(top + 1)]
+        pick = solo if ver == 1.82 else solo[::5]
+        case("warrior-%s-solo" % tag, "warrior", [rows("rows", pick)], glob_=g)
+        case("nochar-%s-lair" % tag, None, [rows("rows", pick[:30])], forms=lair_forms(1), glob_=g)
+    case("mage-v182-party", "mage", [rows("rows", LAIR_SMALL)], forms=lair_forms(3, 1),
+         glob_={"nNMRVer": 1.82, "nMonsterPossy": possy_for(1.82), "nMonsterSpawnChance": zeros})
+
     scn = {
         "family": "monster_rows",
         "description": "Monsters list row (FAM-21, stock): AddMonster2LV in solo, lair and party modes, with the lair averages, "
