@@ -12,7 +12,7 @@ use serde_json::json;
 
 use crate::state::AppState;
 use crate::{
-    calc, character, class_race_builder, combat_setup, compare, detail, equip, evaluate,
+    calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
     item_manager, monster_sim, panes, paste, settings,
 };
 
@@ -82,6 +82,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/paste/party/continue",
             post(paste::party_continue_route),
         )
+        .route("/api/clipboard/character", post(clipboard::character_route))
+        .route("/api/clipboard/monster", post(clipboard::monster_route))
+        .route("/api/clipboard/shop", post(clipboard::shop_route))
+        .route("/api/clipboard/lines", post(clipboard::lines_route))
         .route("/api/compare/classify", post(compare::classify_route))
         .route("/api/evaluate/{tab}", post(evaluate::evaluate_route))
         .route("/api/characters", get(character::list))

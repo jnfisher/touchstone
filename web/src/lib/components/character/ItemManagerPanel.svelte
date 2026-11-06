@@ -21,6 +21,9 @@
 	import type { Answer, Prompt } from '$lib/paste';
 	import { headingCls } from '../calc/styles';
 	import QuestionDialog from '../paste/QuestionDialog.svelte';
+	import RowContextMenu from '../RowContextMenu.svelte';
+	import { buildMenu, type ActionId } from '$lib/contextmenu';
+	import { createMenuActions, type MenuTarget } from '$lib/menuactions.svelte';
 	import ItemPicker from './ItemPicker.svelte';
 
 	let { store, items, onpaste }: { store: CharacterStore; items: Item[]; onpaste: () => void } = $props();
@@ -62,6 +65,30 @@
 			};
 		});
 	}
+
+	// MME's lvItemManager menu (PopUpItemsMenu): the selected rows are what it acts on
+	// svelte-ignore state_referenced_locally
+	const actions = createMenuActions({ chars: store });
+	let menuOn = $state(false);
+	const cellsOf = (r: ImRow) => [String(r.number), r.name, r.flag, String(r.qty), r.source, String(r.enc), r.type, r.worn, r.usable, r.value, r.shop];
+	function rowMenu(_row: ImRow, ids: string[]) {
+		menuOn = ids.length > 0;
+	}
+	async function runMenu(id: ActionId) {
+		const chosen = new Set(im.selected);
+		const rows = gridRows.filter((r) => chosen.has(r.idx));
+		if (!rows.length) return undefined;
+		const t: MenuTarget = {
+			list: 'itemManager',
+			number: rows[0].number,
+			numbers: rows.map((r) => r.number),
+			columns: IM_COLUMNS.map((c) => c.header),
+			cells: cellsOf(rows[0]),
+			rows: rows.map(cellsOf)
+		};
+		return actions.run(id, t);
+	}
+	const menuItems = $derived(menuOn ? buildMenu({ list: 'itemManager' }) : []);
 
 	const btn = 'border-input h-7 rounded-md border px-2 text-xs disabled:opacity-50';
 	const none = $derived(im.selected.length === 0);
@@ -108,6 +135,7 @@
 	{#if im.problem}<p class="text-destructive mb-2 text-xs" data-testid="im-error">{im.problem}</p>{/if}
 
 	<div class="h-[27rem]" data-testid="im-grid">
+		<RowContextMenu items={menuItems} onAction={runMenu} onBefore={() => (menuOn = false)}>
 		<DataGrid
 			rows={gridRows}
 			{columnDefs}
@@ -117,7 +145,9 @@
 			multiSelect
 			selectedIds={selectionToIds(im.selected)}
 			onSelectionIds={(ids) => im.select(idsToSelection(ids))}
+			onRowContext={rowMenu}
 		/>
+		</RowContextMenu>
 	</div>
 
 	{#if question}

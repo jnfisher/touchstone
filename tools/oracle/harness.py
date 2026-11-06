@@ -311,9 +311,18 @@ class Env:
         def false(it_, *a):
             return False
 
-        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "SetClipboardText", "RefreshLearnedSpellColors",
+        for n in ("DebugLogPrint", "AppTerminate", "Sleep", "Unload", "RefreshLearnedSpellColors",
                   "LV_AssignRowSeqIfMissing"):
             it.bind_proc(n, noop)
+
+        def set_clipboard_text(it_, text=""):
+            # modMain SetClipboardText: the text replaces the clipboard's (a later Clipboard.GetText sees it)
+            text = V.c_str(text)
+            if len(text.strip(" ")) < 1:
+                return False            # the real procedure leaves a blank text alone
+            it_.externals["clipboard"].text = text
+            return True
+        it.bind_proc("SetClipboardText", set_clipboard_text)
         for n in ("SendMessage", "GetWindowLong", "SetWindowLong", "SetWindowPos"):
             it.bind_proc(n, zero)
         it.bind_proc("HandleError", handle_error)
@@ -546,6 +555,12 @@ class Env:
                 args.append(d)
             elif isinstance(a, dict) and "control" in a:
                 args.append(self.it.externals["frmmain"].vb_get(a["control"], []))  # a frmMain control, by reference
+            elif isinstance(a, dict) and "cliplv" in a:
+                args.append(shims.ClipListViewShim(a["cliplv"], decode))     # a ListView for the clipboard builders
+            elif isinstance(a, dict) and "textbox" in a:
+                args.append(shims.ControlShim({"Text": a["textbox"]}, decode))
+            elif isinstance(a, dict) and "missing" in a:
+                args.append(V.MISSING)                                       # an Optional argument left out, in the middle of a list
             elif isinstance(a, dict) and "obj" in a:
                 args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:

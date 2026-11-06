@@ -2,6 +2,7 @@
 	// frmBSCalc: the damage range of a backstab with a weapon that has BS accuracy.
 	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
+	import { calcPrefill } from '$lib/handoff.svelte';
 	import {
 		backstabFromCharacter,
 		BACKSTAB_DEFAULTS,
@@ -22,6 +23,7 @@
 	let choices = $state.raw<WeaponChoice[]>([]);
 	let form = $state<BackstabForm>({ ...BACKSTAB_DEFAULTS });
 	let loadError = $state<string>();
+	let notBs = $state(false);
 
 	$effect(() => {
 		let alive = true;
@@ -31,6 +33,12 @@
 				if (!alive) return;
 				choices = weaponChoices(items, { backstabOnly: true });
 				if (form.weapon === null) form.weapon = choices[0]?.number ?? null;
+				// a weapon menu's "Calculate Backstab Damage": MME warns when the weapon is not a backstab weapon
+				const want = calcPrefill.take('backstab');
+				if (want?.weapon) {
+					if (choices.some((c) => c.number === want.weapon)) form.weapon = want.weapon;
+					else notBs = true;
+				}
 			})
 			.catch((e: unknown) => (loadError = e instanceof Error ? e.message : String(e)));
 		return () => (alive = false);
@@ -105,6 +113,7 @@
 				Class Stealth
 			</label>
 			{#if loadError}<p class="text-destructive text-sm" role="alert">{loadError}</p>{/if}
+			{#if notBs}<p class="text-destructive text-sm" role="alert" data-testid="bs-not-weapon">Not a backstab weapon.</p>{/if}
 		</div>
 	{/snippet}
 	{#snippet results()}

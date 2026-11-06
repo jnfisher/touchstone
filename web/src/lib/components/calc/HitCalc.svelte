@@ -3,6 +3,7 @@
 	// current character, a monster, a remembered player or typed numbers.
 	import { untrack } from 'svelte';
 	import { api, type ClassRec } from '$lib/api';
+	import { calcPrefill } from '$lib/handoff.svelte';
 	import {
 		applyHit,
 		hitFromCharacter,
@@ -77,6 +78,13 @@
 				classes = c.filter((x) => x.name !== '');
 				// Form_Load: the first monster is selected, then the window is filled in.
 				form.monster = monsters[0]?.number ?? null;
+				// a monster menu's "Hit Calc vs Mob": the monster, as attacker or as defender
+				const want = calcPrefill.take('hit');
+				if (want?.monster && monsters.some((m) => m.number === want.monster)) {
+					form.monster = want.monster;
+					if (want.side === 'attacker') form.attacker = 'monster';
+					else form.defender = 'monster';
+				}
 				if (!current.active) form.character.classNumber = classes[0]?.number ?? null;
 				send({ event: 'refresh' });
 			})
