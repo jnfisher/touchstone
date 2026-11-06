@@ -1,14 +1,15 @@
 // Fixture tests for the attack family (swings, energy, weapon damage): see docs/porting.md step 5.
 // Expected values come from fixtures/rules/attack.json (MME's own code run by the oracle).
-use std::collections::HashMap;
+use std::cell::Cell;
 
 use serde_json::Value;
 use touchstone_model::{AbilitySlot, Class, Item, Race};
 use touchstone_rules::Profile;
+use touchstone_rules::ability_text::AbilityEnv;
 use touchstone_rules::attack::*;
 use touchstone_vb6::Currency;
 
-use crate::fixture::{self, cur};
+use crate::fixture::{self, Names, Textblocks, cur};
 
 fn int(v: &Value) -> i32 {
     v.as_i64().unwrap_or_else(|| panic!("not an int: {v}")) as i32
@@ -106,27 +107,6 @@ fn race(row: &Value) -> Race {
         exp_table: 0,
         base_cp: 0,
         abilities,
-    }
-}
-
-/// The spell text MME's other procedures gave for each weapon spell, recorded by the oracle.
-struct Recorded {
-    names: HashMap<i32, String>,
-    eqs: HashMap<(i32, i32), String>,
-}
-
-impl CastText for Recorded {
-    fn spell_name(&self, number: i32) -> String {
-        self.names
-            .get(&number)
-            .unwrap_or_else(|| panic!("no recorded GetSpellName({number})"))
-            .clone()
-    }
-    fn spell_eq(&self, number: i32, bonus: i16) -> String {
-        self.eqs
-            .get(&(number, i32::from(bonus)))
-            .unwrap_or_else(|| panic!("no recorded PullSpellEQ({number}, {bonus})"))
-            .clone()
     }
 }
 
@@ -256,31 +236,42 @@ fn attack_fixture() {
         .iter()
         .map(race)
         .collect();
-    let mut rec = Recorded {
-        names: HashMap::new(),
-        eqs: HashMap::new(),
+    let spells = fixture::spell_table(&fx.cases[0]);
+    let names = Names::from_table(&table["names"]);
+    let tbs = Textblocks::from_table(&table["textblocks"]);
+    // The real text port over the fixture's tables, with MME's start-up globals.
+    let text = AbilityEnv {
+        profile: Profile::Stock,
+        names: &names,
+        textblocks: &tbs,
+        spells: &spells,
+        hide_record_numbers: false,
+        quick_spell: false,
+        global_level_text: None,
+        avg_level_max_all_stats: 0.0,
+        nest: Cell::new(0),
     };
-    for c in &fx.cases {
-        let id = c["id"].as_str().unwrap();
-        let args = &c["inputs"]["args"];
-        if id.starts_with("sn-") {
-            rec.names.insert(
-                int(&args[0]),
-                c["outputs"]["result"].as_str().unwrap().to_string(),
-            );
-        } else if id.starts_with("pe-") {
-            rec.eqs.insert(
-                (int(&args[2]), int(&args[11])),
-                c["outputs"]["result"].as_str().unwrap().to_string(),
-            );
-        }
-    }
 
     let mut bad: Vec<String> = Vec::new();
     let mut checked = 0;
     for c in &fx.cases {
         let id = c["id"].as_str().unwrap();
-        if id == "table" || id.starts_with("sn-") || id.starts_with("pe-") {
+        if id == "table" {
+            continue;
+        }
+        // GetSpellName and PullSpellEQ as MME answered them, against the port's own.
+        if id.starts_with("sn-") || id.starts_with("pe-") {
+            let args = &c["inputs"]["args"];
+            let want = c["outputs"]["result"].as_str().unwrap();
+            let got = if id.starts_with("sn-") {
+                text.spell_name(int(&args[0]))
+            } else {
+                text.spell_eq(int(&args[2]), int(&args[11]) as i16)
+            };
+            checked += 1;
+            if got != want {
+                bad.push(format!("{id}: want {want:?}, got {got:?}"));
+            }
             continue;
         }
         let inputs = &c["inputs"];
@@ -304,7 +295,7 @@ fn attack_fixture() {
                     classes: &classes,
                     races: &races,
                     equipped: &equipped,
-                    cast_text: &rec,
+                    cast_text: &text,
                     dat_ver_caption: &caption,
                     avg_level_max_all_stats: avg,
                     accuracy_tag: &tag,

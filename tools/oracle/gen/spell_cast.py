@@ -5,7 +5,7 @@
 Deterministic (fixed strides and a splitmix-style counter, no clock). The case "table" carries the
 Spells rows any other case names (compact; only fields the Rust port reads) and the Classes rows'
 magery fields, so the Rust test needs no database. Case ids "as-*" record GetAbilityStats(n, 0)
-for CalculateSpellCast's level-increase text (P3-07's procedure); the Rust test replays them.
+for CalculateSpellCast's level-increase text (P3-07's procedure); the Rust test checks the real port against them.
 """
 import json
 import os
