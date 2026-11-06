@@ -101,6 +101,14 @@ the UI fetches whole tables once and filters and sorts in the browser:
   when sent with `global_filter: true`; without one, MME's no-character view. Cached per request
   until the data reloads. Monsters (exp/hr, damage) are a later card.
 - `POST /api/calc/{swing,hit,backstab,exp,coin,monster-attack-sim}`: the calculator windows.
+- `GET/PUT /api/settings`: the options that change results (exp/hr models and knobs, monster sim
+  rounds, route waypoint interval, open-last-character), stored as `<data_dir>/settings.json`. PUT
+  applies MME's Save rules (knob clamp, round and interval ranges, A+B+C when no model is ticked)
+  and returns what it stored; a damaged file is reported by GET and moved aside by the next PUT.
+  `?character=NAME` adds the exp/hr block that character calculates with. With "by character" on,
+  that is the character's own `exp_hr` block (missing keys read as defaults, as in MME). View
+  options (theme, name in the page title) stay in browser storage. `tasks/P4-29-settings.md` maps
+  every `settings.ini` key to server, browser or not applicable.
 
 Config: `touchstone.toml` (data source, bind address, default `0.0.0.0:8370`, data dir). No
 authentication: it is meant for a LAN or Tailscale.

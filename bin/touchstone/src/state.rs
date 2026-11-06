@@ -10,6 +10,8 @@ use axum::body::Bytes;
 use serde::Serialize;
 use touchstone_model::World;
 
+use crate::settings::{self, Settings};
+
 pub const TABLES: [&str; 8] = [
     "items", "monsters", "spells", "rooms", "shops", "classes", "races", "lairs",
 ];
@@ -129,6 +131,8 @@ impl Loaded {
 pub struct AppState {
     loaded: ArcSwap<Loaded>,
     data_dir: PathBuf,
+    /// `settings.json` as last read or written; the text says why it could not be read.
+    settings: Mutex<Result<Settings, String>>,
     /// Finished `/api/evaluate` lists, each tagged with the load it was built from.
     evaluate_cache: Mutex<HashMap<String, (u64, Bytes)>>,
 }
@@ -143,15 +147,37 @@ impl AppState {
 
     /// `data_dir` is where saved characters live (`<data_dir>/characters/`).
     pub fn with_data_dir(loaded: Loaded, data_dir: PathBuf) -> Arc<Self> {
+        let settings = Mutex::new(settings::load(&data_dir));
         Arc::new(Self {
             loaded: ArcSwap::from_pointee(loaded),
             data_dir,
+            settings,
             evaluate_cache: Mutex::new(HashMap::new()),
         })
     }
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    /// The saved settings, or why `settings.json` cannot be used.
+    pub fn settings(&self) -> Result<Settings, String> {
+        self.settings
+            .lock()
+            .map_err(|_| "settings lock poisoned".to_owned())?
+            .clone()
+    }
+
+    /// Writes `next` (already normalised) and makes it current. The lock is held across the
+    /// write so two saves cannot land out of order. A damaged file is moved aside, not lost.
+    pub fn put_settings(&self, next: Settings) -> Result<Settings, String> {
+        let mut guard = self
+            .settings
+            .lock()
+            .map_err(|_| "settings lock poisoned".to_owned())?;
+        settings::store(&self.data_dir, &next, guard.is_err()).map_err(|e| e.to_string())?;
+        *guard = Ok(next);
+        Ok(next)
     }
 
     pub fn current(&self) -> Arc<Loaded> {

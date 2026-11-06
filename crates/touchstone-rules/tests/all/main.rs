@@ -19,6 +19,7 @@ mod gear;
 mod hit_calc;
 mod item_match;
 mod item_value;
+mod lair_info;
 mod lairs;
 mod mega_stat;
 mod mmec;
