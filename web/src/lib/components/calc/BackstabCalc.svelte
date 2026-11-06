@@ -1,7 +1,9 @@
 <script lang="ts">
 	// frmBSCalc: the damage range of a backstab with a weapon that has BS accuracy.
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
 	import {
+		backstabFromCharacter,
 		BACKSTAB_DEFAULTS,
 		backstabRequest,
 		calcClient,
@@ -10,6 +12,8 @@
 		type WeaponChoice
 	} from '$lib/calc';
 	import CalcFrame from './CalcFrame.svelte';
+	import { useCurrentCharacter } from './current.svelte';
+	import UseCharacter from './UseCharacter.svelte';
 	import Field from './Field.svelte';
 	import { live } from './live.svelte';
 	import { headingCls } from './styles';
@@ -31,6 +35,16 @@
 			.catch((e: unknown) => (loadError = e instanceof Error ? e.message : String(e)));
 		return () => (alive = false);
 	});
+
+	// Form_Load: the character's numbers go into the boxes; switched off, they stay as they were.
+	const current = useCurrentCharacter();
+	$effect(() => {
+		const c = current.active ? current.character : undefined;
+		if (!c) return;
+		const next = untrack(() => backstabFromCharacter(c, $state.snapshot(form) as BackstabForm));
+		Object.assign(form, next);
+	});
+	const locked = $derived(current.active);
 
 	const calc = live(
 		() => (form.weapon === null ? undefined : backstabRequest(form)),
@@ -57,30 +71,37 @@
 <CalcFrame title="Backstab Calculator" testid="calc-backstab">
 	{#snippet inputs()}
 		<div class="flex flex-col gap-3">
-			<WeaponPicker {choices} bind:value={form.weapon} />
+			<UseCharacter {current} />
+			<WeaponPicker {choices} bind:value={form.weapon} disabled={locked} />
 			<div class="grid grid-cols-3 gap-3">
-				<Field label="Level" bind:value={form.level} testid="bs-level" />
-				<Field label="Strength" bind:value={form.strength} testid="bs-strength" />
+				<Field label="Level" bind:value={form.level} disabled={locked}
+					testid="bs-level" />
+				<Field label="Strength" bind:value={form.strength} disabled={locked}
+					testid="bs-strength" />
 				<Field
 					label="Stealth"
 					bind:value={form.stealth}
 					note={result?.stealth_adj}
+					disabled={locked}
 					testid="bs-stealth"
 				/>
 			</div>
 			<div class="grid grid-cols-3 gap-3">
-				<Field label="BS Min DMG" bind:value={form.bsMin} note={result?.bs_min_adj} testid="bs-min" />
-				<Field label="BS Max DMG" bind:value={form.bsMax} note={result?.bs_max_adj} testid="bs-max" />
+				<Field label="BS Min DMG" bind:value={form.bsMin} note={result?.bs_min_adj} disabled={locked}
+					testid="bs-min" />
+				<Field label="BS Max DMG" bind:value={form.bsMax} note={result?.bs_max_adj} disabled={locked}
+					testid="bs-max" />
 				<Field
 					label="Max Damage"
 					bind:value={form.maxDmg}
 					note={result?.max_adj}
+					disabled={locked}
 					testid="bs-max-dmg"
 					hint="All max damage bonus, strength's included"
 				/>
 			</div>
 			<label class="flex items-center gap-1.5 text-sm">
-				<input type="checkbox" bind:checked={form.classStealth} data-testid="bs-class-stealth" />
+				<input type="checkbox" bind:checked={form.classStealth} disabled={locked} data-testid="bs-class-stealth" />
 				Class Stealth
 			</label>
 			{#if loadError}<p class="text-destructive text-sm" role="alert">{loadError}</p>{/if}
@@ -107,8 +128,8 @@
 			<p class="text-muted-foreground mt-6 max-w-prose text-xs">
 				Max damage bonus from strength is not added for you: enter all of it, strength's included, in
 				Max Damage. Minimum damage from strength is added. The numbers beside Stealth, BS Min DMG, BS
-				Max DMG and Max Damage are what the chosen weapon adds. Level and stats are typed in here until
-				the Character tab can supply them.
+				Max DMG and Max Damage are what the chosen weapon adds. With "Use current character" on, level, strength, stealth, the damage boxes and the weapon come from
+				the Character tab.
 			</p>
 		{:else}
 			<p class="text-muted-foreground text-sm">Pick a weapon.</p>

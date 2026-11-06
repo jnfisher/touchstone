@@ -1,10 +1,13 @@
 <script lang="ts">
 	// frmSwingCalc: energy per swing, swings in each of ten rounds and the average round damage.
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
 	import {
 		afterLabel,
 		calcClient,
 		COMBAT_LEVELS,
+		megaFromFields,
+		swingFromCharacter,
 		SPEED_OPTIONS,
 		SWING_DEFAULTS,
 		swingRequest,
@@ -14,6 +17,8 @@
 		type WeaponChoice
 	} from '$lib/calc';
 	import CalcFrame from './CalcFrame.svelte';
+	import { useCurrentCharacter } from './current.svelte';
+	import UseCharacter from './UseCharacter.svelte';
 	import Field from './Field.svelte';
 	import { live } from './live.svelte';
 	import { headingCls, inputCls, labelCls } from './styles';
@@ -37,6 +42,41 @@
 		return () => (alive = false);
 	});
 
+	// Form_Load: the character's numbers go into the boxes; switched off, they stay as they were.
+	const current = useCurrentCharacter();
+	$effect(() => {
+		const c = current.active ? current.character : undefined;
+		if (!c) return;
+		const next = untrack(() => swingFromCharacter(c, $state.snapshot(form) as SwingForm));
+		Object.assign(form, next);
+	});
+	const locked = $derived(current.active);
+
+	let pasteText = $state('');
+	let pasteMessage = $state<string>();
+	let pasteOk = $state(false);
+
+	// cmdPasteMega_Click: the server parses the text; a rejected paste changes nothing.
+	async function paste(text: string) {
+		try {
+			const r = await calcClient.megaStat(text);
+			pasteOk = r.ok;
+			pasteMessage = r.ok ? 'Filled in from the MegaMUD lines.' : (r.message ?? undefined);
+			if (r.ok && r.fields) form.mega = megaFromFields(r.fields);
+		} catch (e) {
+			pasteOk = false;
+			pasteMessage = e instanceof Error ? e.message : String(e);
+		}
+	}
+	async function pasteClipboard() {
+		try {
+			pasteText = await navigator.clipboard.readText();
+		} catch {
+			// no clipboard permission: the box below takes a normal paste
+		}
+		if (pasteText.trim() !== '') await paste(pasteText);
+	}
+
 	// No weapon yet: nothing to ask the server.
 	const calc = live(
 		() => (form.weapon === null ? undefined : swingRequest(form)),
@@ -54,25 +94,26 @@
 <CalcFrame title="Swing Calculator" testid="calc-swing">
 	{#snippet inputs()}
 		<div class="flex flex-col gap-3">
-			<WeaponPicker {choices} bind:value={form.weapon} />
+			<UseCharacter {current} />
+			<WeaponPicker {choices} bind:value={form.weapon} disabled={locked} />
 			<label class="flex flex-col gap-1">
 				<span class={labelCls}>Combat</span>
-				<select bind:value={form.combat} data-testid="swing-combat" class={inputCls}>
+				<select bind:value={form.combat} disabled={locked} data-testid="swing-combat" class="{inputCls} disabled:opacity-60">
 					{#each COMBAT_LEVELS as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
 				</select>
 			</label>
 			<div class="grid grid-cols-3 gap-3">
-				<Field label="Level" bind:value={form.level} testid="swing-level" />
-				<Field label="Strength" bind:value={form.strength} testid="swing-strength" />
-				<Field label="Agility" bind:value={form.agility} testid="swing-agility" />
+				<Field label="Level" bind:value={form.level} disabled={locked} testid="swing-level" />
+				<Field label="Strength" bind:value={form.strength} disabled={locked} testid="swing-strength" />
+				<Field label="Agility" bind:value={form.agility} disabled={locked} testid="swing-agility" />
 			</div>
 			<div class="grid grid-cols-2 gap-3">
-				<Field label="Encum." bind:value={form.encum} testid="swing-encum" />
+				<Field label="Encum." bind:value={form.encum} disabled={locked} testid="swing-encum" />
 				<div class="flex flex-col gap-1">
 					<span class="{labelCls} flex h-4 items-center justify-between">
 						<span>Max Enc.</span>
 						<label class="flex items-center gap-1 font-normal" title="Follow strength, as MME does">
-							<input type="checkbox" bind:checked={form.maxEncumAuto} data-testid="swing-max-auto" />
+							<input type="checkbox" bind:checked={form.maxEncumAuto} disabled={locked} data-testid="swing-max-auto" />
 							auto
 						</label>
 					</span>
@@ -81,7 +122,7 @@
 						inputmode="decimal"
 						autocomplete="off"
 						value={maxEncumShown}
-						disabled={form.maxEncumAuto}
+						disabled={form.maxEncumAuto || locked}
 						oninput={(e) => (form.maxEncum = e.currentTarget.value)}
 						data-testid="swing-max-encum"
 						class="{inputCls} disabled:opacity-60"
@@ -121,6 +162,51 @@
 					Bashing
 				</label>
 			</div>
+			<fieldset class="flex flex-col gap-2 border-t pt-3" data-testid="swing-mega">
+				<legend class={labelCls}>MegaMUD stat line</legend>
+				<textarea
+					rows="3"
+					placeholder="Paste the Hit:, Extra: and Crit: lines from MegaMUD"
+					bind:value={pasteText}
+					onpaste={(e) => {
+						const t = e.clipboardData?.getData('text');
+						if (t) void paste(t);
+					}}
+					data-testid="swing-mega-text"
+					class="{inputCls} h-auto py-1.5 font-mono text-xs"
+				></textarea>
+				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						class="bg-secondary text-secondary-foreground h-8 rounded-md px-3 text-sm"
+						onclick={() => void paste(pasteText)}
+						data-testid="swing-mega-apply">Paste MegaMUD stat line</button
+					>
+					<button
+						type="button"
+						class="border-input h-8 rounded-md border px-3 text-sm"
+						onclick={() => void pasteClipboard()}
+						data-testid="swing-mega-clipboard">From clipboard</button
+					>
+				</div>
+				{#if pasteMessage}
+					<p
+						class="text-sm {pasteOk ? 'text-muted-foreground' : 'text-destructive'}"
+						role={pasteOk ? 'status' : 'alert'}
+						data-testid="swing-mega-message"
+					>
+						{pasteMessage}
+					</p>
+				{/if}
+				<div class="grid grid-cols-3 gap-3">
+					<Field label="Hit %" bind:value={form.mega.hitPct} testid="swing-hit-pct" />
+					<Field label="Extra %" bind:value={form.mega.extraPct} testid="swing-extra-pct" />
+					<Field label="Crit %" bind:value={form.mega.critPct} testid="swing-crit-pct" />
+					<Field label="Hit avg" bind:value={form.mega.hitAvg} testid="swing-hit-avg" />
+					<Field label="Extra avg" bind:value={form.mega.extraAvg} testid="swing-extra-avg" />
+					<Field label="Crit avg" bind:value={form.mega.critAvg} testid="swing-crit-avg" />
+				</div>
+			</fieldset>
 			{#if loadError}<p class="text-destructive text-sm" role="alert">{loadError}</p>{/if}
 		</div>
 	{/snippet}
@@ -203,6 +289,19 @@
 						<div class="text-muted-foreground text-xs whitespace-pre-line">
 							{result.damage_caption.replace(/\r\n/g, '\n')}
 						</div>
+					</div>
+					<div>
+						<h3 class={headingCls}>Average per round from MegaMUD</h3>
+						{#if result.true_average_error}
+							<p class="text-destructive text-sm" role="alert">{result.true_average_error}</p>
+						{:else}
+							<div class="text-2xl font-semibold tabular-nums" data-testid="swing-true-average">
+								{result.true_average ?? '-'}
+							</div>
+							<div class="text-muted-foreground text-xs">
+								True average: swings x (Hit, Crit and Extra from the MegaMUD boxes)
+							</div>
+						{/if}
 					</div>
 				</div>
 			</div>

@@ -1034,3 +1034,224 @@ mod calc_hit {
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
 }
+
+mod calc_swing_true_average {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn true_average_matches_calc_true_average_043() {
+        // fixtures/rules/attack.json CalcTrueAverage-043: 5 swings (swing-0004 has more, capped at
+        // MAX_SWINGS), Hit 60% for 25, Crit 15% for 80, Extra 25% for 12 gives 146.25.
+        let (st, v) = post(
+            "/api/calc/swing",
+            json!({"weapon": 217, "combat": 1, "agility": "90", "encum": "0", "level": "150",
+                   "max_encum": "4800", "speed": "99.5", "strength": "180", "speed_option": 3,
+                   "hit_pct": "60", "hit_avg": "25", "crit_pct": 15, "crit_avg": 80,
+                   "extra_pct": "25", "extra_avg": "12"}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["true_average"], "146.25");
+        assert!(v["true_average_error"].is_null());
+    }
+
+    #[tokio::test]
+    async fn empty_boxes_give_zero_and_a_huge_average_is_an_overflow() {
+        // Empty boxes read as 0 (Val), so the answer is 0 while there are swings; a Long that
+        // does not fit ends txtTrueAVG_Change in its handler.
+        let (_, v) = post("/api/calc/swing", json!({"weapon": 217})).await;
+        assert_eq!(v["true_average"], "0");
+        let (_, v) = post(
+            "/api/calc/swing",
+            json!({"weapon": 217, "hit_avg": "99999999999"}),
+        )
+        .await;
+        assert!(v["true_average"].is_null());
+        assert_eq!(v["true_average_error"], "Overflow (run-time error 6)");
+    }
+}
+
+mod calc_mega_stat {
+    use super::*;
+    use serde_json::json;
+
+    const MESSAGE: &str = "Incomplete/Missing MegaMUD Statistics in Clipboard";
+
+    fn fields(v: &Value) -> Vec<String> {
+        v["fields"]
+            .as_array()
+            .map(|a| a.iter().map(|s| s.as_str().unwrap().to_owned()).collect())
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn old_layout_matches_p577() {
+        // fixtures/rules/mega_stat.json p577 (cmdPasteMega_Click, old layout with a --- Extra line).
+        let clip = "Hit:   43%   Rng:11-58      Avg:34\nExtra: ---   Rng:---        Avg:0\nCrit:  5%    Rng:30-80      Avg:55";
+        let (st, v) = post("/api/calc/mega-stat", json!({ "text": clip })).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["ok"], true);
+        assert_eq!(fields(&v), ["43", "34", "0", "0", "5", "55"]);
+        assert!(v["message"].is_null());
+    }
+
+    #[tokio::test]
+    async fn new_layout_matches_p578() {
+        // fixtures/rules/mega_stat.json p578.
+        let clip =
+            "Hit:   43%   11-58          34\nExtra: 12%   2-9      6\nCrit:  5%    30-80      55";
+        let (_, v) = post("/api/calc/mega-stat", json!({ "text": clip })).await;
+        assert_eq!(fields(&v), ["43", "34", "12", "6", "5", "55"]);
+    }
+
+    #[tokio::test]
+    async fn rejections_carry_mmes_message() {
+        // fixtures/rules/mega_stat.json p579 (empty), p587 (Crit without an average) and p606
+        // (no Hit line) all leave the boxes empty and show the Incomplete message box.
+        for clip in ["", "Hit: 43%\nCrit: 5%", "Crit: 5% Rng:1-2 Avg:3"] {
+            let (st, v) = post("/api/calc/mega-stat", json!({ "text": clip })).await;
+            assert_eq!(st, StatusCode::OK, "{clip:?}");
+            assert_eq!(v["ok"], false, "{clip:?}");
+            assert!(v["fields"].is_null());
+            assert_eq!(v["message"], MESSAGE, "{clip:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn long_overflow_is_a_handled_error_p595() {
+        // fixtures/rules/mega_stat.json p595: an average past a Long ends in HandleError, no boxes.
+        let clip = "Hit: 43% Rng:11-58 Avg:99999999999\nCrit: 5% Rng:1-2 Avg:3";
+        let (_, v) = post("/api/calc/mega-stat", json!({ "text": clip })).await;
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["error"], 6);
+        assert_eq!(v["message"], "Overflow (run-time error 6)");
+    }
+
+    #[tokio::test]
+    async fn every_paste_case_of_the_fixture_agrees() {
+        // fixtures/rules/mega_stat.json: all cmdPasteMega_Click cases.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/rules/mega_stat.json");
+        let fx: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut n = 0;
+        for case in fx["cases"].as_array().unwrap() {
+            if case["inputs"]["steps"][0]["call"] != "cmdPasteMega_Click" {
+                continue;
+            }
+            n += 1;
+            let id = case["id"].as_str().unwrap();
+            let clip = case["inputs"]["forms"]["frmMain"]["txtClip"]["Text"]
+                .as_str()
+                .unwrap();
+            let want: Vec<&str> = case["outputs"]["box"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s.as_str().unwrap())
+                .collect();
+            let (st, v) = post("/api/calc/mega-stat", json!({ "text": clip })).await;
+            assert_eq!(st, StatusCode::OK, "{id}");
+            let got = fields(&v);
+            if v["ok"] == true {
+                assert_eq!(got, want, "{id}");
+            } else {
+                assert!(want.iter().all(|s| s.is_empty()), "{id}");
+                assert!(!v["message"].is_null(), "{id}");
+            }
+        }
+        assert_eq!(n, 130);
+    }
+
+    #[tokio::test]
+    async fn a_bad_body_is_400() {
+        let (st, _) = post("/api/calc/mega-stat", json!({ "text": [1] })).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+    }
+}
+
+mod calc_coin_charm {
+    use super::*;
+    use serde_json::json;
+
+    // frmCoinConvert RefreshCharmButton / cmdCharm_Click: no fixture family covers them, so the
+    // values below are worked from the procedures (modifier 1 - (Fix(charm / 5) - 10) / 100).
+
+    #[tokio::test]
+    async fn charm_100_is_a_ten_percent_discount() {
+        let (st, v) = post(
+            "/api/calc/coin",
+            json!({"source": 0, "text": "1", "top": 2, "bottom": 0, "charm": 100}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["charm"]["enabled"], true);
+        assert_eq!(v["charm"]["caption"], "Apply\r\n10% Discount");
+        assert_eq!(v["charm"]["percent"], 90);
+    }
+
+    #[tokio::test]
+    async fn low_charm_is_a_markup_and_50_or_none_has_no_effect() {
+        let (_, v) = post(
+            "/api/calc/coin",
+            json!({"source": 0, "text": "1", "charm": 25}),
+        )
+        .await;
+        assert_eq!(v["charm"]["caption"], "Apply\r\n5% Markup");
+        assert_eq!(v["charm"]["percent"], 105);
+        for body in [
+            json!({"source": 0, "text": "1", "charm": 50}),
+            json!({"source": 0, "text": "1", "charm": 0}),
+            json!({"source": 0, "text": "1"}),
+        ] {
+            let (_, v) = post("/api/calc/coin", body).await;
+            assert_eq!(v["charm"]["enabled"], false);
+            assert_eq!(v["charm"]["caption"], "No Charm Effect");
+        }
+    }
+
+    #[tokio::test]
+    async fn applying_charm_rescales_the_bottom_box() {
+        // 100 copper at 90% is 90 copper; 1000 copper at 105% is 1050.
+        let (_, v) = post(
+            "/api/calc/coin",
+            json!({"source": 1, "text": "100", "bottom": 0, "charm": 100, "apply_charm": true}),
+        )
+        .await;
+        assert_eq!(v["destination"], 1);
+        assert_eq!(v["destination_text"], "90");
+        assert_eq!(v["weights"][1], "Weight: 30");
+        let (_, v) = post(
+            "/api/calc/coin",
+            json!({"source": 1, "text": "1000", "bottom": 0, "charm": 25, "apply_charm": true}),
+        )
+        .await;
+        assert_eq!(v["destination_text"], "1050");
+    }
+
+    #[tokio::test]
+    async fn applying_keeps_the_result_at_least_one_and_skips_amounts_below_one() {
+        let (_, v) = post(
+            "/api/calc/coin",
+            json!({"source": 1, "text": "1", "bottom": 0, "charm": 100, "apply_charm": true}),
+        )
+        .await;
+        assert_eq!(v["destination_text"], "1");
+        let (_, v) = post(
+            "/api/calc/coin",
+            json!({"source": 1, "text": "0.5", "bottom": 0, "charm": 100, "apply_charm": true}),
+        )
+        .await;
+        assert_eq!(v["destination_text"], "0.5");
+    }
+
+    #[tokio::test]
+    async fn applying_without_a_charm_effect_is_400() {
+        let (st, _) = post(
+            "/api/calc/coin",
+            json!({"source": 1, "text": "100", "charm": 50, "apply_charm": true}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+    }
+}

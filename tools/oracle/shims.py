@@ -317,6 +317,15 @@ class ControlShim(ExtObject):
 
     def vb_get(self, name, args):
         n = name.lower()
+        if n == "additem" and args:
+            # a list control gains an entry (at the end, or at the given index); NewIndex tells where it went
+            lst = self.items.setdefault("list", {})
+            at = V.int_value(args[1]) if len(args) > 1 else (max(lst) + 1 if lst else 0)
+            for k in sorted((k for k in lst if k >= at), reverse=True):
+                lst[k + 1] = lst.pop(k)
+            lst[at] = V.c_str(args[0])
+            self.props["newindex"] = V.I32(at)
+            return None
         if args:
             tbl = self.items.get(n)
             i = V.int_value(args[0])
@@ -495,6 +504,170 @@ class ListViewShim(ControlShim):
         return out
 
 
+class RecSubItem(ExtObject):
+    """A ListSubItem whose Text, Tag and ForeColor are recorded. Text is a String property (CStr of
+    what is assigned); Tag is a Variant, so it keeps the assigned value. None means never assigned."""
+
+    def __init__(self, text=""):
+        self.text = text
+        self.tag = None
+        self.fore = None
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "text":
+            return self.text
+        if n == "tag":
+            return "" if self.tag is None else self.tag
+        if n == "forecolor":
+            return V.mk_i32(0) if self.fore is None else self.fore
+        raise VBError(438)
+
+    def vb_set(self, name, args, value):
+        n = name.lower()
+        if n == "text":
+            self.text = V.c_str(value)
+        elif n == "tag":
+            self.tag = value
+        elif n == "forecolor":
+            self.fore = value
+        else:
+            raise VBError(438)
+
+    def vb_default(self, args):
+        return self.text
+
+
+class RecSubItems(ExtObject):
+    def __init__(self, item):
+        self.item = item
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "count":
+            return V.I32(len(self.item.subs))
+        if n == "add":
+            # Add([Index], [Key], [Text]): inserts at Index (1-based); Index may be one past the end
+            at = V.int_value(args[0]) if args and args[0] is not V.MISSING else len(self.item.subs) + 1
+            if at < 1 or at > len(self.item.subs) + 1:
+                raise VBError(35600, "Index out of bounds")
+            sub = RecSubItem(V.c_str(args[2]) if len(args) > 2 and args[2] is not V.MISSING else "")
+            self.item.subs.insert(at - 1, sub)
+            return sub
+        raise VBError(438)
+
+    def vb_default(self, args):
+        i = V.int_value(args[0])
+        if i < 1 or i > len(self.item.subs):
+            raise VBError(35600, "Index out of bounds")
+        return self.item.subs[i - 1]
+
+    def vb_iter(self):
+        return iter(list(self.item.subs))
+
+
+class RecItem(ExtObject):
+    """A ListItem of a recording ListView: Text, Tag, and its sub-items."""
+
+    def __init__(self, text=""):
+        self.text = text
+        self.tag = None
+        self.subs = []
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "text":
+            return self.text
+        if n == "tag":
+            return "" if self.tag is None else self.tag
+        if n == "listsubitems":
+            if args:
+                return RecSubItems(self).vb_default(args)
+            return RecSubItems(self)
+        if n == "selected":
+            return False
+        raise VBError(438)
+
+    def vb_set(self, name, args, value):
+        n = name.lower()
+        if n == "text":
+            self.text = V.c_str(value)
+        elif n == "tag":
+            self.tag = value
+        elif n == "selected":
+            pass
+        else:
+            raise VBError(438)
+
+    def vb_default(self, args):
+        return self.text
+
+
+class RecItems(ExtObject):
+    def __init__(self, lv):
+        self.lv = lv
+
+    def vb_get(self, name, args):
+        n = name.lower()
+        if n == "count":
+            return V.I32(len(self.lv.rows))
+        if n == "add":
+            item = RecItem()
+            self.lv.rows.append(item)
+            return item
+        if n == "clear":
+            self.lv.rows.clear()
+            return None
+        raise VBError(438)
+
+    def vb_default(self, args):
+        i = V.int_value(args[0])
+        if i < 1 or i > len(self.lv.rows):
+            raise VBError(35600, "Index out of bounds")
+        return self.lv.rows[i - 1]
+
+    def vb_iter(self):
+        return iter(list(self.lv.rows))
+
+
+class RecordingListViewShim(ControlShim):
+    """A ListView that records the rows MME's Add*2LV procedures build. The scenario may preload rows:
+    {"$recordlv": [{"Text": "1", "Tag": "x", "Sub": ["a", ["b", "tag"]]}]}; `dump()` is what a `%lv.` read returns:
+    per row [text, tag, cells] (see dump)."""
+
+    def __init__(self, rows=None, decode=_plain):
+        super().__init__({}, decode)
+        self.rows = []
+        for r in rows or []:
+            item = RecItem(str(r.get("Text", "")))
+            if "Tag" in r:
+                item.tag = r["Tag"]
+            for s in r.get("Sub", []):
+                sub = RecSubItem(str(s[0] if isinstance(s, list) else s))
+                if isinstance(s, list) and len(s) > 1:
+                    sub.tag = s[1]
+                item.subs.append(sub)
+            self.rows.append(item)
+
+    def vb_get(self, name, args):
+        if name.lower() == "listitems":
+            items = RecItems(self)
+            return items.vb_default(args) if args else items
+        return super().vb_get(name, args)
+
+    def dump(self, enc):
+        """[Text, Tag, cells] per row; a cell is its Text alone when its Tag and ForeColor were never assigned,
+        else [Text, Tag, ForeColor] with null for what was not assigned. Tags are CStr of the assigned Variant."""
+        def tag(x):
+            return None if x is None else (x if isinstance(x, str) else V.c_str(x))
+
+        def cell(s):
+            if s.tag is None and s.fore is None:
+                return s.text
+            return [s.text, tag(s.tag), None if s.fore is None else int(V.int_value(s.fore))]
+        return [[r.text, tag(r.tag), [cell(s) for s in r.subs]] for r in self.rows]
+
+
 class ControlArrayShim(ExtObject):
     """`ctl()` with no index: the whole control array (only `.count`)."""
 
@@ -569,6 +742,8 @@ class FormShim(ExtObject):
                         c.radio = self.controls[nl]
             elif isinstance(props, dict) and "$listview" in props:
                 self.controls[nl] = ListViewShim(props["$listview"], decode)
+            elif isinstance(props, dict) and "$recordlv" in props:
+                self.controls[nl] = RecordingListViewShim(props["$recordlv"], decode)
             elif isinstance(props, dict):
                 self.controls[nl] = ControlShim(props, decode)
             else:

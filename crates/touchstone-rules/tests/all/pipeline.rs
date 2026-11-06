@@ -168,9 +168,9 @@ pub(crate) fn world(data: &Value) -> World {
 
 /// frmMain's controls and the globals: the case's, falling back to the setup's.
 pub(crate) struct Inputs {
-    forms_setup: Value,
-    forms: Value,
-    globals: Value,
+    pub(crate) forms_setup: Value,
+    pub(crate) forms: Value,
+    pub(crate) globals: Value,
 }
 
 impl Inputs {
@@ -181,7 +181,7 @@ impl Inputs {
             globals: case["inputs"]["globals"].clone(),
         }
     }
-    fn ctl(&self, name: &str) -> &Value {
+    pub(crate) fn ctl(&self, name: &str) -> &Value {
         let v = &self.forms[name];
         if v.is_null() {
             &self.forms_setup[name]
@@ -189,13 +189,13 @@ impl Inputs {
             v
         }
     }
-    fn elem(&self, name: &str, idx: usize) -> &Value {
+    pub(crate) fn elem(&self, name: &str, idx: usize) -> &Value {
         &self.ctl(name)["$array"][idx.to_string()]
     }
-    fn text(&self, name: &str, idx: usize) -> f64 {
+    pub(crate) fn text(&self, name: &str, idx: usize) -> f64 {
         vb::val(self.elem(name, idx)["Text"].as_str().unwrap_or(""))
     }
-    fn combo(&self, name: &str) -> i32 {
+    pub(crate) fn combo(&self, name: &str) -> i32 {
         let e = self.elem(name, 0);
         if e["ListIndex"].as_i64().unwrap_or(-1) > 0 {
             i(&e["ItemData"]["1"])
@@ -203,13 +203,13 @@ impl Inputs {
             0
         }
     }
-    fn g(&self, name: &str) -> &Value {
+    pub(crate) fn g(&self, name: &str) -> &Value {
         &self.globals[name]
     }
-    fn gi(&self, name: &str) -> i32 {
+    pub(crate) fn gi(&self, name: &str) -> i32 {
         self.g(name).as_i64().unwrap_or(0) as i32
     }
-    fn gb(&self, name: &str) -> bool {
+    pub(crate) fn gb(&self, name: &str) -> bool {
         self.g(name).as_bool().unwrap_or(false)
     }
     pub(crate) fn character(&self) -> Character {

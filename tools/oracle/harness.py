@@ -343,6 +343,7 @@ class Env:
         it.depth = 0
         it.rnd.state = 0x50000 if rnd is None else rnd & 0xFFFFFF
         self.rec.events.clear()
+        self.saved = {}
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
         it.bind("Forms", shims.FormsCollection())
@@ -409,12 +410,19 @@ class Env:
                 u.set_field(name.lower(), decode(val))
         return u
 
-    def call(self, objs, step, results):
-        target = step["call"]
+    def build_args(self, spec, objs, refs, lv=None, dicts=None):
+        """Call arguments from a step's `args`. Beyond the plain values: `{"ref": ...}` (ByRef), `{"udt": ...}`
+        (a Type; `out` makes it ByRef and lands in the step's refs), `{"obj": name}` (an object of the case),
+        `{"saved": name}` (the ByRef Type a previous step kept under its `as` name, shared so later calls see
+        what earlier ones left in it) and `{"lv": true}` (the recording ListView of a `rows` step)."""
         args = []
-        refs = []
-        dicts = []
-        for a in step.get("args", []):
+        for a in spec:
+            if isinstance(a, dict) and "saved" in a:
+                args.append(self.saved[a["saved"]][a.get("index", 0)])
+                continue
+            if isinstance(a, dict) and "lv" in a:
+                args.append(lv)
+                continue
             if isinstance(a, dict) and str(a.get("ref", "")).startswith("array:"):
                 # ByRef array argument: {"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]};
                 # without bounds the array starts unallocated, as a bare `Dim x() As T` does.
@@ -448,7 +456,8 @@ class Env:
                 d = shims.DictionaryShim()
                 for k, v in a["dict"]:
                     d.items[float(k)] = (V.mk_i32(k), V.mk_i32(v))
-                dicts.append(d)
+                if dicts is not None:
+                    dicts.append(d)
                 args.append(d)
             elif isinstance(a, dict) and "control" in a:
                 args.append(self.it.externals["frmmain"].vb_get(a["control"], []))  # a frmMain control, by reference
@@ -456,6 +465,9 @@ class Env:
                 args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:
                 args.append(decode(a))
+        return args
+
+    def invoke(self, objs, target, args):
         if "." in target:
             oname, meth = target.split(".", 1)
             r = self.get(objs[oname], meth, args)
@@ -471,6 +483,14 @@ class Env:
             if proc is None:
                 raise OracleFatal("unknown procedure %s" % target)
             r = self.it.call_proc(proc, None, args, [None] * len(args))
+        return r
+
+    def call(self, objs, step, results):
+        target = step["call"]
+        refs = []
+        dicts = []
+        args = self.build_args(step.get("args", []), objs, refs, dicts=dicts)
+        r = self.invoke(objs, target, args)
         if "as" in step:
             results[step["as"]] = encode(r) if r is not None else None
         if dicts:
@@ -478,6 +498,50 @@ class Env:
                                                           for d in dicts]
         if refs:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
+            self.saved[step.get("as", target)] = refs
+
+    def rows_step(self, objs, st, results):
+        """Step `{"rows": {"table", "index", "keys", "lv": "each"|"shared", "watch"}, "call", "args", "as", "post"}`:
+        for each key, seek that record in the table's global recordset and call a ListView-building procedure
+        (`{"lv": true}` in `args` is a recording ListView). `lv` "each" (default) gives every key a fresh ListView
+        and stores `null` or the one row it built; "shared" fills one ListView with every key and stores its rows,
+        after the `post` calls (`{"call", "args"}` with `{"lv": true}` as the ListView) ran on it, each result and
+        the ListView after it going to `<as>.post`. `watch` names a control element (`cmbCharBless(0)`) whose
+        list gains entries (AddItem): `<as>.watch` holds `[text, ItemData]` or null per key. Rows are
+        `[Text, Tag, [[sub Text, sub Tag, sub ForeColor], ..]]`; a Tag or ForeColor never assigned is null."""
+        spec = st["rows"]
+        rs = self.it.get_global(spec["table"])
+        rs.vb_set("index", [], spec["index"])
+        shared = spec.get("lv") == "shared"
+        lv_shared = shims.RecordingListViewShim() if shared else None
+        watch = None
+        if spec.get("watch"):
+            wname, widx = re.match(r"(\w+)\((\d+)\)$", spec["watch"]).groups()
+            watch = self.it.externals["frmmain"].vb_get(wname, [V.I16(int(widx))])
+        per, seen = [], []
+        for key in spec["keys"]:
+            rs.vb_get("seek", ["=", decode(key)])
+            lv = lv_shared or shims.RecordingListViewShim()
+            before = len(watch.items.get("list", {})) if watch else 0
+            args = self.build_args(st.get("args", []), objs, [], lv)
+            self.invoke(objs, st["call"], args)
+            if not shared:
+                rows = lv.dump(encode)
+                per.append(rows[0] if rows else None)
+            if watch is not None:
+                lst, data = watch.items.get("list", {}), watch.items.get("itemdata", {})
+                seen.append([lst[before], int(data.get(before, 0))] if len(lst) > before else None)
+        name = st["as"]
+        post = []
+        for p in st.get("post", []):
+            pargs = self.build_args(p.get("args", []), objs, [], lv_shared)
+            r = self.invoke(objs, p["call"], pargs)
+            post.append({"result": encode(r) if r is not None else None, "rows": lv_shared.dump(encode)})
+        results[name] = lv_shared.dump(encode) if shared else per
+        if post:
+            results[name + ".post"] = post
+        if watch is not None:
+            results[name + ".watch"] = seen
 
     _READ = re.compile(r"^(?P<obj>[A-Za-z_]\w*)\.(?P<prop>\w+)(?:\[(?P<idx>[^\]]*)\])?$")
 
@@ -547,7 +611,9 @@ class Env:
                     # The instance also stands in for an (unset) object-typed module global.
                     self.it.global_cell(spec["global"]).v = objs[name]
             for st in steps:
-                if "set" in st:
+                if "rows" in st:
+                    self.rows_step(objs, st, out)
+                elif "set" in st:
                     oname, prop = st["set"].split(".", 1)
                     idx = [decode(i) for i in st.get("index", [])]
                     self.put(objs[oname], prop, idx, decode(st["value"]))
