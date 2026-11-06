@@ -24,7 +24,7 @@ use crate::character::{AttackType, AttackTypeMud, CharacterProfile};
 use crate::combat::{
     AR_ANIMAL, AR_LIVING, AR_NONE, AR_UNDEAD, AR_UNKNOWN, CombatRoundsArgs, DF_ANIMAL,
     DF_ANTI_MAGIC, DF_LIVING, DF_UNDEAD, DamageEnv, DamageRequest, attack_with, calc_combat_rounds,
-    get_damage_output, populate,
+    get_damage_output, populate, surprise_round,
 };
 use crate::exp_per_hour::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourSettings, calc_exp_per_hour};
 use crate::lairs::{
@@ -1629,7 +1629,7 @@ fn char_damage_out(
                     if nmr >= 1.83 {
                         st.bs_defense = i16c(m.bs_defense)?;
                     }
-                    let bs = attack_with(
+                    let bs = surprise_round(
                         &env.callouts.damage,
                         &bs_prof,
                         &AttackRequest {
@@ -1642,12 +1642,12 @@ fn char_damage_out(
                             bs_defense: i32::from(st.bs_defense),
                             ..AttackRequest::default()
                         },
-                    );
-                    st.pass.surprise = vb::add_i32(bs.avg_hit, bs.avg_extra_hit)?;
-                    st.pass.surprise_min = vb::add_i32(bs.min_dmg, bs.avg_extra_swing)?;
+                    )?;
+                    st.pass.surprise = bs.damage;
+                    st.pass.surprise_min = bs.min_damage;
                     st.pass.surprise_chance = bs.hit_chance;
                     backstab_text = format!(" + {} surprise round", st.pass.surprise);
-                    backstab_detail = bs.attack_detail;
+                    backstab_detail = bs.detail;
                 }
             } else {
                 st.pass.surprise = 0;

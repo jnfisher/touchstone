@@ -303,3 +303,31 @@ Under `Profile::Quicksilver` only; the stock rules are untouched.
   crit maximum of 0 as "a stab never crits", which is MME's answer; the engine would read it as a crit that
   always deals the stab's maximum. No real configuration sets 0, so this costs nothing and keeps the identity
   harness exact on the stabs in the attack and party fixtures.
+
+## Quicksilver: the backstab round (Q-010)
+
+Under `Profile::Quicksilver` only; the stock rules are untouched.
+
+- A stab (R2) costs `backstab_energy_pct` percent of one normal blow's energy with the same weapon, never more
+  than the round's 1000, and the rest of the opening round is normal blows. The surprise figure that
+  `get_damage_output`, the monster pane, the monster rows and the monster filters report (`surprise_damage`,
+  `surprise_min_damage`) is the whole opening round: MME's stab-only number plus those blows. The stab itself
+  (`calculate_attack` type 4, the backstab calculator, the per-weapon rows and the party attack panel's
+  "bs dmg") stays one swing; `attack::calc_stab_opener` adds the blows after it.
+- The blows after the stab are counted in whole blows, `(1000 - stab) / normal` with the stab's blow in a
+  limit of six per round, because the opening round starts from a full pool with no energy carried and MME
+  already counts a first round in whole swings (`first_round_damage`). Their damage is MME's own first-round
+  figure for a normal blow (per-swing average with crit, times the hit chance, plus the weapon's cast damage),
+  so it differs from the stab's number in kind: MME's surprise figure is the stab's average hit without its
+  hit chance, which is carried separately. The two are added as MME's callers add them.
+- A stab's own crit (R3) is still left out of the surprise figure, as MME leaves a stab's hit chance out; the
+  crit shows in the stab's detail line only.
+- `calc_combat_rounds` has no new branch. The surprise credit replaces one normal round with the surprise
+  figure, which is now larger; the credit is the same arithmetic.
+- MME has no floor on a blow's energy; the engine floors every blow at 200. Where MME's energy is under 200
+  (a very fast weapon and a skilled fighter) the stab costs 150% of MME's number, not of 200. The vectors keep
+  to the region where both agree for the stab and check the floor separately.
+- The engine's normal blow costs 10% more right after a cast; MME has no such state, so the vectors use a
+  player who has not just cast.
+- The neutral balance sets `backstab_energy_pct` to 100000, so a stab always fills the round (the energy is
+  capped at the round's 1000) and no blow follows it, which is MME's stab.
