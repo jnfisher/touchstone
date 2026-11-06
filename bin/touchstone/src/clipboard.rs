@@ -59,22 +59,17 @@ pub struct CharacterRequest {
 
 /// `CopyChartoClip` for the evaluated character.
 pub fn character_clip(
+    profile: Profile,
     world: &World,
     req: &CharacterRequest,
 ) -> Result<ClipJson, (axum::http::StatusCode, String)> {
-    let (ch, st) = refresh(world, &req.character)?;
+    let (ch, st) = refresh(profile, world, &req.character)?;
     let (Some(class), Some(race)) = (ch.class, ch.race) else {
         return Err(bad("pick a class and race"));
     };
-    let exp = calc_exp_needed_by_race_class(
-        Profile::Stock,
-        ch.level,
-        class,
-        race,
-        &world.classes,
-        &world.races,
-    )
-    .map_err(|e| bad(e.to_string()))?;
+    let exp =
+        calc_exp_needed_by_race_class(profile, ch.level, class, race, &world.classes, &world.races)
+            .map_err(|e| bad(e.to_string()))?;
     let s = &st.stats;
     let setup = st.class_setup.as_ref();
     let mut c = CharClip {
@@ -142,7 +137,8 @@ pub async fn character_route(
     Body(req): Body<CharacterRequest>,
 ) -> ApiResult {
     let loaded = state.current();
-    json(&character_clip(&loaded.world, &req)?)
+    let profile = loaded.profile;
+    json(&character_clip(profile, &loaded.world, &req)?)
 }
 
 // ---------- rows the page holds ----------
@@ -208,6 +204,7 @@ pub fn shop_clip(
 ) -> Result<ClipJson, (axum::http::StatusCode, String)> {
     let loaded = state.current();
     let world = &loaded.world;
+    let profile = loaded.profile;
     let shop = world
         .get_shop(req.number)
         .ok_or_else(|| bad(format!("no shop {}", req.number)))?;
@@ -224,7 +221,7 @@ pub fn shop_clip(
         },
     };
     let mut lairs = crate::panes::StoredLairs(loaded.lair_cache());
-    let d = pull_shop_detail(Profile::Stock, world, &mut lairs, req.number, &opts);
+    let d = pull_shop_detail(profile, world, &mut lairs, req.number, &opts);
     let (refs, _) = references(d.assigned, None);
     // lvShops holds only shops AddShop2LV lists; any other is still copied from its own fields
     let row = add_shop_row(shop);
