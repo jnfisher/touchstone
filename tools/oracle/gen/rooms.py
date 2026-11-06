@@ -402,8 +402,9 @@ def main():
     data = md.build_data(t, need, [], [])
     # items and monsters: every name is cheap, so the data carries them all (a lookup the closure missed would differ)
     data["items"] = md.table_json(["Number", "Name"], [[n, r["Name"] or ""] for n, r in sorted(t.items.items())])
-    data["monsters"] = md.table_json(["Number", "Name", "GreetTXT"], [[n, r["Name"] or "", md.nz(r["GreetTXT"])]
-                                                                       for n, r in sorted(t.monsters.items())])
+    data["monsters"] = md.table_json(["Number", "Name", "GreetTXT", "AvgDmg"],
+                                     [[n, r["Name"] or "", md.nz(r["GreetTXT"]), md.nz(r.get("AvgDmg"))]
+                                      for n, r in sorted(t.monsters.items())])
     data["shops"] = md.table_json(["Number", "Name"], [[n, r["Name"] or ""] for n, r in sorted(t.shops.items())])
     data["rooms"] = md.table_json(ROOM_F, [[full_by[k][f] if f not in ("Name", "Lair", "Placed") else (full_by[k][f] or "")
                                             for f in ROOM_F] for k in sorted(subset)])
