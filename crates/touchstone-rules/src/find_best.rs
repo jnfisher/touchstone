@@ -350,8 +350,8 @@ fn item_value(item: &Item, spec: &Spec) -> Result<i32, RulesError> {
 }
 
 /// `InvenFindBestEval`: score an item once per pass; `None` for the "(none)" row and for an item the table lacks.
-fn eval<'w>(
-    world: &'w World,
+fn eval(
+    world: &World,
     spec: &Spec,
     cache: &mut HashMap<i32, Option<Scored>>,
     number: i32,
