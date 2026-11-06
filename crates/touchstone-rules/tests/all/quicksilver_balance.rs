@@ -157,6 +157,8 @@ fn neutral_is_valid_and_stock_equivalent() {
         (0, 0, 0)
     );
     assert_eq!(n.aoe_resist_cut_max_pct, 0);
+    // a stab that costs 1000 normal blows is capped at the round, so it fills it as MME's does
+    assert_eq!(n.backstab_energy_pct, 100_000);
     for class in 1..=15 {
         assert_eq!(n.class_melee_pct.of(class, 30), 100);
         assert_eq!(n.class_spell_pct.of(class, 30), 100);

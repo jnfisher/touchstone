@@ -4,7 +4,8 @@
 //!
 //! Each card that makes a family parametric adds its fixture test here; a family whose formula
 //! does not read the profile yet passes trivially, so the harness guards every later card.
-//! Structural rules with no neutral setting (R2, R3, R10) are not covered here.
+//! Structural rules with no neutral setting (R3, R10) are not covered here; R2's stab energy has
+//! one (a stab that fills the round), so the surprise path is.
 
 use touchstone_rules::Profile;
 use touchstone_rules::quicksilver::Balance;
@@ -63,6 +64,22 @@ fn paste_party_fixtures_identical_under_neutral() {
 #[test]
 fn char_panel_fixtures_identical_under_neutral() {
     crate::char_panel::check_fixture(neutral());
+}
+
+/// R2 (the opener): GetDamageOutput's surprise figure and CalcCombatRounds' surprise credit. The
+/// neutral stab costs a whole round, so no blow follows it.
+#[test]
+fn combat_fixtures_identical_under_neutral() {
+    crate::combat::check_fixture(neutral());
+}
+
+/// R2 in the monster pane, the monster list rows and the monster filters: the three callers of the
+/// surprise round besides GetDamageOutput.
+#[test]
+fn monster_surprise_fixtures_identical_under_neutral() {
+    crate::monster_detail::check_fixture(neutral());
+    crate::monster_rows::check_fixture(neutral());
+    crate::filters_sm::check_fixture(neutral());
 }
 
 /// R7, R8, R9: `CalculateSpellCast` (casting-stat and class scaling, the area resist factor) over its

@@ -778,7 +778,124 @@ pub fn calculate_attack(
     req: &AttackRequest,
     casts: &mut String,
 ) -> AttackDamage {
-    attack_steps(profile, env, ch, req, casts).unwrap_or_default()
+    attack_steps(profile, env, ch, req, casts, &mut BlowIo::default()).unwrap_or_default()
+}
+
+/// Extra input and output of one `attack_steps` run, for the opener (R2). Stock callers leave it
+/// at its default and change nothing.
+#[derive(Debug, Default)]
+struct BlowIo {
+    /// Out: the energy one swing of this attack costs (after MME's bash doubling and its floor of 1).
+    energy: i32,
+    /// In: count this many whole blows for the first-round and minimum-round figures instead of
+    /// the whole part of the swings.
+    blows: Option<i32>,
+}
+
+/// What a Quicksilver stab costs: `backstab_energy_pct` percent of `normal`, one normal blow's
+/// energy, never more than the round's 1000 (R2). Stock: the stab fills the round.
+#[must_use]
+pub fn stab_energy(profile: Profile, normal: i32) -> i32 {
+    match profile {
+        Profile::Stock => ROUND_ENERGY,
+        Profile::Quicksilver(b) => {
+            let cost = i64::from(normal.max(0)) * i64::from(b.backstab_energy_pct) / 100;
+            cost.min(i64::from(ROUND_ENERGY)) as i32
+        }
+    }
+}
+
+/// The energy of one round, MME's `1000` in `1000 / energy`.
+const ROUND_ENERGY: i32 = 1000;
+
+/// The whole normal blows of `normal` energy that fit in a round after a stab of `stab` energy, at
+/// most 5 (the round makes at most 6 blows, the stab among them).
+#[must_use]
+pub fn follow_blows(stab: i32, normal: i32) -> i32 {
+    if normal < 1 {
+        return 0;
+    }
+    ((ROUND_ENERGY - stab.clamp(0, ROUND_ENERGY)) / normal).min(MAX_SWINGS as i32)
+}
+
+/// The blows that follow a Quicksilver stab in its opening round (R2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StabOpener {
+    /// One normal blow's energy (MME's `CalcEnergyUsed` with the encumbrance step).
+    pub normal_energy: i32,
+    /// The stab's energy.
+    pub stab_energy: i32,
+    /// Whole normal blows the rest of the round pays for, at most 5 (6 blows with the stab).
+    pub follow_blows: i32,
+    /// Their expected damage, counted as `first_round_damage` counts a round: per-swing average with
+    /// crit, times the hit chance, plus the weapon's cast damage.
+    pub follow_damage: i32,
+    /// Their least damage, as `min_round_damage` counts it.
+    pub follow_min_damage: i32,
+}
+
+impl StabOpener {
+    /// The detail-line text for the blows after the stab.
+    #[must_use]
+    pub fn text(&self) -> String {
+        format!(
+            "then {} normal blow{} for {} (stab costs {} of {} energy)",
+            self.follow_blows,
+            if self.follow_blows == 1 { "" } else { "s" },
+            self.follow_damage,
+            self.stab_energy,
+            ROUND_ENERGY
+        )
+    }
+}
+
+/// The blows of the opening round after a stab, for a type-4 request (R2). `None` under Stock, for
+/// any other attack, and when the stab takes the whole round (or too little is left for a blow).
+///
+/// The stab costs [`stab_energy`] of the round; the rest buys whole normal blows (an opening round
+/// starts with no energy carried, which MME already counts in whole swings for `first_round_damage`).
+/// They are the type-5 attack of the same character and weapon, so damage, accuracy and crit are a
+/// normal blow's.
+#[must_use]
+pub fn calc_stab_opener(
+    profile: Profile,
+    env: &AttackEnv,
+    ch: &CharacterProfile,
+    req: &AttackRequest,
+) -> Option<StabOpener> {
+    if !matches!(profile, Profile::Quicksilver(_))
+        || req.attack_type != 4
+        || req.specify_damage >= 0.0
+    {
+        return None;
+    }
+    let normal = AttackRequest {
+        attack_type: 5,
+        ..*req
+    };
+    let mut io = BlowIo::default();
+    let first = attack_steps(profile, env, ch, &normal, &mut String::new(), &mut io).ok()?;
+    if first.swings <= 0.0 || io.energy < 1 {
+        return None;
+    }
+    let normal_energy = io.energy;
+    let stab = stab_energy(profile, normal_energy);
+    let blows = follow_blows(stab, normal_energy);
+    if blows < 1 {
+        return None;
+    }
+    let mut io = BlowIo {
+        blows: Some(blows),
+        ..BlowIo::default()
+    };
+    let r = attack_steps(profile, env, ch, &normal, &mut String::new(), &mut io).ok()?;
+    Some(StabOpener {
+        normal_energy,
+        stab_energy: stab,
+        follow_blows: blows,
+        follow_damage: r.first_round_damage,
+        follow_min_damage: r.min_round_damage,
+    })
 }
 
 /// The crit block of CalcAttack: over the knee only a third of the excess counts, and a result
@@ -812,6 +929,7 @@ fn attack_steps(
     ch: &CharacterProfile,
     req: &AttackRequest,
     casts: &mut String,
+    io: &mut BlowIo,
 ) -> Res<AttackDamage> {
     let g = env.equipped;
     let weapon = req.weapon_number;
@@ -1219,6 +1337,7 @@ fn attack_steps(
         if energy < 1 {
             energy = 1;
         }
+        io.energy = energy;
         swings = vb::round(1000.0 / f64::from(energy), 4)?;
         if swings > MAX_SWINGS {
             swings = MAX_SWINGS;
@@ -1331,6 +1450,7 @@ fn attack_steps(
                 multiplier,
                 n_percent,
                 stab_crit_max_pct,
+                whole_blows: io.blows,
             },
         );
     }
@@ -1354,6 +1474,7 @@ fn attack_steps(
             multiplier: 1.0,
             n_percent,
             stab_crit_max_pct,
+            whole_blows: io.blows,
         },
     )
 }
@@ -1393,6 +1514,8 @@ struct Tail {
     multiplier: f64,
     n_percent: f64,
     stab_crit_max_pct: Option<u32>,
+    /// The whole blows to count in the first-round figures, when the opener asks (R2).
+    whole_blows: Option<i32>,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1417,6 +1540,7 @@ fn finish(
         multiplier,
         mut n_percent,
         stab_crit_max_pct,
+        whole_blows,
     } = t;
     let vs_dr = req.vs_dr;
 
@@ -1564,7 +1688,7 @@ fn finish(
     r.round_total = vb::clng(
         f64::from(r.round_physical) + vb::round(extra_avg_swing.to_f64() * swings * hit, 0)?,
     )?;
-    let whole = vb::fix(swings);
+    let whole = whole_blows.map_or_else(|| vb::fix(swings), f64::from);
     r.first_round_damage = vb::clng(
         vb::round(per_swing * whole * hit, 0)?
             + vb::round(extra_avg_swing.to_f64() * whole * hit, 0)?,

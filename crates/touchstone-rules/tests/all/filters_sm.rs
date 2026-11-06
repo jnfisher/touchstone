@@ -427,7 +427,7 @@ fn dialog_of(text: &str) -> MonsterDialog {
     }
 }
 
-fn monster_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
+fn monster_case(prof: Profile, world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
     let id = case["id"].as_str().unwrap();
     assert!(case.get("error").is_none(), "{id}: the oracle raised");
     let inp = inputs(fx, case);
@@ -445,7 +445,7 @@ fn monster_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
     let mut opts = inp.options();
     opts.party = party.clone();
     opts.nmr_ver = nmr;
-    let state = refresh_all(Profile::Stock, world, &inp.character(), &opts)
+    let state = refresh_all(prof, world, &inp.character(), &opts)
         .unwrap_or_else(|e| panic!("{id}: refresh_all: {e}"));
     let cenv = state.env(
         [
@@ -468,13 +468,13 @@ fn monster_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
         false,
     );
     let cc = caches(fx, case);
-    let mut cache = LairCache::load(world, Profile::Stock, nmr);
+    let mut cache = LairCache::load(world, prof, nmr);
     let mut sim = MonsterSimInput::default();
     let mut rnd = Rnd::from_state(327_680);
     let mut env = CharLairEnv {
         cache: &mut cache,
         query: LairQuery {
-            profile: Profile::Stock,
+            profile: prof,
             startup: false,
             use_character: state.character.global_filter,
             party: &party,
@@ -668,6 +668,12 @@ fn monster_case(world: &World, fx: &Fixture, case: &Value) -> Vec<String> {
 // Expected values: fixtures/rules/filters_sm.json (frmMain FilterSpells and FilterMonsters, run by the oracle).
 #[test]
 fn filters_sm_fixture() {
+    check_fixture(Profile::Stock);
+}
+
+/// Runs every FilterSpells/FilterMonsters case under `prof`; the layer-1 identity harness reuses it.
+/// The spell cases keep the stock profile (no Quicksilver rule reaches the usable-spell test yet).
+pub(crate) fn check_fixture(prof: Profile) {
     let fx = load("filters_sm");
     let pipe = load("pipeline");
     let world = build_world(&pipe.header["data"], &fx.header["data"]);
@@ -679,7 +685,7 @@ fn filters_sm_fixture() {
             bad.extend(spell_case(&world, &fx, case));
         } else {
             mons += 1;
-            bad.extend(monster_case(&world, &fx, case));
+            bad.extend(monster_case(prof, &world, &fx, case));
         }
     }
     eprintln!(
