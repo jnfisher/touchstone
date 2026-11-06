@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Item } from './api';
+import type { Item, Monster } from './api';
 import {
 	BACKSTAB_DEFAULTS,
+	CALCULATORS,
+	HIT_DEFAULTS,
+	applyHit,
+	captionLines,
+	hitRequest,
+	monsterChoices,
+	type HitResult,
 	CalcError,
 	COIN_DEFAULTS,
 	EXP_DEFAULTS,
@@ -162,7 +169,9 @@ describe('calc client', () => {
 	});
 
 	it('turns a 400 into an error carrying the reason', async () => {
-		const f = vi.fn(async () => new Response('combat must be 1 (Poor) to 5 (Excellent)', { status: 400 }));
+		const f = vi.fn(
+			async () => new Response('combat must be 1 (Poor) to 5 (Excellent)', { status: 400 })
+		);
 		const c = createCalcClient(f as unknown as typeof fetch);
 		const err = await c.swing(swingRequest(SWING_DEFAULTS)).catch((e: unknown) => e);
 		expect(err).toBeInstanceOf(CalcError);
@@ -177,5 +186,132 @@ describe('captions', () => {
 		expect(afterLabel('QND Crits: None')).toBe('None');
 		expect(afterLabel('Raw swing: 0')).toBe('0');
 		expect(afterLabel('')).toBe('');
+	});
+});
+
+describe('hit calculator', () => {
+	const answer: HitResult = {
+		calc_type: 'normal',
+		attacker: 'manual',
+		defender: 'monster',
+		attacker_monster_enabled: true,
+		text: ['80', '50', '0', '0', '0', '25'],
+		shadow: false,
+		see_hidden: true,
+		evil_index: 0,
+		enabled: {
+			prot_evil: false,
+			vile_ward: false,
+			percep: true,
+			shadow: false,
+			see_hidden: true,
+			monster_list: true
+		},
+		bs_label: 'vs BS Defense',
+		main_text: '',
+		sub_left: '',
+		sub_right: '',
+		sub_right_bold: false,
+		hit: 8,
+		dodge: 0,
+		overall_hit: 8,
+		state: { ...HIT_DEFAULTS.state, monster_ac: 50, defender_ac: 7 },
+		errors: []
+	};
+
+	it('is the fifth entry of the calculators menu', () => {
+		expect(CALCULATORS.map((c) => c.slug)).toEqual(['exp', 'coin', 'swing', 'backstab', 'hit']);
+		expect(isCalc('hit')).toBe(true);
+	});
+
+	it('maps the form and the event to the body', () => {
+		const body = hitRequest(HIT_DEFAULTS, { event: 'refresh' });
+		expect(body).toMatchObject({
+			event: 'refresh',
+			calc_type: 'normal',
+			attacker: 'character',
+			defender: 'character',
+			text: ['100', '0', '10', '0', '0', '0'],
+			shadow: false,
+			see_hidden: false,
+			evil_index: 0
+		});
+		// Nothing chosen yet: no monster, no class, no weapon, and no flags for the server to trust.
+		expect(body).not.toHaveProperty('monster');
+		expect(body).not.toHaveProperty('enabled');
+		expect(body.character).not.toHaveProperty('class');
+		expect(body.character).not.toHaveProperty('bs_weapon');
+		expect(body.character).toMatchObject({
+			accuracy: '0',
+			shadow_ac: 0,
+			strike: 'normal',
+			accy_adj: 0
+		});
+	});
+
+	it('carries the arrow, the monster, the class and the weapon when chosen', () => {
+		const form = {
+			...HIT_DEFAULTS,
+			monster: 13,
+			character: {
+				...HIT_DEFAULTS.character,
+				classNumber: 8,
+				bsWeapon: 875,
+				shadowAc: ' 10 ',
+				accyAdj: 'x',
+				strike: 'bash' as const
+			}
+		};
+		const body = hitRequest(form, { event: 'modify', index: 3 });
+		expect(body).toMatchObject({ event: 'modify', index: 3, monster: 13 });
+		expect(body.character).toMatchObject({
+			class: 8,
+			bs_weapon: 875,
+			shadow_ac: 10,
+			accy_adj: 0,
+			strike: 'bash'
+		});
+	});
+
+	it('applies an answer: boxes only when the event rewrites them', () => {
+		const typed = { ...HIT_DEFAULTS, text: ['1', '2', '3', '4', '5', '6'] };
+		const kept = applyHit(typed, answer, { event: 'calc' });
+		expect(kept.text).toEqual(['1', '2', '3', '4', '5', '6']);
+		expect(kept.attacker).toBe('manual');
+		expect(kept.enabled).toEqual(answer.enabled);
+		expect(kept.state.defender_ac).toBe(7);
+
+		const filled = applyHit(typed, answer, { event: 'monster' });
+		expect(filled.text).toEqual(answer.text);
+		expect(filled.seeHidden).toBe(true);
+		expect(applyHit(typed, answer, { event: 'modify', index: 0 }).text).toEqual(answer.text);
+	});
+
+	it('lists named, in-game monsters as "name (number)"', () => {
+		const m = (number: number, name: string | null, in_game = true) =>
+			({ number, name, in_game }) as Monster;
+		expect(
+			monsterChoices([
+				m(1, 'rat'),
+				m(2, ''),
+				m(3, null),
+				m(4, 'sdf test'),
+				m(5, 'ghost', false),
+				m(6, 'orc')
+			])
+		).toEqual([
+			{ number: 1, name: 'rat', label: 'rat (1)' },
+			{ number: 6, name: 'orc', label: 'orc (6)' }
+		]);
+	});
+
+	it('splits MME captions on CRLF', () => {
+		expect(captionLines('Hit Min-Cap:\r\n8% - 99%\r\nDodge Cap:\r\n95%')).toEqual([
+			'Hit Min-Cap:',
+			'8% - 99%',
+			'Dodge Cap:',
+			'95%'
+		]);
+		expect(captionLines('')).toEqual([]);
 	});
 });

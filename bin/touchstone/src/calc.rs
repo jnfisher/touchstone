@@ -423,7 +423,7 @@ fn text(s: &str) -> Text {
 }
 
 /// The VB error text MME's handler would name, for the page to show next to the partial result.
-fn vb_error_text(code: u32) -> String {
+pub(crate) fn vb_error_text(code: u32) -> String {
     match code {
         6 => "Overflow (run-time error 6)".to_owned(),
         11 => "Division by zero (run-time error 11)".to_owned(),
@@ -881,5 +881,447 @@ pub async fn calc_backstab(
         max_dmg_box: out.max_dmg_text,
         error: out.error,
         error_text: out.error.map(vb_error_text),
+    })
+}
+
+// --- hit calculator ---
+
+mod hit {
+    use serde::{Deserialize, Serialize};
+    use touchstone_rules::character::AttackType;
+    use touchstone_rules::hit_calc::{
+        Attacker, Defender, HitCalcCharacter, HitCalcForm, HitCalcResult, HitCalcState,
+        HitCalcType, Refresh, SetValsInput, do_hit_calc, get_monster_data, modify_hit_calc_values,
+        set_hit_calc_vals,
+    };
+
+    use super::Text;
+
+    /// The handler MME would run for what the person just did.
+    #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Event {
+        /// A box, Shadow or See Hidden changed.
+        #[default]
+        Calc,
+        /// An option button, or the refresh-set button.
+        Refresh,
+        /// The monster combo picked a monster.
+        Monster,
+        /// One of the twelve arrow buttons (`index`).
+        Modify,
+    }
+
+    #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum CalcType {
+        #[default]
+        Normal,
+        Backstab,
+    }
+
+    #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Att {
+        #[default]
+        Character,
+        Monster,
+        Manual,
+    }
+
+    #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Def {
+        #[default]
+        Character,
+        Monster,
+        Player,
+        Manual,
+    }
+
+    /// The character's attack as `nGlobalAttackTypeMME` and `nGlobalAttackMA` hold it.
+    #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Strike {
+        #[default]
+        Normal,
+        Bash,
+        Smash,
+        Kick,
+        Jumpkick,
+    }
+
+    /// Stands in for the loaded character until the Character tab can supply one. Numbers are text
+    /// boxes read with `Val`, like the `Tag`s MME reads.
+    #[derive(Debug, Deserialize, Default)]
+    #[serde(default)]
+    pub struct CharReq {
+        pub accuracy: Text,
+        pub ac: Text,
+        pub dodge: Text,
+        pub prot_evil: Text,
+        pub stealth: Text,
+        pub bs_accuracy: Text,
+        pub agility: Text,
+        pub shadow_ac: i32,
+        pub class: Option<i32>,
+        /// The backstab weapon (`nGlobalAttackBackstabWeapon`); absent is none chosen.
+        pub bs_weapon: Option<i32>,
+        pub strike: Strike,
+        /// The accuracy the bash, smash or kick adds (`nGlobalAttackAccyAdj`).
+        pub accy_adj: i16,
+    }
+
+    #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default)]
+    #[serde(default)]
+    pub struct Enabled {
+        pub prot_evil: bool,
+        pub vile_ward: bool,
+        pub percep: bool,
+        pub shadow: bool,
+        pub see_hidden: bool,
+        pub monster_list: bool,
+    }
+
+    #[derive(Debug, Deserialize, Serialize, Clone, Default)]
+    #[serde(default)]
+    pub struct StateJson {
+        pub monster_accy: i32,
+        pub monster_ac: i32,
+        pub monster_dodge: i32,
+        pub monster_bs_defense: i32,
+        pub monster_evil: bool,
+        pub monster_see_hidden: bool,
+        pub defender_ac: i32,
+        pub defender_dodge: i32,
+        pub defender_perception: i32,
+        pub defender_prot_evil: i32,
+        pub defender_vile_ward: i32,
+        pub defender_evilness: i32,
+        pub defender_shadow: bool,
+        pub char_perception: i32,
+    }
+
+    impl From<StateJson> for HitCalcState {
+        fn from(s: StateJson) -> Self {
+            HitCalcState {
+                monster_accy: s.monster_accy,
+                monster_ac: s.monster_ac,
+                monster_dodge: s.monster_dodge,
+                monster_bs_defense: s.monster_bs_defense,
+                monster_evil: s.monster_evil,
+                monster_see_hidden: s.monster_see_hidden,
+                defender_ac: s.defender_ac,
+                defender_dodge: s.defender_dodge,
+                defender_perception: s.defender_perception,
+                defender_prot_evil: s.defender_prot_evil,
+                defender_vile_ward: s.defender_vile_ward,
+                defender_evilness: s.defender_evilness,
+                defender_shadow: s.defender_shadow,
+                char_perception: s.char_perception,
+            }
+        }
+    }
+
+    impl From<&HitCalcState> for StateJson {
+        fn from(s: &HitCalcState) -> Self {
+            StateJson {
+                monster_accy: s.monster_accy,
+                monster_ac: s.monster_ac,
+                monster_dodge: s.monster_dodge,
+                monster_bs_defense: s.monster_bs_defense,
+                monster_evil: s.monster_evil,
+                monster_see_hidden: s.monster_see_hidden,
+                defender_ac: s.defender_ac,
+                defender_dodge: s.defender_dodge,
+                defender_perception: s.defender_perception,
+                defender_prot_evil: s.defender_prot_evil,
+                defender_vile_ward: s.defender_vile_ward,
+                defender_evilness: s.defender_evilness,
+                defender_shadow: s.defender_shadow,
+                char_perception: s.char_perception,
+            }
+        }
+    }
+
+    #[derive(Deserialize)]
+    pub struct HitReq {
+        #[serde(default)]
+        pub event: Event,
+        /// The arrow button for `modify`: accuracy -/+, AC -/+, dodge -/+, protection -/+, vile
+        /// ward -/+, perception -/+.
+        pub index: Option<usize>,
+        #[serde(default)]
+        pub calc_type: CalcType,
+        #[serde(default)]
+        pub attacker: Att,
+        #[serde(default)]
+        pub defender: Def,
+        /// The monster combo's selection.
+        pub monster: Option<i32>,
+        /// `txtHitCalc(0..5)`.
+        #[serde(default = "default_text")]
+        pub text: [Text; 6],
+        #[serde(default)]
+        pub shadow: bool,
+        #[serde(default)]
+        pub see_hidden: bool,
+        #[serde(default)]
+        pub evil_index: i32,
+        pub enabled: Option<Enabled>,
+        #[serde(default)]
+        pub state: StateJson,
+        #[serde(default)]
+        pub character: CharReq,
+    }
+
+    /// Form_Load's design-time boxes.
+    fn default_text() -> [Text; 6] {
+        ["100", "0", "10", "0", "0", "0"].map(super::text)
+    }
+
+    pub fn type_of(t: CalcType) -> HitCalcType {
+        match t {
+            CalcType::Normal => HitCalcType::Normal,
+            CalcType::Backstab => HitCalcType::Backstab,
+        }
+    }
+    pub fn attacker_of(a: Att) -> Attacker {
+        match a {
+            Att::Character => Attacker::Character,
+            Att::Monster => Attacker::Monster,
+            Att::Manual => Attacker::Manual,
+        }
+    }
+    pub fn defender_of(d: Def) -> Defender {
+        match d {
+            Def::Character => Defender::Character,
+            Def::Monster => Defender::Monster,
+            Def::Player => Defender::Player,
+            Def::Manual => Defender::Manual,
+        }
+    }
+
+    /// `(attack type, martial art)` for a strike.
+    pub fn strike_of(s: Strike) -> (AttackType, i16) {
+        match s {
+            Strike::Normal => (AttackType::PhysAttack, 0),
+            Strike::Bash => (AttackType::PhysBash, 0),
+            Strike::Smash => (AttackType::PhysSmash, 0),
+            Strike::Kick => (AttackType::MartialArts, 2),
+            Strike::Jumpkick => (AttackType::MartialArts, 3),
+        }
+    }
+
+    pub fn run(
+        form: &HitCalcForm,
+        state: &HitCalcState,
+        ch: &HitCalcCharacter,
+        world: &touchstone_model::World,
+        event: Event,
+        index: Option<usize>,
+    ) -> HitCalcResult {
+        let profile = touchstone_rules::Profile::Stock;
+        let set_vals = |refresh| {
+            set_hit_calc_vals(
+                profile,
+                &SetValsInput {
+                    form,
+                    state,
+                    character: ch,
+                    items: &world.items,
+                    classes: &world.classes,
+                    refresh,
+                },
+            )
+        };
+        match event {
+            Event::Calc => do_hit_calc(profile, form, state, ch.class),
+            Event::Refresh => set_vals(Refresh::default()),
+            Event::Monster => set_vals(Refresh {
+                character_only: false,
+                monster_only: true,
+            }),
+            Event::Modify => {
+                let mut f = form.clone();
+                modify_hit_calc_values(&mut f, index.unwrap_or(usize::MAX));
+                do_hit_calc(profile, &f, state, ch.class)
+            }
+        }
+    }
+
+    pub fn load_monster(
+        world: &touchstone_model::World,
+        number: i32,
+        nmr_ver: f64,
+        state: &mut HitCalcState,
+    ) -> bool {
+        get_monster_data(&world.monsters, number, nmr_ver, state)
+    }
+}
+
+#[derive(Serialize)]
+struct HitErrorJson {
+    source: &'static str,
+    number: u32,
+    text: String,
+}
+
+#[derive(Serialize)]
+struct HitJson {
+    calc_type: hit::CalcType,
+    attacker: hit::Att,
+    defender: hit::Def,
+    /// The Monster attacker button is off while Backstab is chosen.
+    attacker_monster_enabled: bool,
+    text: Vec<String>,
+    shadow: bool,
+    see_hidden: bool,
+    evil_index: i32,
+    enabled: hit::Enabled,
+    /// `lblBSPercep.Caption`, the label of the sixth box.
+    bs_label: String,
+    /// `lblMain.Caption`, `lblSubLeft.Caption`, `lblSubRight.Caption` (CRLF between lines).
+    main_text: String,
+    sub_left: String,
+    sub_right: String,
+    sub_right_bold: bool,
+    /// The three percentages, absent when DoHitCalc stopped before printing them.
+    hit: Option<i32>,
+    dodge: Option<i32>,
+    overall_hit: Option<i32>,
+    state: hit::StateJson,
+    errors: Vec<HitErrorJson>,
+}
+
+pub async fn calc_hit(State(app): State<Arc<AppState>>, Body(req): Body<hit::HitReq>) -> ApiResult {
+    use touchstone_rules::hit_calc::{HitCalcCharacter, HitCalcForm};
+    let loaded = app.current();
+    let world = &loaded.world;
+
+    if req.event == hit::Event::Modify && req.index.is_none_or(|i| i > 11) {
+        return Err(bad("index must be 0 to 11 for a modify event"));
+    }
+    if !(0..=2).contains(&req.evil_index) {
+        return Err(bad(
+            "evil_index must be 0 (None), 1 (Criminal) or 2 (Fiend/Villain)",
+        ));
+    }
+    if req.event == hit::Event::Monster && req.monster.is_none() {
+        return Err(bad("a monster event needs a monster"));
+    }
+    let ch = &req.character;
+    if let Some(c) = ch.class
+        && world.get_class(c).is_none()
+    {
+        return Err(bad(format!("no class {c}")));
+    }
+    find_weapon(world, ch.bs_weapon)?;
+
+    // optHitCalcType_Click: a backstab has no monster attacker.
+    let attacker = if req.calc_type == hit::CalcType::Backstab && req.attacker == hit::Att::Monster
+    {
+        hit::Att::Manual
+    } else {
+        req.attacker
+    };
+
+    let mut state: touchstone_rules::hit_calc::HitCalcState = req.state.into();
+    if let Some(n) = req.monster {
+        let nmr = crate::detail::nmr_ver(&world.info.nmr_version);
+        if !hit::load_monster(world, n, nmr, &mut state) {
+            return Err(bad(format!("no monster {n}")));
+        }
+    }
+
+    let (attack_type, martial_art) = hit::strike_of(ch.strike);
+    let character = HitCalcCharacter {
+        accuracy: touchstone_vb6::val(&ch.accuracy.0),
+        ac: touchstone_vb6::val(&ch.ac.0),
+        dodge: touchstone_vb6::val(&ch.dodge.0),
+        prot_evil: touchstone_vb6::val(&ch.prot_evil.0),
+        stealth: touchstone_vb6::val(&ch.stealth.0),
+        bs_accuracy: touchstone_vb6::val(&ch.bs_accuracy.0),
+        agility: touchstone_vb6::val(&ch.agility.0),
+        class: ch.class,
+        shadow_ac: ch.shadow_ac,
+        attack_type,
+        attack_accy_adj: ch.accy_adj,
+        attack_martial_art: martial_art,
+        attack_backstab: ch.bs_weapon.is_some(),
+        attack_backstab_weapon: ch.bs_weapon.unwrap_or(0),
+        ..HitCalcCharacter::default()
+    };
+
+    let mut form = HitCalcForm {
+        calc_type: Some(hit::type_of(req.calc_type)),
+        attacker: Some(hit::attacker_of(attacker)),
+        defender: Some(hit::defender_of(req.defender)),
+        text: req.text.map(|t| t.0),
+        shadow: req.shadow,
+        see_hidden: req.see_hidden,
+        evil_index: req.evil_index,
+        ..HitCalcForm::default()
+    };
+    // The enabled flags are control state from the last SetHitCalcVals; without them, derive what
+    // that run would have left.
+    let enabled = match req.enabled {
+        Some(e) => e,
+        None => {
+            let d = hit::run(&form, &state, &character, world, hit::Event::Refresh, None).form;
+            hit::Enabled {
+                prot_evil: d.prot_evil_enabled,
+                vile_ward: d.vile_ward_enabled,
+                percep: d.percep_enabled,
+                shadow: d.shadow_enabled,
+                see_hidden: d.see_hidden_enabled,
+                monster_list: d.monster_list_enabled,
+            }
+        }
+    };
+    form.prot_evil_enabled = enabled.prot_evil;
+    form.vile_ward_enabled = enabled.vile_ward;
+    form.percep_enabled = enabled.percep;
+    form.shadow_enabled = enabled.shadow;
+    form.see_hidden_enabled = enabled.see_hidden;
+    form.monster_list_enabled = enabled.monster_list;
+
+    let r = hit::run(&form, &state, &character, world, req.event, req.index);
+    let f = &r.form;
+    json(&HitJson {
+        calc_type: req.calc_type,
+        attacker,
+        defender: req.defender,
+        attacker_monster_enabled: req.calc_type == hit::CalcType::Normal,
+        text: f.text.to_vec(),
+        shadow: f.shadow,
+        see_hidden: f.see_hidden,
+        evil_index: f.evil_index,
+        enabled: hit::Enabled {
+            prot_evil: f.prot_evil_enabled,
+            vile_ward: f.vile_ward_enabled,
+            percep: f.percep_enabled,
+            shadow: f.shadow_enabled,
+            see_hidden: f.see_hidden_enabled,
+            monster_list: f.monster_list_enabled,
+        },
+        bs_label: f.bs_label.clone(),
+        main_text: f.main_text.clone(),
+        sub_left: f.sub_left.clone(),
+        sub_right: f.sub_right.clone(),
+        sub_right_bold: f.sub_right_bold,
+        hit: r.numbers.map(|n| n.hit),
+        dodge: r.numbers.map(|n| n.dodge),
+        overall_hit: r.numbers.map(|n| n.overall_hit),
+        state: (&r.state).into(),
+        errors: r
+            .errors
+            .iter()
+            .map(|e| HitErrorJson {
+                source: e.source,
+                number: e.number,
+                text: vb_error_text(e.number),
+            })
+            .collect(),
     })
 }

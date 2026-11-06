@@ -1,5 +1,6 @@
 //! The loaded game data, swapped atomically when it changes.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -126,13 +127,24 @@ impl Loaded {
 /// Shared by every request; `loaded` is replaced whole on reload.
 pub struct AppState {
     loaded: ArcSwap<Loaded>,
+    data_dir: PathBuf,
 }
 
 impl AppState {
     pub fn new(loaded: Loaded) -> Arc<Self> {
+        Self::with_data_dir(loaded, PathBuf::from("data"))
+    }
+
+    /// `data_dir` is where saved characters live (`<data_dir>/characters/`).
+    pub fn with_data_dir(loaded: Loaded, data_dir: PathBuf) -> Arc<Self> {
         Arc::new(Self {
             loaded: ArcSwap::from_pointee(loaded),
+            data_dir,
         })
+    }
+
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
     }
 
     pub fn current(&self) -> Arc<Loaded> {

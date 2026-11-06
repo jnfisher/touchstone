@@ -3,6 +3,7 @@
 	import BackstabCalc from '$lib/components/calc/BackstabCalc.svelte';
 	import CoinCalc from '$lib/components/calc/CoinCalc.svelte';
 	import ExpCalc from '$lib/components/calc/ExpCalc.svelte';
+	import HitCalc from '$lib/components/calc/HitCalc.svelte';
 	import SwingCalc from '$lib/components/calc/SwingCalc.svelte';
 
 	const name = $derived(page.params.name ?? '');
@@ -18,5 +19,7 @@
 		<SwingCalc />
 	{:else if name === 'backstab'}
 		<BackstabCalc />
+	{:else if name === 'hit'}
+		<HitCalc />
 	{/if}
 {/key}

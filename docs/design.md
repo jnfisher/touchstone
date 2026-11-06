@@ -87,7 +87,11 @@ the UI fetches whole tables once and filters and sorts in the browser:
 
 - `GET /api/info`: data source, version, loaded-at, data_version.
 - `GET /api/{items,monsters,spells,rooms,shops,classes,races,lairs}`: full tables.
-- `GET/PUT/DELETE /api/characters[/{name}]`, import/export `.mmec`.
+- `GET /api/characters`, `GET/PUT/DELETE /api/characters/{name}`: saved characters as
+  `<data_dir>/characters/<name>.json`, written atomically; `.mmec` import/export comes later.
+- `POST /api/character/evaluate`: a character in, MME's Char-tab captions and numbers out
+  (`pipeline::refresh_all`); 422 "pick a class and race" without both.
+- `GET /api/character/bless-spells?class=&level=&alignment=&all=&include=`: `FilterBlessSpells`.
 - `POST /api/evaluate`: a character in, per-item and per-monster computed columns out (damage,
   hit chance, exp/hr...), as MME shows them in its lists.
 - `POST /api/calc/{swing,hit,backstab,exp,coin,monster-attack-sim}`: the calculator windows.

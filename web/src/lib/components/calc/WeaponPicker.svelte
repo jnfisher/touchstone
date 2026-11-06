@@ -6,8 +6,23 @@
 	let {
 		choices,
 		value = $bindable(),
-		label = 'Weapon'
-	}: { choices: WeaponChoice[]; value: number | null; label?: string } = $props();
+		label = 'Weapon',
+		noun = 'weapon',
+		testid = 'weapon-input',
+		clearable = false,
+		onchoose
+	}: {
+		choices: WeaponChoice[];
+		value: number | null;
+		label?: string;
+		/** What the list holds, for the placeholder ("monster"). */
+		noun?: string;
+		testid?: string;
+		/** Offer "None" first, which sets the value to null. */
+		clearable?: boolean;
+		/** Called after a pick (not on every change of `value`). */
+		onchoose?: () => void;
+	} = $props();
 
 	const LIMIT = 150;
 	let open = $state(false);
@@ -19,8 +34,9 @@
 	const matches = $derived(filterWeapons(choices, query));
 	const shown = $derived(matches.slice(0, LIMIT));
 
-	function choose(c: WeaponChoice) {
-		value = c.number;
+	function choose(c: WeaponChoice | null) {
+		value = c?.number ?? null;
+		onchoose?.();
 		open = false;
 		query = '';
 		box?.blur();
@@ -49,17 +65,17 @@
 	});
 </script>
 
-<div class="relative flex flex-col gap-1" data-testid="weapon-picker">
+<div class="relative flex flex-col gap-1" data-testid="{testid}-picker">
 	<span class={labelCls}>{label}</span>
 	<input
 		bind:this={box}
 		type="text"
 		role="combobox"
 		aria-expanded={open}
-		aria-controls="weapon-list"
+		aria-controls="{testid}-list"
 		autocomplete="off"
-		placeholder={open ? 'Type to search weapons...' : 'Pick a weapon'}
-		value={open ? query : (selected?.label ?? '')}
+		placeholder={open ? `Type to search ${noun}s...` : `Pick a ${noun}`}
+		value={open ? query : (selected?.label ?? (clearable ? 'None' : ''))}
 		oninput={(e) => (query = e.currentTarget.value)}
 		onfocus={(e) => {
 			open = true;
@@ -70,15 +86,28 @@
 			query = '';
 		}}
 		onkeydown={onKey}
-		data-testid="weapon-input"
+		data-testid={testid}
 		class={inputCls}
 	/>
 	{#if open}
 		<ul
-			id="weapon-list"
+			id="{testid}-list"
 			role="listbox"
 			class="bg-popover text-popover-foreground absolute top-full right-0 left-0 z-20 mt-1 max-h-64 overflow-auto rounded-md border py-1 text-sm shadow-md"
 		>
+			{#if clearable}
+				<li
+					role="option"
+					aria-selected={value === null}
+					class="text-muted-foreground cursor-pointer px-2 py-1 italic"
+					onmousedown={(e) => {
+						e.preventDefault();
+						choose(null);
+					}}
+				>
+					None
+				</li>
+			{/if}
 			{#each shown as c, i (c.number)}
 				<!-- mousedown, not click: the input's blur would otherwise close the list first. -->
 				<li
@@ -94,7 +123,7 @@
 					{c.label}
 				</li>
 			{:else}
-				<li class="text-muted-foreground px-2 py-1">No weapon matches</li>
+				<li class="text-muted-foreground px-2 py-1">No {noun} matches</li>
 			{/each}
 			{#if matches.length > LIMIT}
 				<li class="text-muted-foreground px-2 py-1 text-xs">

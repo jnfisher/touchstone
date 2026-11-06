@@ -89,7 +89,7 @@ Values: JSON numbers (small ints are Integer, larger Long, with a point Double),
 typed values as `{"t": "cur|single|i16|i32|byte|f64|str|null|empty", "v": ..}`. A call argument
 `{"ref": "long", "value": 0}` is passed ByRef; its final value lands in `outputs["<as>.refs"]`. A ByRef array argument is
 `{"ref": "array:currency|string|<udt>", "bounds": [[lo, hi], ..]}` (no bounds: unallocated); it lands in `.refs` as a flat
-list, row-major.
+list, row-major. `{"ref": "array:double", "values": [..]}` passes an array holding those values (zero-based).
 Objects are class-module instances created fresh per case; properties given as lists are indexed
 Property Lets. `grids`: `{"name", "axes": {a: [..]}, "case": {..}}` (`"$a"` is replaced by the axis
 value; `{"$add"|"$sub"|"$mul"|"$min"|"$max": [x, y]}` work elementwise on lists; `{"$merge": [obj, ..]}`).
