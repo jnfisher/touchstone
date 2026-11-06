@@ -1,6 +1,7 @@
 <script lang="ts">
 	// The Char tab (F10): the saved-character bar on top, then the panels.
 	import { api, type ClassRec, type Item, type Race } from '$lib/api';
+	import { exportUrl, isMmecName } from '$lib/character';
 	import { getCharacterStore, openLastCharacter, rememberLastCharacter } from '$lib/character.svelte';
 	import { cardCls } from '../calc/styles';
 	import BlessPanel from './BlessPanel.svelte';
@@ -41,6 +42,24 @@
 		if (name) picked = name;
 	}
 	$effect(() => rememberLastCharacter(store.storedName));
+
+	let fileInput = $state<HTMLInputElement>();
+	let importNote = $state<string>();
+
+	async function importFile(file: File | undefined) {
+		importNote = undefined;
+		if (!file) return;
+		if (!isMmecName(file.name)) {
+			importNote = 'Pick an MMUD Explorer character file (.mmec).';
+			return;
+		}
+		let result = await store.importMmec(file);
+		if (result === 'exists' && confirm('A saved character with that name exists. Replace it?')) {
+			result = await store.importMmec(file, true);
+		}
+		if (result === 'ok') picked = store.storedName ?? '';
+		else if (result === 'exists') importNote = 'Not imported: that name is taken.';
+	}
 
 	const statusText = $derived(
 		store.nameProblem && store.doc.name !== ''
@@ -87,9 +106,41 @@
 			}}
 			data-testid="char-delete">Delete</button
 		>
+		<input
+			bind:this={fileInput}
+			type="file"
+			accept=".mmec"
+			class="hidden"
+			data-testid="char-import-input"
+			onchange={(e) => {
+				void importFile(e.currentTarget.files?.[0]);
+				e.currentTarget.value = '';
+			}}
+		/>
+		<button
+			type="button"
+			class="border-input h-8 rounded-md border px-3 text-sm"
+			onclick={() => fileInput?.click()}
+			data-testid="char-import">Import .mmec</button
+		>
+		{#if store.storedName}
+			<a
+				href={exportUrl(store.storedName)}
+				download
+				class="border-input inline-flex h-8 items-center rounded-md border px-3 text-sm"
+				data-testid="char-export">Export .mmec</a
+			>
+		{:else}
+			<span
+				class="border-input text-muted-foreground inline-flex h-8 items-center rounded-md border px-3 text-sm opacity-50"
+				title="Save the character first"
+				data-testid="char-export-disabled">Export .mmec</span
+			>
+		{/if}
 		<span class="text-muted-foreground ml-auto text-xs" data-testid="char-status">{statusText}</span>
 	</div>
 
+	{#if importNote}<p class="text-destructive mb-2 text-sm" data-testid="char-import-note">{importNote}</p>{/if}
 	{#if loadError}<p class="text-destructive mb-2 text-sm">{loadError}</p>{/if}
 	{#if store.saveError}<p class="text-destructive mb-2 text-sm" data-testid="char-save-error">{store.saveError}</p>{/if}
 	{#if store.evalError}<p class="text-destructive mb-2 text-sm" data-testid="char-eval-error">{store.evalError}</p>{/if}

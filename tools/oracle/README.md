@@ -140,3 +140,16 @@ its VB default (Text/Caption/Tag "", ListIndex -1, other numbers 0) until the sc
 `idxRooms` by Map Number, Room Number; a failed Seek leaves the cursor at EOF; NULL in the SQLite reads
 as the NOT NULL column's empty value, because the conversion stores an empty text as NULL).
 `Static` locals are not reset between cases.
+
+### Combo, event and dialog shims (P3-40, family paste_char)
+
+- ControlShim is also a ComboBox: `AddItem text[, index]` (with `NewIndex`), `Clear`, `ListCount`, `ItemData(i)`;
+  a scenario can give a combo as `{"Items": [0, 12, 40], "ListIndex": 1}` (ItemData only) or with `List`/`ItemData`.
+  Control arrays answer `UBound` and `item(i)`.
+- A case's `forms` may use `{"$array+": {"3": {...}}}`: the elements laid over the family-wide array, property by property.
+- `Forms` lists the case's (or the family's) `loaded_forms`, so `FormIsLoaded` works. `inputbox` is the list of InputBox
+  answers (the default when exhausted); `msgbox` answers every box, information boxes too.
+- Read expressions: `%f.Form.ctl(i).Prop` (another form's control), `%combo.cmbX` (combos holding more than None or
+  selecting something), `%gt.name` (a global array without trailing zeros).
+- `frm` specs take `subs_all` (replace every matching line; a replacement may span lines). VB6 raises a combo's Click
+  and a text box's Change only when the value changes; the paste scenario's `subs` call the real handler procedures in that case.

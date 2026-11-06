@@ -166,7 +166,7 @@ class _Dump:
 # ----------------------------------------------------------------------------- environment
 
 class Env:
-    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None):
+    def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None, paste_procs=False):
         self.mme = mme
         shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra) if database else None
@@ -183,8 +183,16 @@ class Env:
             it.procs.pop(name.lower(), None)
         self._bind_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
+        for tn in ("scripting.dictionary", "dictionary"):
+            it.new_hooks[tn] = shims.DictionaryShim
+        self.lair_env = None
+        self.shared_lairs = {}
         it.intrinsic_hooks["inputbox"] = self._inputbox
+        if paste_procs:
+            self._bind_paste_procs()
+            it.intrinsic_hooks["inputbox"] = self._inputbox_paste
         self.inputbox_answers = []
+        self.loaded_forms = []
         self.class_names = {m.name: m for m in it.modules.values() if m.is_class}
         self.cells = []
         for m in it.modules.values():
@@ -192,6 +200,15 @@ class Env:
                 continue
             for low, cell in m.cells.items():
                 self.cells.append((cell, m.varmap[low], m))
+
+    def _find_proc(self, name):
+        """A procedure by name, Private ones of the loaded modules too (event procedures such as cmbEquip_Click)."""
+        proc = self.it.find_proc(name)
+        if proc is None:
+            for m in self.it.modules.values():
+                if not m.is_class and name.lower() in m.proc_map:
+                    return m.proc_map[name.lower()][0]
+        return proc
 
     def _load_form_procs(self, mme, spec):
         """Scenario key "frm": procedures and variables cut out of a form (see frm.py), loaded as one
@@ -204,7 +221,7 @@ class Env:
                 # `frmMain.Proc(args)` from another module reaches the form's own procedure
                 for pn in one["procs"]:
                     shims.FORM_METHODS[pn.lower()] = (
-                        lambda args, pn=pn: self.it.call_proc(self.it.find_proc(pn), None, list(args), [None] * len(args)))
+                        lambda args, pn=pn: self.it.call_proc(self._find_proc(pn), None, list(args), [None] * len(args)))
             self.it.load_source(frm_mod.build_source(raw, one), name="frmMainProcs%s" % (k or ""), kind="bas")
             for name in frm_mod.control_names(raw):
                 if name.lower() not in self.it.externals:
@@ -231,6 +248,35 @@ class Env:
             return V.I16(self.msgbox_answers.pop(0))
         return shims.msgbox_result(buttons)
 
+    def _bind_paste_procs(self):
+        """Procedures of frmMain that code cut from it calls and that only touch the screen, the disk or the
+        game window (family paste_char): recorded or ignored. SaveCharacter reports success."""
+        it, rec = self.it, self.rec
+
+        def save(it_, prompt=False, name=V.MISSING):
+            rec.add("save", prompt=bool(prompt), file="" if name is V.MISSING else V.c_str(name))
+            return V.I16(0)
+
+        def file_exists(it_, name=""):
+            n = V.c_str(name).lower()
+            return n.endswith(".mmec") and "missing" not in n
+
+        it.bind_proc("SaveCharacter", save)
+        it.bind_proc("FileExists", file_exists)
+        it.procs.pop("fileexists", None)
+        for n in ("RefreshAll", "LoadCharacter", "ClearMonsterDamageVsCharALL", "ClearSavedDamageVsMonster",
+                  "LV_Sort_ColumnClickOrSticky", "RefreshListviewItemColors_ItemManager"):
+            it.bind_proc(n, lambda it_, *a: None)
+
+    def _inputbox_paste(self, it, *a):
+        """InputBox for family paste_char: a case's "inputbox" answers in order, else the default (OK pressed).
+        Other families use `_inputbox` (an exhausted list cancels)."""
+        text = V.c_str(a[0]) if a else ""
+        default = V.c_str(a[2]) if len(a) > 2 and a[2] is not V.MISSING else ""
+        self.rec.add("inputbox", text=text, default=default)
+        if self.inputbox_answers:
+            return self.inputbox_answers.pop(0)
+        return default
     def _inputbox(self, it, prompt=None, title=None, default=None, *rest):
         """InputBox: answers from the case's "inputbox" list in call order (null accepts the default,
         an exhausted list cancels, which is an empty string)."""
@@ -300,6 +346,43 @@ class Env:
                 sm.set((j,), t)
         return arr
 
+    # -- lair shims (scenario key "shims": ["lairs"]): GetLairInfo and GetDamageOutput answer from the
+    # case's "lair_env" table, so the statistics are pinned without P3-16's cache or the combat state.
+    def enable_lair_shims(self):
+        for n in ("GetLairInfo", "GetDamageOutput"):
+            self.it.procs.pop(n.lower(), None)
+            for m in self.it.modules.values():      # callers in the same module resolve there first
+                m.proc_map.pop(n.lower(), None)
+        self.it.bind("dbOpenSnapshot", V.I32(4))     # DAO constant used by CalculateAverageLairs
+        self.it.bind_proc("GetLairInfo", self._get_lair_info)
+        self.it.bind_proc("GetDamageOutput", self._get_damage_output)
+
+    def _get_lair_info(self, it, group_index, max_regen=V.MISSING):
+        gi = V.c_str(group_index)
+        u = it.new_udt("lairinfotype")
+        row = ((self.lair_env or {}).get("lairs") or {}).get(gi)
+        if row is None:
+            row = self.shared_lairs.get(gi)     # scenario "data": {"lairs": ..}, written once for the family
+        if row is None:
+            return u
+        for k, v in row.items():
+            u.set_field(k.lower(), decode(v))
+        regen = V.coerce_to(max_regen, "integer")     # the parameter is an Integer: Overflow past 32767
+        u.set_field("sgroupindex", gi)
+        u.set_field("nmaxregen", regen)
+        u.set_field("nrtk", 1.0)
+        u.set_field("nrtc", float(regen))
+        return u
+
+    def _get_damage_output(self, it, *args):
+        def num(x):
+            return V.int_value(x)
+        self.rec.add("damage_output", args=[num(a) for a in args[1:]])
+        u = it.new_udt("tdamageoutput")
+        for k, v in ((self.lair_env or {}).get("damage_out") or {}).items():
+            u.set_field(k.lower(), decode(v))
+        return u
+
     # -- per-case state
     def reset(self, rnd=None):
         it = self.it
@@ -312,7 +395,7 @@ class Env:
         self.saved = {}
         it.bind("frmMain", shims.FormShim({}, decode))
         it.bind("Clipboard", shims.ClipboardShim())
-        it.bind("Forms", shims.FormsCollection())
+        it.bind("Forms", shims.FormsCollection(self.loaded_forms))
         for g, table in shims.RECORDSET_GLOBALS.items():
             cell = it.globals.get(g.lower())
             if cell is not None:
@@ -376,7 +459,7 @@ class Env:
                 u.set_field(name.lower(), decode(val))
         return u
 
-    def build_args(self, spec, objs, refs, lv=None):
+    def build_args(self, spec, objs, refs, lv=None, dicts=None):
         """Call arguments from a step's `args`. Beyond the plain values: `{"ref": ...}` (ByRef), `{"udt": ...}`
         (a Type; `out` makes it ByRef and lands in the step's refs), `{"obj": name}` (an object of the case),
         `{"saved": name}` (the ByRef Type a previous step kept under its `as` name, shared so later calls see
@@ -416,6 +499,15 @@ class Env:
                     u = Var(u, a["udt"].lower())
                     refs.append(u)
                 args.append(u)
+            elif isinstance(a, dict) and "dict" in a:
+                # a Scripting.Dictionary of Long keys and counts, passed by reference; its final
+                # items land in "<as>.dicts"
+                d = shims.DictionaryShim()
+                for k, v in a["dict"]:
+                    d.items[float(k)] = (V.mk_i32(k), V.mk_i32(v))
+                if dicts is not None:
+                    dicts.append(d)
+                args.append(d)
             elif isinstance(a, dict) and "control" in a:
                 args.append(self.it.externals["frmmain"].vb_get(a["control"], []))  # a frmMain control, by reference
             elif isinstance(a, dict) and "obj" in a:
@@ -445,13 +537,33 @@ class Env:
     def call(self, objs, step, results):
         target = step["call"]
         refs = []
-        args = self.build_args(step.get("args", []), objs, refs)
+        dicts = []
+        args = self.build_args(step.get("args", []), objs, refs, dicts=dicts)
         r = self.invoke(objs, target, args)
         if "as" in step:
             results[step["as"]] = encode(r) if r is not None else None
+        if dicts:
+            results[step.get("as", target) + ".dicts"] = [[[encode(k), encode(v)] for k, v in d.items.values()]
+                                                          for d in dicts]
         if refs:
             results[step.get("as", target) + ".refs"] = [encode(c.v) for c in refs]
             self.saved[step.get("as", target)] = refs
+
+    def select_step(self, st, results):
+        """Step `{"select": "cmbEquip", "index": 3, "item": 1234, "as": "name"}`: the user picks the list entry whose
+        ItemData is `item` (the first one, as a list search would) in a frmMain ComboBox element, which raises its Click
+        event; `as` records whether such an entry existed (item 0 picks the "(none)" entry)."""
+        ctl = self.it.externals["frmmain"].vb_get(st["select"], [V.I16(st["index"])])
+        data = ctl.items.get("itemdata", {})
+        for k in range(len(ctl.items.get("list", {}))):
+            if int(data.get(k, 0)) == st["item"]:
+                ctl.vb_set("listindex", [], V.I32(k))
+                found = True
+                break
+        else:
+            found = False
+        if "as" in st:
+            results[st["as"]] = found
 
     def rows_step(self, objs, st, results):
         """Step `{"rows": {"table", "index", "keys", "lv": "each"|"shared", "watch"}, "call", "args", "as", "post"}`:
@@ -515,6 +627,37 @@ class Env:
             if m["lo"] is not None:
                 return [one([V.I16(i)]) for i in range(int(m["lo"]), int(m["hi"]) + 1)]
             return one([V.I16(int(m["ci"]))] if m["ci"] is not None else [])
+        if expr.startswith("%combos."):
+            # a frmMain ComboBox array after the steps: per element {"sel": ListIndex, "data": [ItemData..]}
+            arr = self.it.externals["frmmain"].controls[expr[8:].lower()]
+            return {str(i): {"sel": int(c.vb_get("listindex", [])),
+                             "data": [encode(c.items.get("itemdata", {}).get(k, V.I32(0)))
+                                      for k in range(len(c.items.get("list", {})))]}
+                    for i, c in sorted(arr.items())}
+        if expr.startswith("%f."):
+            # a control of another form: "%f.frmMonsterAttackSim.txtUserAC.Text", "%f.frmX.ctl(2).Tag"
+            m = re.match(r"^%f\.(\w+)\.(\w+)(?:\((\d+)\))?\.(\w+)$", expr)
+            if not m:
+                raise OracleFatal("bad read expression %r" % expr)
+            form = self.it.externals[m[1].lower()]
+            args = [V.I16(int(m[3]))] if m[3] is not None else []
+            ctl = form.vb_get(m[2], args)
+            if not isinstance(ctl, shims.ExtObject):
+                # `form.txtX = v` (default property) landed in the form's variables: it is the control's Text
+                return encode(V.c_str(ctl))
+            return encode(ctl.vb_get(m[4], []))
+        if expr.startswith("%combo."):
+            # the elements of a frmMain combo array that hold more than the None entry or select something:
+            # {"<index>": {"n": ListCount, "sel": ListIndex, "data": [ItemData..]}}
+            ctl = self.it.externals["frmmain"].controls[expr[7:].lower()]
+            out = {}
+            for i in sorted(ctl):
+                c = ctl[i]
+                n = int(c.vb_get("listcount", []))
+                sel = int(c.vb_get("listindex", []))
+                if n > 1 or sel != 0:       # a combo holding only its None entry is left out
+                    out[str(i)] = {"n": n, "sel": sel, "data": [int(c.vb_get("itemdata", [V.I16(k)])) for k in range(n)]}
+            return out
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
@@ -535,6 +678,12 @@ class Env:
             return out
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
+        if expr.startswith("%gt."):
+            # a global array without its trailing zeros
+            v = encode(self.it.get_global(expr[4:]))
+            while v and v[-1] == 0:
+                v.pop()
+            return v
         m = self._READ.match(expr)
         if not m:
             raise OracleFatal("bad read expression %r" % expr)
@@ -547,17 +696,33 @@ class Env:
         return encode(self.get(obj, prop, [V.I16(int(x)) for x in idx.split(",")]))
 
     def run_case(self, case, setup):
+        self.loaded_forms = list(case.get("loaded_forms", setup.get("loaded_forms", [])))
         self.reset(case.get("rnd"))
         self.msgbox_answers = list(case.get("msgbox", []))
+        self.inputbox_answers = [str(x) for x in case.get("inputbox", [])]
         # a case's controls replace the family-wide setup's controls of the same name, form by form
         forms = {}
         for src in (setup.get("forms"), case.get("forms")):
             for fname, props in (src or {}).items():
-                forms.setdefault(fname, {}).update(props)
+                cur = forms.setdefault(fname, {})
+                for k, v in props.items():
+                    if isinstance(v, dict) and "$array+" in v:
+                        # a control array element-wise over the family-wide one: elements given here are laid over theirs, property by property
+                        base = (cur.get(k) or {}).get("$array", {}) if isinstance(cur.get(k), dict) else {}
+                        v = {"$array": {**base, **{i: {**base.get(i, {}), **e} for i, e in v["$array+"].items()}}}
+                    cur[k] = v
         self.set_forms(forms)
         self.inputbox_answers = list(case.get("inputbox") or [])
         self.set_globals(setup.get("globals"))
         self.set_globals(case.get("globals"))
+        self.lair_env = case.get("lair_env")
+        if self.lair_env and "summoned_by" in self.lair_env:
+            sb = self.lair_env["summoned_by"]
+            if sb == "$loc":               # the monster's text is the procedure's own first argument
+                sb = case["args"][0]
+            self.it.global_cell("tabMonsters").v = shims.FakeMonsters({"Summoned By": sb})
+        if self.lair_env and "monsters" in self.lair_env:
+            self.it.global_cell("DB").v = shims.FakeDB(self.lair_env["monsters"])
         objs = {}
         out = {}
         steps = list(case.get("steps", []))
@@ -573,6 +738,8 @@ class Env:
             for st in steps:
                 if "rows" in st:
                     self.rows_step(objs, st, out)
+                elif "select" in st:
+                    self.select_step(st, out)
                 elif "set" in st:
                     oname, prop = st["set"].split(".", 1)
                     idx = [decode(i) for i in st.get("index", [])]
@@ -620,8 +787,13 @@ def build_fixture(family, mme=None, sdir=None, part=None):
     scn = json.loads(raw)
     cases = scn_mod.expand(scn)
     database = db_path() if scn.get("database") else None
-    env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"))
-    # "modules": extra MME files a family needs; "frm": procedures cut from a form; "db_extra": invented rows
+    env = Env(mme, database, MODULES + list(scn.get("modules", [])), scn.get("frm"), scn.get("db_extra"),
+              paste_procs=bool(scn.get("paste_procs")))
+    if "lairs" in scn.get("shims", []):
+        env.enable_lair_shims()
+        env.shared_lairs = (scn.get("data") or {}).get("lairs") or {}
+    # "modules": extra MME files a family needs; "frm": procedures cut from a form; "db_extra": invented rows;
+    # "paste_procs": stub frmMain's screen/disk procedures and answer InputBox with the default (paste_char)
     setup = {"globals": scn.get("globals", {}), "forms": scn.get("forms", {})}
     if "read" in scn:                       # family-wide default reads; a case's own "read" replaces them
         setup["read"] = scn["read"]
