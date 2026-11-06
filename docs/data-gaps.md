@@ -218,3 +218,42 @@ Not mapped: descriptions, `resist`, `flags`, `spell_type` (SPT_*), `msgnum`.
 | `legit` | none | `true` |
 | `disable_kai` | none | `false` |
 | `update_url` | none | `""` |
+
+## Quicksilver 1.20 census (Q-002)
+
+`tools/qs-fetch.sh` builds Quicksilver's own binary from a local checkout (`QUICKSILVER_DEV`,
+default `/home/user/quicksilver-dev`, read-only; the build goes to `~/.cache/touchstone/quicksilver/target`
+or `CARGO_TARGET_DIR`), runs its default import (the stock package plus the 1.20 content the binary
+carries) and leaves `~/.cache/touchstone/quicksilver-1.20.sqlite`. The stock package comes from the
+silvermere work directory's cache when present, so the import runs offline. The first build takes
+about ten minutes (Quicksilver pins its own toolchain); the import takes six seconds. The database is
+never committed. `python3 -I tools/qs-census.py` prints everything below (`--json` for tooling); the
+data test `crates/touchstone-data/tests/all/quicksilver.rs` pins the load (it skips, with a message,
+when the database is not in the cache; `TOUCHSTONE_QS_SQLITE` names another path).
+
+**Result: the loader reads the 1.20 database as it is. No change to `touchstone-data` is needed, and
+there are no unknown ability numbers.**
+
+| Check | Result |
+|---|---|
+| Schema | Migrations 1, 2 and 9001, all successful. The loader accepts them (`SUPPORTED_MIGRATIONS`) |
+| Content version | `world_import.content_version` is `1.20.0`, so `Info.dat_file_version` is `"1.20.0"`. The 1.20.1 release changed no rule, balance or content and keeps `1.20.0`, so a 1.20.1 binary's world still reads `1.20.0`. Q-004 must match `1.20.N`, not the binary version |
+| Row counts against stock | Items 1,974 (+24), spells 1,457 (+78), shops 178, shop items 1,258 (+23), races 13, race abilities 40 (+3), item abilities 6,800 (+48), item negates 101 (+4), spell abilities 6,129 (+467), messages 3,875 (+8). Monsters 1,101, rooms 26,720, classes 15, text blocks 3,467 and all monster tables are unchanged in count. The 1.20 content rewrites rows in place too (for example 93 spells have a different level cap); counts are not the whole delta |
+| Slot capacity | No child table overflows the model's arrays. Highest slot used: item abilities 9 of 20, spell, class and item class/negate slots 9 of 10, shop items 19 of 20, race abilities 4 of 10 |
+| Ability numbers | 145 distinct numbers in use, the same count as stock, none above 185, none new against stock. touchstone names 0 to 187 (`ability_text.rs`), so **every ability in the 1.20 content is known**. The six message-only abilities (101, 115, 120, 137, 144, 155) occur, as in stock |
+| Race regeneration | Human gains HPRegen (123) 15 and ManaRgn (145) 15, Dwarf gains HPRegen 15 (in a slot stock filled with a stray value beside ability 0), Elf gains ManaRgn 15 and Gaunt One ManaRgn 25 (replacing a stray value beside ability 0). Both are stock abilities, 123 and 145 in `get_ability_stat_slot`, and no other race changes. The stray-value slots are the ones `AbilitySlot` already documents |
+| Reserved spells | 57 spells in 5000 to 5999 (monster copies), 21 in 6000 to 6020 (mana regeneration). The regeneration spells use abilities 115 (DescMsg), 122 (RemovesSpell) and 145 (ManaRgn), all known, and every one is taught by an item (ability 42), so `learnable` and `learned_from` derive for them. Fifteen of the 57 copies are cast by a monster row; the other 42 are reached by negating items, removers or scripts, so `casted_by` is empty for them (the same partial `casted_by` as stock) |
+| Spell columns | New values only in `maxinc` (13, 15, 19), `maxlvls` (20) and `minlvls` (13): ordinary increments from Spell Mod v2.1. 65 spells keep a padded 16-bit level cap (74 in stock); the loader's low-byte read covers them |
+| Other enum columns | Item types, worn slots, weapon and armour types, spell elements, resist modes, targets, monster attack kinds, exit types and shop types hold no code stock does not |
+| References | No row points at a missing spell or item, except one monster drop (the same one in stock) |
+| Wide integers | `room_exits.par1` holds 14 values outside 32 bits, exactly as stock; the loader reads exit parameters as 64-bit, so nothing is lost |
+
+What this means for the Q cards:
+
+- Q-003 and Q-004 need no data work beyond the content-version check above. `Info.content_version`
+  is the string `1.20.0` on this database.
+- The spell, item and monster rows that 1.20 changes already arrive through the loader, so section 2
+  of `docs/quicksilver-profile.md` holds: nothing in it needs porting.
+- The derived fields (`obtained_from`, `learned_from`, `casted_by`, `summoned_by`, lairs) keep their
+  stock caveats. There is no NMR reference for a 1.20 world, so their match rates cannot be measured
+  as `docs/data-parity.md` does for stock.

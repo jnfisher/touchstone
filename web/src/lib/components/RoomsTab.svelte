@@ -9,6 +9,7 @@
 	import { cardCls, headingCls, inputCls, labelCls } from '$lib/components/calc/styles';
 	import { linkFor, type RefTarget } from '$lib/detail';
 	import { roomsView, selection } from '$lib/explorer-state.svelte';
+	import { getSettingsStore } from '$lib/settings.svelte';
 	import DataGrid from '$lib/grid/DataGrid.svelte';
 	import {
 		DEFAULT_ROOM_OPTIONS,
@@ -25,6 +26,7 @@
 	} from '$lib/rooms';
 	import { roomsMemory } from './rooms-memory.svelte';
 
+	const settings = getSettingsStore();
 	const mem = roomsMemory;
 	let mapText = $state(mem.mapText);
 	let roomText = $state(mem.roomText);
@@ -143,7 +145,7 @@
 	async function showList(list: { key: string; rowText: string; percent: string }) {
 		busy = true;
 		try {
-			const r = await roomsClient.cmdRooms(list.key, list.rowText, list.percent, options.hideNumbers);
+			const r = await roomsClient.cmdRooms(list.key, list.rowText, list.percent);
 			error = undefined;
 			notice = undefined;
 			results = { caption: r.caption, rows: r.rows };
@@ -174,7 +176,8 @@
 
 	// Options change what the server writes: ask again for the shown room.
 	$effect(() => {
-		void [options.hideNumbers, options.hideNpc, options.hideLairs, options.hideCmds, options.allExits, options.illu];
+		// the hide_record_numbers setting is read by the server on every request, so a change asks again too
+		void [settings.current.hide_record_numbers, options.hideNpc, options.hideLairs, options.hideCmds, options.allExits, options.illu];
 		untrack(() => {
 			if (info) void open(info.map, info.room, false);
 			else remember();
@@ -287,7 +290,6 @@
 			<h3 class="bg-card sticky top-0 z-10 truncate border-b px-3 py-2 text-sm font-semibold" data-testid="room-title">{info.title.trim()}</h3>
 			<div class="flex flex-col gap-4 p-3">
 				<fieldset class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-					<label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={options.hideNumbers} /> Hide record numbers</label>
 					<label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={options.hideNpc} /> Hide NPC</label>
 					<label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={options.hideLairs} /> Hide lairs</label>
 					<label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={options.hideCmds} /> Hide commands</label>

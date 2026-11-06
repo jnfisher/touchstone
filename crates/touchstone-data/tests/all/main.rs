@@ -2,4 +2,5 @@
 
 mod derive;
 mod mdb;
+mod quicksilver;
 mod silvermere;

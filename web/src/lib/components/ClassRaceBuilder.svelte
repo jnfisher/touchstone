@@ -27,6 +27,16 @@
 	// MME keeps the old text when its handler ran; the box starts empty.
 	let shown = $state('');
 
+	// The text is three columns wide; shrink the monospace font so the longest line fits the pane (down to
+	// 8px, below which the box scrolls). The characters are the server's, untouched.
+	let boxWidth = $state(0);
+	const longest = $derived(Math.max(1, ...shown.split(/\r?\n/).map((l) => l.length)));
+	// 0.6em per monospace glyph, less the box's padding and border
+	const fontPx = $derived(
+		boxWidth > 0 ? Math.min(12, Math.max(8, Math.floor(((boxWidth - 24) / (longest * 0.61)) * 10) / 10)) : 12
+	);
+
+
 	$effect(() => {
 		const which = kind === 'race' ? 'classes' : 'races';
 		const own = kind === 'race' ? 'races' : 'classes';
@@ -114,6 +124,7 @@
 		<p class="text-destructive mb-1 text-sm" role="alert">{build?.error ?? `Could not build: ${error}`}</p>
 	{/if}
 	<!-- A read-only box like MME's txtClassRaceDetail: focusing it selects everything. -->
+	<div bind:clientWidth={boxWidth}>
 	<textarea
 		readonly
 		rows="6"
@@ -122,6 +133,8 @@
 		data-testid="builder-text"
 		value={shown}
 		onfocus={(e) => e.currentTarget.select()}
-		class="bg-background border-input w-full resize-y overflow-auto rounded-md border p-2 font-mono text-xs leading-5"
+		style="font-size: {fontPx}px"
+		class="bg-background border-input w-full resize-y overflow-auto rounded-md border p-2 font-mono leading-5"
 	></textarea>
+	</div>
 </section>

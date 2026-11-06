@@ -106,6 +106,13 @@ describe("draft", () => {
     expect(draftSettings(d, s.exp_per_hour.global)).toEqual(s);
   });
 
+  it("carries Hide record numbers (off until ticked)", () => {
+    const d = toDraft(defaultSettings());
+    expect(d.hideNumbers).toBe(false);
+    d.hideNumbers = true;
+    expect(draftSettings(d, draftBlock(d)).hide_record_numbers).toBe(true);
+  });
+
   it("applies the clamps on the way out", () => {
     const d = toDraft(defaultSettings());
     d.knobs.knob_dmg = "0.004";

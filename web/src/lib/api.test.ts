@@ -82,10 +82,10 @@ describe('computed endpoints', () => {
 		await api.spellCounters({ spell: 57, level_answer: 12 });
 		expect(f.mock.calls[0][0]).toBe('/api/spells/counters');
 		expect(f.mock.calls[0][1]?.body).toBe('{"spell":57,"level_answer":12}');
-		await api.spellCasts(34, true);
-		expect(f.mock.calls[1][0]).toBe('/api/spells/34/casts?hide_record_numbers=true');
+		await api.spellCasts(34);
+		expect(f.mock.calls[1][0]).toBe('/api/spells/34/casts');
 		await api.itemChest(906);
-		expect(f.mock.calls[2][0]).toBe('/api/items/906/chest?hide_record_numbers=false');
+		expect(f.mock.calls[2][0]).toBe('/api/items/906/chest');
 		await api.spellBookClass(9);
 		expect(f.mock.calls[3][0]).toBe('/api/spell-book/class');
 	});

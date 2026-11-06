@@ -396,6 +396,22 @@ async fn chests_agree_with_the_oracle() {
             .collect();
         exp.sort();
         assert_eq!(got, exp, "{id}");
+        if hide {
+            // the hide_record_numbers setting stands in for the query value
+            let (st, _) = call(
+                &app,
+                "PUT",
+                "/api/settings",
+                &json!({"hide_record_numbers": true}),
+            )
+            .await;
+            assert_eq!(st, StatusCode::OK, "{id}");
+            let (st, set) = call(&app, "GET", &format!("/api/items/{n}/chest"), &json!({})).await;
+            assert_eq!(st, StatusCode::OK, "{id}");
+            assert_eq!(set, v, "{id}: setting vs query");
+            let (st, _) = call(&app, "PUT", "/api/settings", &json!({})).await;
+            assert_eq!(st, StatusCode::OK, "{id}");
+        }
     }
 }
 
