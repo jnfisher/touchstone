@@ -972,3 +972,177 @@ async fn monsters_are_listed_through_filter_monsters() {
     assert_eq!(st, StatusCode::OK, "{with}");
     assert_eq!(with["rows"].as_array().unwrap().len(), rows.len());
 }
+
+// ---------- the Compare tab's lists (card P4-14) ----------
+
+/// The record numbers a rows.json case sampled for its `rows` step.
+fn sampled_keys(fx: &Value, id: &str) -> Vec<i64> {
+    case(fx, id)["inputs"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|st| st["as"] == "rows")
+        .unwrap()["rows"]["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k.as_i64().unwrap())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_compare_list_holds_the_explorer_rows_of_its_records() {
+    // fixtures/rules/rows.json: the AddWeapon2LV / AddArmour2LV / AddSpell2LV rows of the sampled records. CompareAddItem
+    // calls the same procedures, so a list asked for by record number must give those rows, in any order.
+    let fx = fixture();
+    for (id, tab) in [
+        ("nochar-weapons-plain", "weapons"),
+        ("nochar-armour-all", "armour"),
+        ("nochar-spells", "spells"),
+    ] {
+        let mut keys = sampled_keys(&fx, id);
+        if keys.is_empty() {
+            // armour-all samples through the list; ask for the first records it listed
+            let (_, all) = post_to(&fx, tab, &json!({})).await;
+            keys = all["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .take(30)
+                .map(|r| r["number"].as_i64().unwrap())
+                .collect();
+        }
+        keys.reverse();
+        let extra = json!({"options": {"numbers": keys}});
+        pinned(id, tab, extra, false, "rows", false).await;
+    }
+    // with the level 50 warrior loaded the rows are for that character, as the explorer's are
+    let mut keys = sampled_keys(&fx, "warrior-weapons-plain");
+    keys.reverse();
+    pinned(
+        "warrior-weapons-plain",
+        "weapons",
+        json!({"options": {"numbers": keys}}),
+        true,
+        "rows",
+        false,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_compare_list_keeps_order_and_repeats_and_skips_missing_records() {
+    let fx = fixture();
+    let app = router(&fx);
+    let (_, all) = post(&app, "/api/evaluate/weapons", &json!({})).await;
+    let nums: Vec<i64> = all["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["number"].as_i64().unwrap())
+        .collect();
+    assert!(nums.len() >= 3);
+    // CompareAddShopItems adds the same record twice; LoadCharacter skips a record that is gone (tabItems.NoMatch)
+    let ask = json!([nums[2], 987_654, nums[0], nums[2]]);
+    let (st, got) = post(
+        &app,
+        "/api/evaluate/weapons",
+        &json!({"options": {"numbers": ask}}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{got}");
+    let listed: Vec<i64> = got["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["number"].as_i64().unwrap())
+        .collect();
+    assert_eq!(listed, vec![nums[2], nums[0], nums[2]]);
+    // the columns are the explorer's
+    assert_eq!(got["columns"], all["columns"]);
+    // an empty list is an empty table, not the whole explorer
+    let (_, none) = post(
+        &app,
+        "/api/evaluate/weapons",
+        &json!({"options": {"numbers": []}}),
+    )
+    .await;
+    assert!(none["rows"].as_array().unwrap().is_empty());
+    // too many entries are refused
+    let many: Vec<i32> = (0..5001).collect();
+    let (st, _) = post(
+        &app,
+        "/api/evaluate/weapons",
+        &json!({"options": {"numbers": many}}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_monster_compare_list_is_made_of_plain_monster_rows() {
+    // CompareAddMonster: AddMonster2LV into the compare list with an empty tChar, never in lair mode
+    let fx = fixture();
+    let app = router(&fx);
+    let (_, all) = post(&app, "/api/evaluate/monsters", &json!({})).await;
+    let rows = all["rows"].as_array().unwrap();
+    assert!(rows.len() >= 2);
+    let (a, b) = (
+        rows[0]["number"].as_i64().unwrap(),
+        rows[1]["number"].as_i64().unwrap(),
+    );
+    // lair mode is a view of the main list; the compare list ignores it
+    let lair = json!({"lair": true});
+    let (st, got) = post(
+        &app,
+        "/api/evaluate/monsters",
+        &json!({"options": {"numbers": [b, a, 987_654], "monsters": lair}}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{got}");
+    let listed = got["rows"].as_array().unwrap();
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0]["number"], b);
+    assert_eq!(listed[1]["number"], a);
+    assert_eq!(listed[0]["cells"].as_array().unwrap().len(), 18);
+    // the name cell is the record's, as in the main list
+    assert_eq!(listed[1]["cells"][1]["text"], rows[0]["cells"][1]["text"]);
+    assert_eq!(got["filtered"], Value::Null);
+}
+
+#[tokio::test]
+async fn items_are_classified_the_way_compare_add_item_chooses_a_list() {
+    // CompareAddItem: ItemType 0 is armour, 1 a weapon, anything else has no list; an unknown record adds nothing
+    let fx = fixture();
+    let app = router(&fx);
+    let world = world(&fx["header"]["data"]);
+    let mut asked = vec![987_654];
+    let mut want = vec![("missing", false)];
+    for it in world.items.iter().take(200) {
+        asked.push(it.number);
+        want.push((
+            match it.item_type {
+                0 => "armour",
+                1 => "weapon",
+                _ => "other",
+            },
+            it.worn != 0,
+        ));
+    }
+    let (st, got) = post(&app, "/api/compare/classify", &json!({"items": asked})).await;
+    assert_eq!(st, StatusCode::OK, "{got}");
+    let items = got["items"].as_array().unwrap();
+    assert_eq!(items.len(), want.len());
+    for (g, (kind, worn)) in items.iter().zip(want) {
+        assert_eq!(g["kind"], kind);
+        assert_eq!(g["worn"], worn);
+    }
+    let kinds: std::collections::HashSet<&str> =
+        items.iter().map(|g| g["kind"].as_str().unwrap()).collect();
+    assert!(
+        kinds.contains("weapon") && kinds.contains("armour"),
+        "{kinds:?}"
+    );
+    let (st, _) = post(&app, "/api/compare/classify", &json!({"nope": 1})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+}

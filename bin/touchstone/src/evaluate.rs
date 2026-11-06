@@ -39,7 +39,9 @@ use touchstone_rules::lairs::{
 };
 use touchstone_rules::monster_sim::MonsterSimInput;
 use touchstone_rules::pipeline::{CharacterState, PipelineOptions, refresh_all};
-use touchstone_rules::rows::monster::{MonsterRowInputs, add_monster_row, backstab_attack};
+use touchstone_rules::rows::monster::{
+    MonsterRowArgs, MonsterRowInputs, add_monster_row, backstab_attack,
+};
 use touchstone_rules::rows::{
     Row, RowEnv, SpellOptions, WeaponArgs, WeaponOptions, add_armour_row, add_class_row,
     add_other_item_row, add_race_row, add_shop_row, add_spell_row, add_weapon_row,
@@ -144,7 +146,15 @@ pub struct Options {
     /// The Monsters tab's filter boxes, lair/party mode and the extra filters. The Monsters list and
     /// pane read them; the other tabs ignore them.
     pub monsters: MonsterControls,
+    /// The Compare tab's lists (card P4-14): list exactly these record numbers, in this order, one row per entry, with
+    /// no filter. MME's `CompareAddItem` and the other adders call `AddWeapon2LV`, `AddArmour2LV`, `AddSpell2LV` and
+    /// `AddMonster2LV` straight from the record, so a compare row is the explorer's row for the same record.
+    /// Weapons, armour, spells and monsters read it; a record that does not exist adds no row.
+    pub numbers: Option<Vec<i32>>,
 }
+
+/// Entries one compare request may carry (MME saves 101 per list; the cap only bounds the work).
+const MAX_NUMBERS: usize = 5000;
 
 /// The Monsters tab's controls (card P4-08): frmMain's filter boxes, `optMonsterFilter`, the lair/party
 /// boxes and the "Monster Filters" window. `Default` is what MME starts with.
@@ -392,6 +402,11 @@ impl Options {
             && !(0..=MAX_LEVEL).contains(&l)
         {
             return Err(bad(format!("level must be 0 to {MAX_LEVEL}")));
+        }
+        if let Some(n) = &self.numbers
+            && n.len() > MAX_NUMBERS
+        {
+            return Err(bad(format!("numbers has more than {MAX_NUMBERS} entries")));
         }
         Ok(())
     }
@@ -783,6 +798,18 @@ fn weapons(ctx: &Ctx, opts: &Options) -> Built {
             opts.vs_dodge.0.clone(),
         ],
     };
+    if let Some(numbers) = &opts.numbers {
+        // CompareAddItem: AddWeapon2LV with the profile PopulateCharacterProfile(tChar, False, True) gives
+        let ch = CharacterState::attack_profile_of(&ctx.profile(AttackTypeMud::None, 0));
+        let rows = numbers
+            .iter()
+            .filter_map(|n| {
+                let item = ctx.world.get_item(*n)?;
+                add_weapon_row(&env, Some(item), &ch, &wopts, &WeaponArgs::default())
+            })
+            .collect();
+        return plain(rows);
+    }
     let filter = WeaponFilter {
         calc_combat: opts.calc_combat,
         slow_85: opts.slow_85,
@@ -830,6 +857,15 @@ fn weapons(ctx: &Ctx, opts: &Options) -> Built {
 }
 
 fn armour(ctx: &Ctx, opts: &Options) -> Built {
+    if let Some(numbers) = &opts.numbers {
+        // CompareAddItem and LoadCharacter: AddArmour2LV with no ability to show
+        return plain(
+            numbers
+                .iter()
+                .filter_map(|n| add_armour_row(ctx.world.get_item(*n)?, 0))
+                .collect(),
+        );
+    }
     let filter = ArmourFilter {
         ability: ability_filter(opts),
         ..ArmourFilter::default()
@@ -872,6 +908,16 @@ fn spells(ctx: &Ctx, opts: &Options) -> Built {
         only_in_game: true,
         disable_kai_autolearn: ctx.world.info.disable_kai,
     };
+    if let Some(numbers) = &opts.numbers {
+        // the Compare tab's AddSpell2LV calls: the explorer's row for the record, no filter
+        let rows = numbers
+            .iter()
+            .filter_map(|n| ctx.world.get_spell(*n))
+            .filter_map(|s| add_spell_row(&env, s, &profile, &sopts, false))
+            .map(|r| r.row)
+            .collect();
+        return plain(rows);
+    }
     // FilterSpells with MME's default controls; the global filter (the character's, or the bar's own values) decides
     // which spells the class, level and alignment can use
     let t_char = if ctx.filter_on {
@@ -1104,6 +1150,7 @@ fn monsters(
     controls: &MonsterControls,
     settings: &ExpPerHourSettings,
     sim_rounds: i32,
+    numbers: Option<&[i32]>,
 ) -> Result<Built, ApiError> {
     let filter = controls.filter();
     with_monster_env(
@@ -1113,6 +1160,32 @@ fn monsters(
         sim_rounds,
         &NoCastText,
         |env, s| {
+            if let Some(numbers) = numbers {
+                // CompareAddMonster and ReloadMonsterCompare: AddMonster2LV into the compare list with an empty
+                // tChar (only lairs fill it, and the compare list never shows lairs), so the row is the plain
+                // monster row: not the main list, so no lair mode, and no hp or regen.
+                let row_inputs = MonsterRowInputs {
+                    use_exp_multi: true,
+                    is_main_list: false,
+                    settings: s.settings,
+                    possy: &s.possy,
+                    spawn_chance: &s.spawn_chance,
+                    backstab_attack: backstab_attack(s.state.attack_config()),
+                };
+                let t = CharacterProfile::default();
+                let args = MonsterRowArgs::default();
+                let rows = numbers
+                    .iter()
+                    .filter_map(|n| add_monster_row(env, &row_inputs, &t, *n, &args))
+                    .collect();
+                return Built {
+                    rows,
+                    headers: Vec::new(),
+                    ability_numeric: false,
+                    nmr: ctx.nmr,
+                    filtered: false,
+                };
+            }
             let filter_inputs = MonsterFilterInputs {
                 only_in_game: true,
                 use_exp_multi: true,
@@ -1312,7 +1385,13 @@ pub fn evaluate_with(
         Tab::Weapons => weapons(&ctx, &req.options),
         Tab::Armour => armour(&ctx, &req.options),
         Tab::Spells => spells(&ctx, &req.options),
-        Tab::Monsters => monsters(&ctx, &req.options.monsters, exp, sim_rounds)?,
+        Tab::Monsters => monsters(
+            &ctx,
+            &req.options.monsters,
+            exp,
+            sim_rounds,
+            req.options.numbers.as_deref(),
+        )?,
         Tab::Items => sundry(&ctx, &req.options),
         Tab::Races => {
             let equipped = EquippedGlobals::default();
