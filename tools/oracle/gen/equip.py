@@ -138,8 +138,8 @@ def eq(n, unequip=False):
 
 SETUP = {"call": "InvenSetupEquip"}
 LOAD = {"call": "LoadInvenItems"}
-READ_STATE = {"eq": "%g.nEquippedItem", "prompt": "%g.bPromptSave", "lists": "%combo.cmbEquip"}
-READ_LISTS = {"eq": "%g.nEquippedItem", "lists": "%combo.cmbEquip"}
+READ_STATE = {"eq": "%g.nEquippedItem", "prompt": "%g.bPromptSave", "lists": "%combos.cmbEquip"}
+READ_LISTS = {"eq": "%g.nEquippedItem", "lists": "%combos.cmbEquip"}
 READ_EQ = {"eq": "%g.nEquippedItem"}
 
 cases = []
@@ -274,7 +274,7 @@ def char_forms(cls, level, align, minlvl=None):
 
 FILTER = {"call": "FilterInvenItems", "args": []}
 UNFILTER = {"call": "FilterInvenItems", "args": [True]}
-READ_FILTER = {"eq": "%g.nEquippedItem", "lists": "%combo.cmbEquip", "prompt": "%g.bPromptSave"}
+READ_FILTER = {"eq": "%g.nEquippedItem", "lists": "%combos.cmbEquip", "prompt": "%g.bPromptSave"}
 for cls in [0, 1, 2, 3, 4, 7, 9, 11, 12, 15, 9001, 9002]:
     for level, align in ((1, 0), (20, 1), (60, 3)):
         case("filter-c%d-l%d-a%d" % (cls, level, align), [SETUP, LOAD, FILTER], forms=char_forms(cls, level, align),
@@ -301,7 +301,7 @@ for i in range(10):
     holds = {str(k): {"Value": 1 if rng.chance(40) else 0} for k in range(20)}
     pool = HOLD_POOL[: rng.between(3, len(HOLD_POOL))]
     case("clear-unheld-%02d" % i, [SETUP] + [eq(n) for n in pool] + [{"call": "InvenClear"}],
-         forms={"chkEquipHold": {"$array": holds}}, read={**READ_EQ, "sel": "%combo.cmbEquip"})
+         forms={"chkEquipHold": {"$array": holds}}, read={**READ_EQ, "sel": "%combos.cmbEquip"})
 case("clear-all-held", [SETUP, eq(9017), eq(9018), eq(first(by_worn(2))), {"call": "InvenClear"}],
      forms={"chkEquipHold": {"$array": {str(k): {"Value": 1} for k in range(20)}}}, read=READ_STATE)
 case("setup-after-equips", [SETUP, eq(9017), eq(9018), eq(first(by_worn(2))), SETUP], read=READ_STATE)

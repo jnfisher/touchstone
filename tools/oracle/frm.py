@@ -14,7 +14,9 @@ copies a local the form never stores (nEncumPCT) into a probe control. After the
 `"tail"` lines instead (the pipeline family keeps the `out:` section of CalcCharacterStats that way).
 
 `{"subs": {proc: {"<line>": "<vb line>"}}}` replaces whole lines of a procedure (matched after trimming) with
-other text, e.g. an InputBox call with a read of a control; a line that is not found is an error.
+other text, e.g. an InputBox call with a read of a control; a line that is not found is an error. Only the
+first matching line is replaced; `"subs_all"` has the same shape and replaces every matching line. The
+replacement may hold several lines (joined with newlines).
 """
 import re
 
@@ -75,6 +77,12 @@ def build_source(raw, spec):
         for old, new in ((spec.get("subs") or {}).get(name) or {}).items():
             idx = next(i for i, l in enumerate(body) if l.strip() == old)
             body[idx] = new
+        for old, new in ((spec.get("subs_all") or {}).get(name) or {}).items():
+            hits = [i for i, l in enumerate(body) if l.strip() == old]
+            if not hits:
+                raise ValueError("line %r not found in %s" % (old, name))
+            for idx in hits:
+                body[idx] = new
         cut = (spec.get("cuts") or {}).get(name)
         if cut:
             idx = next(i for i, l in enumerate(body) if l.strip() == cut["cut"])
