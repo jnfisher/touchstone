@@ -33,9 +33,10 @@ use crate::exp::calc_exp_needed_by_race_class;
 use crate::gear::{BLESS_SLOTS, refresh_char_bless};
 use crate::spells::{MinMaxRequest, get_current_spell_min_max};
 use crate::stats::{
-    ManaRegenInput, calc_cp_level, calc_mana_regen, calc_max_hp, calc_max_mana, calc_mr,
-    calc_picklocks, calc_resting_rate, calc_spell_casting, get_class_magery, get_class_magery_lvl,
-    get_class_max_hp, get_class_min_hp, get_race_cp, soft_cap_extra, soft_caps_on,
+    ManaRegenInput, calc_cp_level, calc_mana_regen, calc_max_hp, calc_max_mana,
+    calc_meditate_mana_regen, calc_mr, calc_picklocks, calc_rest_mana_regen, calc_resting_rate,
+    calc_spell_casting, get_class_magery, get_class_magery_lvl, get_class_max_hp, get_class_min_hp,
+    get_race_cp, regen_on, soft_cap_extra, soft_caps_on,
 };
 
 type Res<T> = Result<T, Vb6Error>;
@@ -366,8 +367,12 @@ pub struct MagicInput<'a> {
 pub struct Magic {
     /// `lblCharManaRate.Tag`: mana regenerated per tick when not meditating.
     pub mana_regen: Option<i32>,
-    /// `txtCharManaRegen.Tag`: mana per meditation tick.
+    /// `txtCharManaRegen.Tag`: mana per meditation tick. Under Quicksilver the tick counts the
+    /// regeneration buffs and is the average over its carry cycle ([`calc_meditate_mana_regen`]).
     pub medi_ticks: Option<f64>,
+    /// Quicksilver only (R10): mana per rest tick, since resting restores mana there. `None`
+    /// under the stock rules.
+    pub rest_ticks: Option<f64>,
     pub mana_regen_caption: Option<String>,
     /// `lblCharMaxMana.Tag`: max mana with the gear bonus.
     pub max_mana: Option<i32>,
@@ -385,6 +390,7 @@ pub fn refresh_magic(input: &MagicInput) -> Magic {
     let mut out = Magic {
         mana_regen: None,
         medi_ticks: None,
+        rest_ticks: None,
         mana_regen_caption: None,
         max_mana: None,
         max_mana_caption: None,
@@ -410,6 +416,9 @@ fn magic_steps(i: &MagicInput, out: &mut Magic) -> Res<()> {
         out.spellcasting_caption = Some("Spellcasting: ?".to_string());
         out.max_mana_caption = Some("Max Mana: ?".to_string());
         out.medi_ticks = Some(0.0);
+        if regen_on(i.profile).is_some() {
+            out.rest_ticks = Some(0.0);
+        }
         out.mana_regen = Some(0);
         return Ok(());
     }
@@ -432,17 +441,23 @@ fn magic_steps(i: &MagicInput, out: &mut Magic) -> Res<()> {
     let regen = vb::fix(calc_mana_regen(i.profile, &regen_in).to_f64());
     let regen_i = lng(regen)?;
     out.mana_regen = Some(regen_i);
-    let medi_in = ManaRegenInput {
-        mp_regen: 0,
-        meditating: true,
-        ..regen_in
-    };
-    let medi = calc_mana_regen(i.profile, &medi_in).to_f64();
+    // MME's meditation tick takes no "Alter Mana Regeneration"; Quicksilver's counts it (R10)
+    let medi = calc_meditate_mana_regen(i.profile, &regen_in).to_f64();
     out.medi_ticks = Some(medi);
-    out.mana_regen_caption = Some(format!(
-        "Mana Regen: {regen_i}\r\nMedi. Ticks: {}",
-        vb::cstr(medi)
-    ));
+    if regen_on(i.profile).is_some() {
+        let rest = calc_rest_mana_regen(i.profile, &regen_in).to_f64();
+        out.rest_ticks = Some(rest);
+        out.mana_regen_caption = Some(format!(
+            "Mana Regen: {regen_i}\r\nRest Ticks: {}\r\nMedi. Ticks: {}",
+            vb::cstr(rest),
+            vb::cstr(medi)
+        ));
+    } else {
+        out.mana_regen_caption = Some(format!(
+            "Mana Regen: {regen_i}\r\nMedi. Ticks: {}",
+            vb::cstr(medi)
+        ));
+    }
 
     let max_mana = calc_max_mana(level, magery_lvl);
     let mana_bonus = lng(i.mana_bonus)?;
