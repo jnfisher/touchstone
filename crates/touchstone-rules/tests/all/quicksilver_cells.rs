@@ -16,15 +16,15 @@ use touchstone_model::{
     AbilitySlot, Class, Info, Item, Monster, MonsterAttack, Race, Spell, World, WorldParts,
 };
 use touchstone_rules::Profile;
+use touchstone_rules::ability_text::AbilityEnv;
 use touchstone_rules::character::{AttackType, Character};
 use touchstone_rules::combat::{DamageRequest, get_damage_output};
 use touchstone_rules::equip::{EquipOptions, equip_item};
 use touchstone_rules::pipeline::{PipelineOptions, refresh_all};
 
-use crate::quicksilver_melee::NoCasts;
-
 fn load() -> (Value, Vec<Value>) {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/quicksilver/cells.json");
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/quicksilver/cells.json");
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
     let mut doc: Value = serde_json::from_str(&text).unwrap();
@@ -122,8 +122,8 @@ fn world(tables: &Value) -> World {
             dur_inc_lvls: i(&r[18]),
             dur_inc: i(&r[19]),
             abilities: pairs(&r[20]),
-            // the weave picks among spells the class can learn; the cell lists only such spells
-            learnable: true,
+            // the weave picks among spells a class can learn; spells an item casts are not
+            learnable: r[21].as_bool().unwrap(),
             learned_from: None,
             casted_by: None,
             classes: None,
@@ -251,7 +251,7 @@ fn world(tables: &Value) -> World {
 }
 
 /// What touchstone says for a cell: the average damage a round and the swings.
-fn touchstone(world: &World, c: &Value) -> (f64, f64) {
+fn touchstone(world: &World, c: &Value, profile: Profile) -> (f64, f64) {
     let inp = &c["inputs"];
     let mut ch = Character {
         race: Some(i(&inp["race"])),
@@ -283,18 +283,13 @@ fn touchstone(world: &World, c: &Value) -> (f64, f64) {
         }
         _ => ch.attack.attack_type = AttackType::PhysAttack,
     }
-    let state = refresh_all(
-        Profile::quicksilver_v120(),
-        world,
-        &ch,
-        &PipelineOptions::default(),
-    )
-    .unwrap();
+    let state = refresh_all(profile, world, &ch, &PipelineOptions::default()).unwrap();
     let cenv = state.env([String::new(), String::new()], String::new());
     let mut ctx = cenv.context(world);
-    ctx.profile = Profile::quicksilver_v120();
+    ctx.profile = profile;
+    let ab = AbilityEnv::for_world(world, profile);
     let out = get_damage_output(
-        &cenv.damage_env(world, &ctx, &state.character, &NoCasts),
+        &cenv.damage_env(world, &ctx, &state.character, &ab),
         &DamageRequest {
             single_monster: i(&inp["target"]),
             force_character: true,
@@ -304,23 +299,103 @@ fn touchstone(world: &World, c: &Value) -> (f64, f64) {
     (out.average_damage.to_f64(), out.swings)
 }
 
+/// The spells of a cell's standing buffs that carry "Alter Energy Usage" (ability 87). MME has no
+/// character-level counterpart (only the item detail applies a fixed 85%), so a cell with one fights
+/// with fewer blows a round in the tool than in touchstone.
+fn has_energy_buff(tables: &Value, c: &Value) -> bool {
+    c["inputs"]["buffs"].as_array().unwrap().iter().any(|b| {
+        rows(tables, "spells")
+            .iter()
+            .find(|r| i(&r[0]) == i(b))
+            .is_some_and(|r| r[20].as_array().unwrap().iter().any(|a| i(&a[0]) == 87))
+    })
+}
+
 #[test]
-fn cells_report() {
+fn cells_header_and_shape() {
+    let (header, cases) = load();
+    assert_eq!(header["family"], "cells");
+    assert_eq!(header["content_version"], "1.20.0");
+    assert_eq!(header["case_count"].as_u64().unwrap(), cases.len() as u64);
+    let ids: Vec<&str> = cases.iter().map(|c| c["id"].as_str().unwrap()).collect();
+    assert!(ids.windows(2).all(|w| w[0] < w[1]), "ids sorted and unique");
+    let cells = cases.iter().filter(|c| c["kind"] == "cell").count();
+    assert!((30..=60).contains(&cells), "{cells} cells");
+    // every class of the stock set is present at three levels
+    let classes: std::collections::BTreeSet<i32> = cases
+        .iter()
+        .filter(|c| c["kind"] == "cell")
+        .map(|c| i(&c["inputs"]["class"]))
+        .collect();
+    assert_eq!(classes.len(), 15);
+    let size = std::fs::metadata(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/quicksilver/cells.json"),
+    )
+    .unwrap()
+    .len();
+    assert!(size <= 200 * 1024, "cells.json is {size} bytes");
+}
+
+/// Touchstone's damage a round against the balance tool's, cell by cell.
+///
+/// The tool plays 200,000 rounds of a target that never dies; touchstone gives MME's expectation.
+/// Most cells agree within 7% (or 3 points on a small figure). The cells that do not each have a
+/// named cause, and a wider allowance only for that cause (docs/differences.md, "Quicksilver:
+/// end-to-end cells"):
+/// - the tool caps a blow at the round's 1000 energy, so a very slow blow still lands once a round
+///   where MME's swings fall below one (allowance 17%);
+/// - a standing buff with Alter Energy Usage speeds the tool's blows; MME does not apply it to the
+///   character (allowance 25%);
+/// - a weapon that casts spells on hit: the tool plays every cast, MME prices them from the spell
+///   text (allowance 12%).
+#[test]
+fn cells_agree_with_the_balance_tool() {
     let (_, cases) = load();
     let tables = cases.iter().find(|c| c["kind"] == "tables").unwrap();
     let w = world(tables);
+    let mut ratios = Vec::new();
+    let mut bad = Vec::new();
+    let (mut cannot_hit, mut capped, mut energy, mut cast) = (0, 0, 0, 0);
     for c in cases.iter().filter(|c| c["kind"] == "cell") {
-        let (got, swings) = touchstone(&w, c);
+        let id = c["id"].as_str().unwrap();
         let t = &c["tool"];
-        println!(
-            "{} tool {:.1} ({} blows {:.2}) touchstone {:.1} (swings {:.2}) ratio {:.2}",
-            c["id"].as_str().unwrap(),
-            t["dpr"].as_f64().unwrap(),
-            t["move"].as_str().unwrap(),
-            t["blows_per_round"].as_f64().unwrap(),
-            got,
-            swings,
-            got / t["dpr"].as_f64().unwrap().max(0.01)
-        );
+        let tool = t["dpr"].as_f64().unwrap();
+        let (got, swings) = touchstone(&w, c, Profile::quicksilver_v120());
+        if tool == 0.0 {
+            // a weapon that cannot hurt the target: MME's marker for "cannot be hit" is -9998
+            cannot_hit += 1;
+            if got != -9998.0 {
+                bad.push(format!("{id}: tool cannot hit, touchstone {got}"));
+            }
+            continue;
+        }
+        let ratio = got / tool;
+        ratios.push(ratio);
+        let mut allow: f64 = 0.07;
+        if t["energy"].as_i64() == Some(1000) && swings < 1.0 {
+            capped += 1;
+            allow = allow.max(0.17);
+        }
+        if has_energy_buff(tables, c) {
+            energy += 1;
+            allow = allow.max(0.25);
+        }
+        if t["weapon_dpr"].as_f64().unwrap() > 5.0 {
+            cast += 1;
+            allow = allow.max(0.12);
+        }
+        if (got - tool).abs() > (allow * tool).max(3.0) {
+            bad.push(format!(
+                "{id}: tool {tool:.1}, touchstone {got:.1} (ratio {ratio:.2}, allowance {allow})"
+            ));
+        }
     }
+    assert!(bad.is_empty(), "outside tolerance:\n{}", bad.join("\n"));
+    ratios.sort_by(f64::total_cmp);
+    let median = ratios[ratios.len() / 2];
+    assert!((0.97..=1.02).contains(&median), "median ratio {median}");
+    assert!(
+        cannot_hit >= 2 && capped >= 3 && energy >= 5 && cast >= 1,
+        "the explained groups are exercised: {cannot_hit} {capped} {energy} {cast}"
+    );
 }

@@ -58,7 +58,7 @@ fn abilities(slots: &[AbilitySlot]) -> Value {
     Value::Array(
         slots
             .iter()
-            .filter(|(a, v)| a.code() != 0 || *v != 0)
+            .filter(|(a, _)| a.code() != 0)
             .map(|(a, v)| json!([a.code(), v]))
             .collect(),
     )
@@ -86,7 +86,7 @@ fn item_row(i: &Item) -> Value {
     ])
 }
 
-fn spell_row(s: &Spell) -> Value {
+fn spell_row(s: &Spell, learnable: bool) -> Value {
     json!([
         s.number.0,
         s.level,
@@ -109,6 +109,7 @@ fn spell_row(s: &Spell) -> Value {
         s.durlvls,
         s.durinc,
         abilities(&s.abilities),
+        learnable,
     ])
 }
 
@@ -193,16 +194,23 @@ pub fn family() -> Family {
 
             // the rows the character needs
             let mut worn: Vec<i32> = Vec::new();
-            for i in &b.worn {
+            for i in b.worn.iter().copied().chain(b.weapon) {
                 items.insert(i.number.0, item_row(i));
-                worn.push(i.number.0);
-            }
-            if let Some(w) = b.weapon {
-                items.insert(w.number.0, item_row(w));
+                if b.weapon.is_none_or(|w| w.number != i.number) {
+                    worn.push(i.number.0);
+                }
+                // a spell an item casts (ability 43, "Cast spell") deals damage in the round
+                for (a, v) in &i.abilities {
+                    if a.code() == 43 {
+                        if let Some(s) = data.spells.get(&silvermere_types::ids::SpellNo(*v)) {
+                            spells.entry(i32::from(s.number.0)).or_insert_with(|| spell_row(s, false));
+                        }
+                    }
+                }
             }
             let mut buffs = Vec::new();
             for x in &b.buffs {
-                spells.insert(x.spell.number.0, spell_row(x.spell));
+                spells.entry(i32::from(x.spell.number.0)).or_insert_with(|| spell_row(x.spell, false));
                 buffs.push(x.spell.number.0);
             }
             // the weave picks from every spell the class can cast at the level
@@ -212,7 +220,7 @@ pub fn family() -> Family {
                 level,
                 b.character.evil,
             ) {
-                spells.insert(s.number.0, spell_row(s));
+                spells.insert(i32::from(s.number.0), spell_row(s, true));
             }
             classes.insert(b.class.number.0, class_row(b.class));
             races.insert(b.race.number.0, race_row(b.race));
@@ -280,7 +288,7 @@ pub fn family() -> Family {
                 armour type, worn, accuracy, strength required, speed, min, max, classes, races, negated \
                 spells, abilities as [ability, value]. Spell row: number, level, energy, mana, min, max, \
                 diff, resist mode, target, duration, element, magery, magery level, cap, max levels, max \
-                increment, min levels, min increment, duration levels, duration increment, abilities. \
+                increment, min levels, min increment, duration levels, duration increment, abilities, whether a class can learn it. \
                 Class row: number, base hp, hp per level, exp, magery, magery level, weapon class, armour \
                 type, combat, abilities. Race row: number, minimum stats, maximum stats (Str Int Wil Agl \
                 Hea Cha), hp bonus, exp, abilities. Monster row: number, ac, dr, magic resistance, \
