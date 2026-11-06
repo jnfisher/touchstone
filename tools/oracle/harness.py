@@ -168,6 +168,7 @@ class _Dump:
 class Env:
     def __init__(self, mme, database=None, modules=None, frm=None, db_extra=None):
         self.mme = mme
+        shims.FORM_METHODS.clear()
         self.db = shims.Database(database, db_extra) if database else None
         self.rec = shims.Recorder()
         it = self.it = Interpreter()
@@ -195,6 +196,11 @@ class Env:
         # controls forward to the same frmMain shim, so a case must use one form's controls only
         for k, one in enumerate(spec if isinstance(spec, list) else [spec]):
             raw = open(os.path.join(mme, one.get("file", "frmMain.frm")), "rb").read()
+            if one.get("file", "frmMain.frm") == "frmMain.frm":
+                # `frmMain.Proc(args)` from another module reaches the form's own procedure
+                for pn in one["procs"]:
+                    shims.FORM_METHODS[pn.lower()] = (
+                        lambda args, pn=pn: self.it.call_proc(self.it.find_proc(pn), None, list(args), [None] * len(args)))
             self.it.load_source(frm_mod.build_source(raw, one), name="frmMainProcs%s" % (k or ""), kind="bas")
             for name in frm_mod.control_names(raw):
                 if name.lower() not in self.it.externals:
@@ -374,6 +380,8 @@ class Env:
                     u = Var(u, a["udt"].lower())
                     refs.append(u)
                 args.append(u)
+            elif isinstance(a, dict) and "control" in a:
+                args.append(self.it.externals["frmmain"].vb_get(a["control"], []))  # a frmMain control, by reference
             elif isinstance(a, dict) and "obj" in a:
                 args.append(objs[a["obj"]])  # an object made by this case, passed by reference
             else:
@@ -417,6 +425,9 @@ class Env:
             if m["lo"] is not None:
                 return [one([V.I16(i)]) for i in range(int(m["lo"]), int(m["hi"]) + 1)]
             return one([V.I16(int(m["ci"]))] if m["ci"] is not None else [])
+        if expr.startswith("%lv."):
+            # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
+            return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
         m = self._READ.match(expr)
