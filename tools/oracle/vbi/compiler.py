@@ -558,7 +558,8 @@ class Compiler:
                 fn = b[1]
 
                 def fb(fr):
-                    vals = [MISSING if (v := a(fr)) is OMIT else (v.get() if isinstance(v, REFTYPES) else v)
+                    # a ByRef element passed on (a Type member given to a procedure) arrives as a _RefCell
+                    vals = [MISSING if (v := a(fr)) is OMIT else (v.get() if isinstance(v, REFTYPES + (_RefCell,)) else v)
                             for a in argfns]
                     return fn(it, *vals)
                 return fb

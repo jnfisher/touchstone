@@ -116,14 +116,15 @@ fn damage_from(env: &Value) -> DamageOutput {
     d
 }
 
-enum V {
+#[derive(Debug)]
+pub(crate) enum V {
     C(Currency),
     I(i64),
     F(f64),
     S(String),
 }
 
-fn fields(i: &LairInfo) -> Vec<(&'static str, V)> {
+pub(crate) fn fields(i: &LairInfo) -> Vec<(&'static str, V)> {
     use V::*;
     vec![
         ("sgroupindex", S(i.group_index.clone())),
@@ -173,7 +174,7 @@ fn fields(i: &LairInfo) -> Vec<(&'static str, V)> {
     ]
 }
 
-fn same(v: &V, e: &Value) -> bool {
+pub(crate) fn same(v: &V, e: &Value) -> bool {
     match v {
         V::C(c) => e["cur"].as_i64() == Some(c.scaled()),
         V::I(i) => e.as_i64() == Some(*i),
