@@ -1507,7 +1507,7 @@ pub(crate) fn prepare<'a>(
                 nmr_ver: nmr,
                 avg_level_max_all_stats: avg,
                 party: req.options.monsters.party(),
-                hide_record_numbers: hide_record_numbers,
+                hide_record_numbers,
                 ..PipelineOptions::default()
             };
             let st = refresh_all(profile, world, &ch, &opts).map_err(|e| {
