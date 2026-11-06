@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { getCharacterStore } from '$lib/character.svelte';
 	import { getSettingsStore } from '$lib/settings.svelte';
+	import { api } from '$lib/api';
 	import {
 		defaultBlock,
 		filterNumberText,
@@ -13,7 +14,9 @@
 		predictKnob,
 		predictSimRounds,
 		predictWaypoint,
+		QUICKSILVER_MODEL_NOTE,
 		resetExpFields,
+		shownModels,
 		toDraft,
 		type Draft,
 		type KnobKey,
@@ -36,6 +39,18 @@
 	let draft = $state<Draft>(toDraft(settings.current));
 	let help = $state<string>();
 	let problem = $state<string>();
+	// Under the Quicksilver rules only Model D applies; the server runs it whatever is ticked
+	let quicksilver = $state(false);
+	const shown = $derived(shownModels(quicksilver, draft.block));
+	$effect(() => {
+		if (!open) return;
+		let alive = true;
+		api
+			.info()
+			.then((i) => alive && (quicksilver = i.profile?.name === 'quicksilver'))
+			.catch(() => {});
+		return () => (alive = false);
+	});
 
 	/** A saved character is open, so "by character" has somewhere to write. */
 	const characterName = $derived(character.storedName);
@@ -126,7 +141,16 @@
 					{#each MODEL_KEYS as key, i (key)}
 						<div class="flex items-center gap-2">
 							<label class="flex flex-1 items-center gap-2 text-sm">
-								<input type="checkbox" class="accent-primary size-4" bind:checked={draft.block[key]} data-testid="settings-{key}" />
+								<input
+									type="checkbox"
+									class="accent-primary size-4"
+									checked={shown[key]}
+									disabled={quicksilver}
+									onchange={(e) => {
+										if (!quicksilver) draft.block[key] = e.currentTarget.checked;
+									}}
+									data-testid="settings-{key}"
+								/>
 								{MODEL_HELP[i].title}
 							</label>
 							<button
@@ -150,7 +174,11 @@
 						Show in detail
 					</label>
 				</div>
-				{#if noModelTicked(draft.block)}
+				{#if quicksilver}
+					<p class="{noteCls} bg-muted mt-2 rounded-md px-2 py-1.5" data-testid="settings-quicksilver-models">
+						{QUICKSILVER_MODEL_NOTE}
+					</p>
+				{:else if noModelTicked(draft.block)}
 					<p class="text-foreground font-medium mt-2 text-xs" data-testid="settings-none-ticked">
 						No model ticked: Save turns on A, B and C, as MME does.
 					</p>
