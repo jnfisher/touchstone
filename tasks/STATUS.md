@@ -47,34 +47,54 @@ the orchestrator writes each card when its dependencies are close to merged.
 | P4-01b | Detail panes: ability text, spell damage, monster max damage | #39 |
 | P4-04 | Grid polish: column sizing, copy, find-as-you-type | #22 |
 | P4-05L | Explorer layout: adaptive split and detail pane | #34 |
+| P3-12 | Damage vs monster and combat rounds | #53 |
+| P3-14a | Monster sim glue, monster side | #45 |
+| P3-14b | Monster sim glue, character side | #58 |
+| P3-15 | Lair statistics | #63 |
+| P3-16 | Lair info and party damage | #68 |
+| P3-26 | Exp/hr dispatcher | #56 |
+| P3-28 | Row evaluators: weapons, armour, spells, sundry, shops, classes, races | #59 |
+| P3-29 | List filters: weapons, armour, sundry, inventory, global | #70 |
+| P3-39 | Parsed-item matching, best shop price, MegaMUD stat line | #55 |
+| P3-40 | Paste character | #64 |
+| P3-41 | Paste party | #57 |
+| P3-42 | Hit calculator core | #50 |
+| P3-44 | Character pipeline (RefreshAll) | #51 |
+| P4-05 | Computed explorer columns (non-monster tabs) | #62 |
+| P4-17 | EQ tab on MME's slot rules | #67 |
+| P4-20 | Character tab, character API and persistence | #54 |
+| P4-24/25 | .mmec import and export | #65 |
+| P4-26 | Paste Character dialog | #71 |
+| P4-27a | Hit calculator panel | #52 |
+| P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
+| P4-28a | Calculators UI: exp, coin, swing, backstab | #49 |
+| P4-29/30 | Settings dialog, exp/hr knobs, settings.ini options table | #69 |
+| T-025 | Make the oracle fast | #61 |
+| T-050 | Release workflow and Raspberry Pi packaging (dry run passed) | #66 |
 
 ## In progress
 
-| Card | Title | Depends | State |
-|---|---|---|---|
-| P3-14a | Monster sim glue | P3-13, P3-11 | PR #45 |
-| P3-44 | Character pipeline (RefreshAll) | P3-11, P3-17..19 | agent |
-| P3-12 | Damage vs monster and combat rounds | P3-09, P3-10, P3-11 | agent |
-| P3-42 | Hit calculator core | P3-08, P3-11 | agent |
-| P4-28a | Calculators UI: exp, coin, swing, backstab | P3-43 | agent |
+| Card | Title | State |
+|---|---|---|
+| P3-27 | Row evaluator: monsters (computed Monsters columns, exp/hr) | agent |
+| P3-31 | Reference rows (GetLocations) | agent |
 
 ## Next
 
 | Card | Title | Depends |
 |---|---|---|
-| P4-20 | Char tab (with character save/load API) | P3-44 |
-| P3-14b | Monster sim: character side | P3-14a, P3-44 |
-| P3-15/16 | Lair statistics, lair info and party damage | P3-12 |
-| P3-26 | Exp/hr dispatcher | P3-12 |
-| P3-28 | Row evaluators: weapons, armour, spells, ... | P3-44 |
-| P3-39, P3-41 | Parsed-item matching / MegaMUD stat line; paste party | P3-38 |
-| P4-27a | Calculators UI: hit and backstab panels | P3-42 |
+| P3-30 | List filters: spells and monsters | P3-27 |
+| P4-08/09 | Monsters explorer, detail pane, monster filters | P3-27, P3-30, P3-32..34 |
+| P3-32..34 | Monster detail I–III | P3-31 |
+| P3-35..37 | Item, spell, shop, class, race detail | P3-31 |
+| P4-10..13 | Shops, items, class/race builder, rooms explorers | P3-31, P3-37 |
+| P4-14..16 | Compare panes, context menus | explorers |
+| P4-18, P4-19 | Find Best, Item Manager | P4-17 |
+| P4-21..23 | Global filter, combat setup dialog | P4-20 |
+| P4-28b | Monster Attack Simulator window | P3-14b |
 | T-016 | Textblock script parser for T-014's remaining derived fields | T-014 |
-| T-050 | Release and Pi packaging | |
 
 ## Follow-ups noted
 
-- `bin/touchstone/src/detail.rs` monster max damage is provisional; switch it to `monster_glue`
-  (P3-14a found six differences).
 - Show monster names in spell "Cast by".
 - One shared `RoundUp` helper.
