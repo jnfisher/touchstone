@@ -13,6 +13,12 @@ It reads game data from:
 
 **Status:** early development. Nothing runs yet. See [`docs/plan.md`](docs/plan.md).
 
+## Install
+
+Tagged releases publish static `aarch64` and `x86_64` Linux binaries with the web UI built in,
+plus a `SHA256SUMS` file. See [`docs/install-pi.md`](docs/install-pi.md) for running touchstone
+as a systemd service on a Raspberry Pi 4 beside a silvermere/Quicksilver server.
+
 ## Credit and status of this project
 
 All the game knowledge in this tool comes from MME, built over many years by syntax53 and its
