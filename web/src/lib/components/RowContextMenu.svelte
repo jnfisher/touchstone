@@ -5,7 +5,6 @@
 	import type { Snippet } from 'svelte';
 	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import type { ActionId, MenuItem } from '$lib/contextmenu';
-	import MenuDialogs from './MenuDialogs.svelte';
 
 	let {
 		items,
@@ -60,4 +59,3 @@
 {#if status}
 	<div role="status" class="bg-popover text-popover-foreground fixed right-3 bottom-3 z-[70] rounded-md border px-3 py-2 text-sm shadow-md" data-testid="menu-status">{status}</div>
 {/if}
-<MenuDialogs />

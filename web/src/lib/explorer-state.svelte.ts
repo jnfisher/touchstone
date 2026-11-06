@@ -20,3 +20,9 @@ export const spellBar = $state({ calcCombat: false, vsMr: '0', antiMagic: false 
 export const spellFilters = $state<SpellFilterBoxes>({ ...DEFAULT_SPELL_FILTERS });
 /** A room-command row followed from another tab (`ShowRoomCmdRoomList`): the Rooms tab lists its rooms. */
 export const roomsView = $state<{ list?: { key: string; rowText: string; percent: string } }>({});
+
+/**
+ * "Remove All Filters" (`FilterAll(False)`) asks every explorer to drop what it filters by itself: the search
+ * box and the grid's column filters. Each view watches the epoch.
+ */
+export const filterReset = $state({ epoch: 0 });

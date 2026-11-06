@@ -75,7 +75,9 @@ character. MME `.mmec` files (INI format) can be imported and exported.
   GreaterMUD) branches exactly, including VB6 rounding and integer behaviour (`touchstone-vb6`).
   Where MME disagrees with the real game, parity wins and the difference goes in
   `docs/differences.md`.
-- `Quicksilver`: later. Stock plus the Quicksilver balance changes.
+- `Quicksilver`: later. Stock plus the Quicksilver balance changes. The inventory of those changes,
+  how the server picks the profile, how it is tested and the cards are in
+  `docs/quicksilver-profile.md`.
 
 MME's GreaterMUD and Paramud branches are not ported unless a card asks for them; keep the
 branching visible (a `match` on profile) so they can be added.

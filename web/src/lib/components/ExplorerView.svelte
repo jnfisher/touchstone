@@ -5,7 +5,7 @@
 	import ClassRaceBuilder from '$lib/components/ClassRaceBuilder.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import DamageQuestion from '$lib/components/DamageQuestion.svelte';
-	import MonsterDamageMenu from '$lib/components/MonsterDamageMenu.svelte';
+	import MonsterStatus from '$lib/components/MonsterStatus.svelte';
 	import MonsterFilters from '$lib/components/MonsterFilters.svelte';
 	import SpellFilters from '$lib/components/SpellFilters.svelte';
 	import ExpTable from '$lib/components/ExpTable.svelte';
@@ -17,14 +17,14 @@
 	import { vsMob, vsMobOptions } from '$lib/handoff.svelte';
 	import { createMenuActions, type MenuTarget } from '$lib/menuactions.svelte';
 	import { getCharacterStore, openLastCharacter } from '$lib/character.svelte';
+	import { getSettingsStore } from '$lib/settings.svelte';
 	import { getCompareStore } from '$lib/compare.svelte';
 	import { COMPARE_KINDS, type CompareKind } from '$lib/compare';
 	import { linkFor, paneBody, paneClient, paneKind, type Pane, type RefTarget } from '$lib/detail';
 	import { evaluateBody, evaluateClient, toColDefs as evalColDefs, type EvalRow, type EvalTable } from '$lib/evaluate';
-	import { getSettingsStore } from '$lib/settings.svelte';
 	import { getGlobalFilterStore } from '$lib/globalfilter.svelte';
 	import { getMonsterFilterStore } from '$lib/monsters.svelte';
-	import { roomsView, selection, shopView, spellBar, spellFilters } from '$lib/explorer-state.svelte';
+	import { filterReset, roomsView, selection, shopView, spellBar, spellFilters } from '$lib/explorer-state.svelte';
 	import { dialogs } from '$lib/dialogs.svelte';
 	import { chestRows, spellBarOptions, spellFilterOptions, spellOptionsEnabled } from '$lib/spelltools';
 	import { getDamageStore } from '$lib/monsterdamage.svelte';
@@ -60,6 +60,9 @@
 	let lookups = $state.raw<Lookups>();
 	let error = $state<string>();
 	let search = $state('');
+	$effect(() => {
+		if (filterReset.epoch > 0) search = '';
+	});
 	let shown = $state(0);
 	let gridWidth = $state<number>();
 	let detailHidden = $state(false);
@@ -67,7 +70,9 @@
 	// Each table is fetched when its tab first opens (rooms alone is several MB) and cached by the
 	// API client, so coming back to a tab is instant.
 	const store = getCharacterStore();
+	const settings = getSettingsStore();
 	onMount(async () => {
+		void settings.load();
 		void openLastCharacter(store);
 		try {
 			const info = await api.info();
@@ -101,7 +106,6 @@
 	// character store is shared with the Character tab; edits re-fetch after a short pause.
 	const bar = getGlobalFilterStore();
 	const monsterBoxes = getMonsterFilterStore();
-	const settings = getSettingsStore();
 	const damage = getDamageStore();
 	// MME clears the calculated monster damage when a character is loaded or pasted
 	$effect(() => {
@@ -213,6 +217,7 @@
 		const body = paneBody($state.snapshot(store.doc), $state.snapshot(bar.filter), {
 			charm,
 			showSell,
+			shopsFirst: k === 'items' && settings.current.shops_first,
 			options: k === 'monsters' ? { monsters: $state.snapshot(monsterBoxes.controls) } : undefined,
 			keepCharacter: k === 'monsters'
 		});
@@ -439,7 +444,7 @@
 				disabled={selectedId === undefined || !(Number(selectedId) > 0)}
 				aria-pressed={on}
 				data-testid="compare-add"
-				onclick={() => cmp.toggle(compareKind, Number(selectedId))}
+				onclick={() => void actions.addToCompare(compareKind, Number(selectedId))}
 			>
 				{on ? 'Remove from compare' : 'Add to compare'}
 			</button>
@@ -476,7 +481,7 @@
 			</label>
 		{/if}
 		{#if slug === 'monsters' && !list}
-			<MonsterDamageMenu />
+			<MonsterStatus />
 		{/if}
 		{#if explorer.pending.length}
 			<span class="text-muted-foreground text-xs" data-testid="pending">

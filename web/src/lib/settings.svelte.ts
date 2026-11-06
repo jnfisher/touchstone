@@ -63,6 +63,27 @@ export function createSettingsStore(
       inflight = undefined;
       await load();
     },
+    /**
+     * Flips one of the Options menu's checked items and saves it. Everything else is sent as the server
+     * last stored it (a PUT replaces the whole file). Resolves to the new value.
+     */
+    async setToggle(
+      key: "jump_to_compare" | "shops_first",
+      value: boolean,
+    ): Promise<boolean> {
+      await load();
+      const body: Settings = { ...this.current, [key]: value };
+      saving = true;
+      try {
+        settings = await client.put(body);
+        error = undefined;
+      } catch (e) {
+        error = message(e);
+      } finally {
+        saving = false;
+      }
+      return this.current[key];
+    },
     async save(draft: Draft, hasCharacter: boolean): Promise<SaveResult> {
       const perCharacter = draft.byCharacter && hasCharacter;
       const global = this.current.exp_per_hour.global;

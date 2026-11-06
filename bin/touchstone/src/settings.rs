@@ -125,6 +125,10 @@ pub struct Settings {
     pub auto_load_last_char: bool,
     /// `HideRecordNumbers` (`bHideRecordNumbers`): names print without their "(n)" record numbers.
     pub hide_record_numbers: bool,
+    /// `JumpToCompare` (Options > Jump to Equip/Lists on Add): adding to a compare list opens the Compare tab.
+    pub jump_to_compare: bool,
+    /// `ShopsFirstInRefs` (Options > Show shops first in item references).
+    pub shops_first: bool,
 }
 
 impl Default for Settings {
@@ -135,6 +139,9 @@ impl Default for Settings {
             route_waypoint_interval: WAYPOINT_DEFAULT,
             auto_load_last_char: true,
             hide_record_numbers: false,
+            // LoadSettings reads a missing key as 0.
+            jump_to_compare: false,
+            shops_first: false,
         }
     }
 }
