@@ -129,12 +129,12 @@ const MAX_RANGE: i32 = 100;
 
 /// What an ability value points at: the value itself, or when it is 0 every number from the
 /// spell's `min_base` to its `max_base`.
-pub(super) fn ability_range(value: i32, s: &Spell) -> std::ops::RangeInclusive<i32> {
+pub(super) fn ability_range(value: i32, s: &Spell) -> std::ops::Range<i32> {
     if value > 0 {
-        value..=value
+        value..value + 1
     } else if s.min_base > 0 && s.max_base >= s.min_base {
-        s.min_base..=s.max_base.min(s.min_base + MAX_RANGE)
+        s.min_base..s.max_base.min(s.min_base + MAX_RANGE) + 1
     } else {
-        1..=0
+        0..0
     }
 }

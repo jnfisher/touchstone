@@ -1,11 +1,13 @@
 //! `Items.obtained_from`: the rooms, shops and monsters that yield an item, in NMR's order
 //! (rooms, shops by number, monsters by number), then the scripts that give it (`Textblock
 //! #n(p%)`, in the order they were read) and the monsters whose ask tree does (`NPC #n`).
-//! `Item #n(p%)` (a chest that opens into it) is not reproduced (docs/data-gaps.md).
+//! then `Item #n(p%)` for a chest item whose spell hands it out, with the chance of getting it
+//! from one use (docs/data-gaps.md says where that estimate differs from NMR's).
 use std::collections::HashMap;
 
 use touchstone_model::WorldParts;
 
+use super::chest;
 use super::history::{Field, History};
 use super::scripts::Scripts;
 use super::source::{Source, clip};
@@ -54,11 +56,13 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &m
         .collect();
     by_number.sort_by_key(|m| m.number);
     for m in by_number {
+        // Two slots with one item and one percentage list the monster once.
         for d in m.drops.iter().filter(|d| d.item > 0) {
-            monsters
-                .entry(d.item)
-                .or_default()
-                .push(format!("Monster #{}({}%)", m.number, d.pct));
+            let entry = format!("Monster #{}({}%)", m.number, d.pct);
+            let list = monsters.entry(d.item).or_default();
+            if !list.contains(&entry) {
+                list.push(entry);
+            }
         }
     }
 
@@ -84,6 +88,8 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &m
         }
     }
 
+    let mut chests = chest::entries(src, parts);
+
     for it in &mut parts.items {
         let mut entries: Vec<String> = Vec::new();
         if let Some(v) = rooms.get(&it.number) {
@@ -92,6 +98,7 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &m
         entries.extend(shops.remove(&it.number).unwrap_or_default());
         entries.extend(monsters.remove(&it.number).unwrap_or_default());
         entries.extend(texts.remove(&it.number).unwrap_or_default());
+        entries.extend(chests.remove(&it.number).unwrap_or_default());
         entries.extend(npcs.remove(&it.number).unwrap_or_default());
         let entries = hist.order(Field::ObtainedFrom, it.number, entries);
         it.obtained_from = if entries.is_empty() {

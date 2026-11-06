@@ -20,7 +20,13 @@ const WIDTH: usize = 20000;
 const ABILITY_SUMMON: i32 = 12;
 const ROOM_LAIR: i64 = 3;
 
-pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
+/// What rooms and lairs say about each monster; it does not change between passes.
+pub(super) struct Rooms {
+    specific: HashMap<i32, Vec<(i32, i32)>>,
+    groups: HashMap<i32, Vec<String>>,
+}
+
+pub(super) fn prepare(src: &Source, parts: &WorldParts) -> Rooms {
     let mut specific: HashMap<i32, Vec<(i32, i32)>> = HashMap::new();
     for r in &parts.rooms {
         if r.npc > 0 {
@@ -55,7 +61,11 @@ pub(super) fn apply(src: &Source, parts: &mut WorldParts, sc: &Scripts, hist: &m
             groups.entry(m).or_default().push(entry.clone());
         }
     }
+    Rooms { specific, groups }
+}
 
+pub(super) fn apply(rooms: &Rooms, parts: &mut WorldParts, sc: &Scripts, hist: &mut History) {
+    let (specific, groups) = (&rooms.specific, &rooms.groups);
     let mut spells: HashMap<i32, Vec<i32>> = HashMap::new();
     // Only spells that are part of the game summon anything.
     let mut by_number: Vec<_> = parts

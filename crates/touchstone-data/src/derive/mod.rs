@@ -2,6 +2,7 @@
 //! (T-014). Each submodule fills one group of fields on the `WorldParts` the silvermere loader
 //! has built, from the same database snapshot, so a live reload re-derives them. Formats were
 //! learned from the stock `.mdb`; what is not reproduced is listed in `docs/data-gaps.md`.
+mod chest;
 mod history;
 mod lairs;
 mod obtained_from;
@@ -27,6 +28,7 @@ const MAX_PASSES: usize = 20;
 pub(crate) fn run(conn: &Connection, parts: &mut WorldParts) -> Result<()> {
     let src = source::Source::read(conn)?;
     lairs::apply(&src, parts)?;
+    let rooms = summoned_by::prepare(&src, parts);
     let mut sc = scripts::Scripts::empty();
     let mut hist = history::History::default();
     let mut seen = snapshot(parts);
@@ -34,7 +36,7 @@ pub(crate) fn run(conn: &Connection, parts: &mut WorldParts) -> Result<()> {
         hist.pass = pass as u32;
         // The cross-references read each other's results: monsters that are in the game, then
         // the items they drop, then the spells the items teach.
-        summoned_by::apply(&src, parts, &sc, &mut hist);
+        summoned_by::apply(&rooms, parts, &sc, &mut hist);
         obtained_from::apply(&src, parts, &sc, &mut hist);
         spells::apply(&src, parts, &sc, &mut hist);
         let next = scripts::read(&src, parts);
