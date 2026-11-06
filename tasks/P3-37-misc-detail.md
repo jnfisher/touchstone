@@ -17,6 +17,8 @@ touches:
   - fixtures/known_gaps.json
   - tools/oracle/gen/misc_detail.py
   - tools/oracle/harness.py
+  - tools/oracle/shims.py
+  - tools/oracle/README.md
   - docs/differences.md
 ---
 
@@ -45,7 +47,13 @@ writes into its detail controls (the text box text, the ListView rows, the charm
   charm label caption is (it is text MME computes).
 - `GetLocations` is called through `locations::get_locations`; the rows it adds are returned in the result.
 - Oracle: one additive harness feature, a step `"capture"` (control reads taken right after a call), so one
-  case can run many spells for one character without repeating the character's controls per spell.
+  case can run many spells for one character without repeating the character's controls per spell. Two shim
+  fixes the panes need: a recording ListView answers `ColumnHeaders`, and `ListItems.Add(Index, Key, Text)` now
+  keeps its Text (it was dropped, which no earlier family exercised).
+- `PullSpellEQ` adds teleport, summon, textblock and learn-spell rows to the list it is given; the P3-04 port
+  returns only text, so `detail::spell::spell_eq_rows` walks the same abilities and emits those rows.
+- Invented rows (numbers 9001 and up, textblocks 20101 and up) reach branches the stock data lacks: spell
+  ability shapes with ranges, class lists, NPC greet trees with link-to teleports and bad numbers.
 - Scenarios: all classes and races (plus a missing record and `bStartup`), all shops (several charm/sell
   combinations), NPC command rooms, ~120 spells with no character, with the combat option, and for two
   characters taken from the pipeline scenario. Rules plus scenario stay under 1.5 MB.

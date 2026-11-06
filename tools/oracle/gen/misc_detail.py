@@ -103,6 +103,32 @@ EXTRA_MON = [
     {"Number": 9021, "Name": "No Greet", "GreetTXT": 0},
 ]
 EXTRA_SHOPS = []
+# Invented spells (9001 and up): the ability shapes no stock spell has (castsp/learnspell rows, ranged
+# teleport/textblock/summon/endcast), class lists and difficulty/resist variants.
+EXTRA_SPELLS = [
+    {"Number": 9001, "Name": "Test Caster", "ReqLevel": 5, "Cap": 20, "EnergyCost": 1000, "ManaCost": 6, "Targets": 4,
+     "Abil-0": 43, "AbilVal-0": 1, "Abil-1": 42, "AbilVal-1": 2, "Abil-2": 160, "AbilVal-2": 3, "Abil-3": 1, "AbilVal-3": 0,
+     "MinBase": 4, "MaxBase": 9, "MinInc": 2, "MinIncLVLs": 1, "MaxInc": 3, "MaxIncLVLs": 1, "Dur": 5, "DurInc": 1, "DurIncLVLs": 2,
+     "Learnable": 1, "Learned From": "Shop #3, Monster #2", "Casted By": "Item #1, Monster #5, Spell #1"},
+    {"Number": 9002, "Name": "Test Hop", "Targets": 1, "Abil-0": 140, "AbilVal-0": 0, "Abil-1": 141, "AbilVal-1": 1,
+     "MinBase": 334, "MaxBase": 336, "Learnable": 1},
+    {"Number": 9003, "Name": "Test Block", "Targets": 1, "Abil-0": 148, "AbilVal-0": 0, "MinBase": 3, "MaxBase": 5,
+     "Abil-1": 148, "AbilVal-1": 20101, "ReqLevel": 3},
+    {"Number": 9004, "Name": "Test Summons", "Targets": 1, "Abil-0": 12, "AbilVal-0": 0, "MinBase": 1, "MaxBase": 3,
+     "Abil-1": 12, "AbilVal-1": 7, "Abil-2": 140, "AbilVal-2": 334, "Abil-3": 141, "AbilVal-3": 1},
+    {"Number": 9005, "Name": "Test Ender", "Targets": 1, "Abil-0": 164, "AbilVal-0": 50, "Abil-1": 151, "AbilVal-1": 0,
+     "MinBase": 1, "MaxBase": 3, "Abil-2": 151, "AbilVal-2": 9002, "EnergyCost": 250},
+    {"Number": 9006, "Name": "Test Nest", "Targets": 6, "Abil-0": 153, "AbilVal-0": 9001, "Abil-1": 43, "AbilVal-1": 9006,
+     "Abil-2": 122, "AbilVal-2": 1, "Abil-3": 122, "AbilVal-3": 2},
+    {"Number": 9007, "Name": "Test Classes", "Targets": 3, "Learnable": 1, "Diff": 50, "TypeOfResists": 1, "AttType": 3,
+     "Classes": "(4,5,12)", "Abil-0": 17, "AbilVal-0": 0, "MinBase": 10, "MaxBase": 20, "Magery": 1, "MageryLVL": 2},
+    {"Number": 9008, "Name": "Test Resist", "Targets": 13, "Learnable": 1, "Diff": 0, "TypeOfResists": 2, "AttType": 5,
+     "Classes": "(7)", "Abil-0": 1, "AbilVal-0": 0, "MinBase": 5, "MaxBase": 8, "Abil-1": 144, "AbilVal-1": 0},
+    {"Number": 9009, "Name": "Test Kai", "Targets": 99, "Magery": 5, "ReqLevel": 4, "Diff": 0, "AttType": 9,
+     "Abil-0": 15, "AbilVal-0": 0, "MinBase": 1, "MaxBase": 1},
+    {"Number": 9010, "Name": "Test Hard", "Targets": 2, "Diff": 250, "Abil-0": 8, "AbilVal-0": 0, "MinBase": 5, "MaxBase": 5,
+     "Dur": 10, "Learnable": 1, "Abil-1": 185, "AbilVal-1": 3, "Abil-2": 12, "AbilVal-2": 29999},
+]
 
 
 class Tables:
@@ -117,7 +143,7 @@ class Tables:
             return rows
         self.items = {r["Number"]: r for r in load("Items", "Number")}
         self.monsters = {r["Number"]: r for r in load("Monsters", "Number", EXTRA_MON)}
-        self.spells = {r["Number"]: r for r in load("Spells", "Number")}
+        self.spells = {r["Number"]: r for r in load("Spells", "Number", EXTRA_SPELLS)}
         self.shops = {r["Number"]: r for r in load("Shops", "Number", EXTRA_SHOPS)}
         self.classes = {r["Number"]: r for r in load("Classes", "Number")}
         self.races = {r["Number"]: r for r in load("Races", "Number")}
@@ -164,10 +190,10 @@ def item_row(t, n, full):
 
 def spell_row(t, n):
     r = t.spells[n]
-    return [n, r["Name"] or "", r["ReqLevel"], r["EnergyCost"], r["ManaCost"], r["MinBase"], r["MaxBase"], r["Diff"],
-            r["TypeOfResists"], r["Targets"], r["Dur"], r["AttType"], r["Magery"], r["MageryLVL"], r["Cap"], r["MaxIncLVLs"],
-            r["MaxInc"], r["MinIncLVLs"], r["MinInc"], r["DurIncLVLs"], r["DurInc"], ab(r, 10), 1 if r["Learnable"] else 0,
-            r["Learned From"] or "", r["Casted By"] or "", r["Classes"] or ""]
+    f = ["ReqLevel", "EnergyCost", "ManaCost", "MinBase", "MaxBase", "Diff", "TypeOfResists", "Targets", "Dur", "AttType",
+         "Magery", "MageryLVL", "Cap", "MaxIncLVLs", "MaxInc", "MinIncLVLs", "MinInc", "DurIncLVLs", "DurInc"]
+    return [n, r["Name"] or ""] + [nz(r[k]) for k in f] + [ab(r, 10), 1 if r["Learnable"] else 0,
+                                                              r["Learned From"] or "", r["Casted By"] or "", r["Classes"] or ""]
 
 
 def shop_row(t, n):
@@ -372,7 +398,7 @@ def main():
     for n in sorted(t.shops):
         need.shop(n)
         combo_list = [(0, False)]
-        if H("shopcombo", n) % 3 == 0:
+        if H("shopcombo", n) % 6 == 0:
             combo_list.append(combos[1 + H("shopcombo2", n) % (len(combos) - 1)])
         for k, (charm, sell) in enumerate(combo_list):
             f = {"txtCharStats": {"$array": {"5": {"Tag": str(charm)}}}, "chkGlobalFilter": {"Value": 1 if charm else 0}}
@@ -441,7 +467,126 @@ def main():
     add("npc-append", [{"call": "AddRoomNPCCommandRefs", "args": [LV_MAP, 9001, 1]}], {"lvMap": {"$recordlv": [
         {"Text": "Room: old (1/1)", "Tag": "1/1", "Sub": []}]}}, read={"rows": "%lv.lvMap"})
 
-    scn = finish(t, need, cases, [], [])
+
+    # ---- spells: no character
+    spell_read = {"text": "%c.txtDetail.Text", "loc": "%lv.lvLoc"}
+    cap = {"text": "%c.txtDetail.Text", "loc": "%lv.lvLoc"}
+
+    def sig(n):
+        r = t.spells[n]
+        a = tuple(sorted({nz(r["Abil-%d" % i]) for i in range(10) if nz(r["Abil-%d" % i])}))
+        return (a[:4], nz(r["AttType"]), nz(r["Cap"]) > 0, nz(r["Dur"]) > 0)
+
+    stock_spells = sorted(n for n in t.spells if n < 9000)
+    groups = {}
+    for n in stock_spells:
+        groups.setdefault(sig(n), []).append(n)
+    chosen = []
+    for key in sorted(groups, key=lambda k: (len(groups[k]), k)):
+        n = sorted(groups[key], key=lambda n: H("spsig", n))[0]
+        if n not in chosen:
+            chosen.append(n)
+        if len(chosen) >= 70:
+            break
+    for n in (434, 336, 334, 198, 90, 935, 747, 515, 72):
+        if n in t.spells and n not in chosen:
+            chosen.append(n)
+    for n in sorted(stock_spells, key=lambda n: H("spfill", n)):
+        if len(chosen) >= 112:
+            break
+        if n not in chosen:
+            chosen.append(n)
+    spell_nums = sorted(chosen) + sorted(n for n in t.spells if n >= 9000)
+
+    def spell_needs(n):
+        need.spell_refs(n)
+        r = t.spells[n]
+        need.text(r["Learned From"])
+        need.text(r["Casted By"])
+        for i in range(10):
+            if nz(r["Abil-%d" % i]) == 140:
+                m = [nz(r["AbilVal-%d" % j]) for j in range(10) if nz(r["Abil-%d" % j]) == 141]
+                if m and m[-1] > 0:
+                    v = nz(r["AbilVal-%d" % i])
+                    for y in ([v] if v else range(nz(r["MinBase"]), min(nz(r["MaxBase"]), nz(r["MinBase"]) + 30) + 1)):
+                        need.rooms.add((m[-1], y))
+        for k in list(need.spells):
+            if k in t.spells and k not in need_done:
+                need_done.add(k)
+                rr = t.spells[k]
+                need.text(rr["Learned From"])
+                need.text(rr["Casted By"])
+
+    need_done = set()
+
+    def sp_step(n, capture=True):
+        st = {"call": "PullSpellDetail", "args": [n, TB, LV_LOC], "as": "s%d" % n}
+        if capture:
+            st["capture"] = cap
+        return st
+
+    for n in spell_nums:
+        spell_needs(n)
+        g = {"bHideRecordNumbers": H("sphide", n) % 11 == 0}
+        add("spell-%d" % n, [{"call": "PullSpellDetail", "args": [n, TB, LV_LOC]}], None, g, spell_read)
+    for n in (0, 99999):
+        add("spell-missing-%d" % n, [{"call": "PullSpellDetail", "args": [n, TB, LV_LOC]}], None, None, spell_read)
+    add("spell-startup", [{"call": "PullSpellDetail", "args": [1, TB, LV_LOC]}], None, {"bStartup": True}, spell_read)
+    add("spell-old-nmr", [{"call": "PullSpellDetail", "args": [9007, TB, LV_LOC]}], None, {"nNMRVer": 1.6}, spell_read)
+    add("spell-nmr-17", [{"call": "PullSpellDetail", "args": [9007, TB, LV_LOC]}], None, {"nNMRVer": 1.75}, spell_read)
+    add("spell-kai-off", [{"call": "PullSpellDetail", "args": [9009, TB, LV_LOC]}], None, {"bDisableKaiAutolearn": True}, spell_read)
+    add("spell-clear", [{"call": "PullSpellDetail", "args": [1, TB, LV_LOC]}],
+        {"lvLoc": {"$recordlv": [{"Text": "old", "Tag": "x", "Sub": []}]}}, None, spell_read)
+
+    # ---- spells: combat option on (no character)
+    combat = [n for n in spell_nums if H("spcombat", n) % 3 == 0]
+    for k, n in enumerate(combat):
+        f = {"chkSpellOptions": {"$array": {"0": {"Value": 1}, "2": {"Value": k % 2}}},
+             "txtSpellOptions": {"$array": {"0": {"Text": str((15, 40, 75, 5)[k % 4])}}}}
+        add("spellc-%d" % n, [{"call": "PullSpellDetail", "args": [n, TB, LV_LOC]}], f, None, spell_read)
+    # the combat option with a zero value is off
+    add("spellc-zero", [{"call": "PullSpellDetail", "args": [1, TB, LV_LOC]}],
+        {"chkSpellOptions": {"$array": {"0": {"Value": 1}}}, "txtSpellOptions": {"$array": {"0": {"Text": "0"}}}}, None, spell_read)
+
+    # ---- spells: loaded characters (RefreshAll cut from frmMain.frm, taken from the pipeline scenario)
+    pipe = json.load(open(PIPELINE))
+    pcases = {c["id"]: c for c in pipe["cases"]}
+    char_items, char_spells = set(), set()
+    for pid, tag in (("grid-c4-r7-l15", "cleric"), ("grid-c12-r5-l15", "mage")):
+        pc = pcases[pid]
+        base_forms = json.loads(json.dumps(pc["forms"]["frmMain"]))
+        base_globals = json.loads(json.dumps(pc["globals"]))
+        cls = base_forms["cmbGlobalClass"]["$array"]["0"]["ItemData"]["1"]
+        lvl = base_forms["txtGlobalLevel"]["$array"]["0"]["Text"]
+        base_forms["txtGlobalLevel"]["$array"]["1"] = {"Text": lvl}
+        base_forms["chkGlobalFilter"] = {"Value": 1}
+        char_items |= {x for x in base_globals["nEquippedItem"] if x}
+        for e in base_forms.get("cmbEquip", {}).get("$array", {}).values():
+            char_items |= set(e.get("ItemData", []))
+        for e in base_forms.get("cmbCharBless", {}).get("$array", {}).values():
+            char_spells |= {x for x in e.get("ItemData", []) if x}
+        char_spells |= {base_globals[k] for k in ("nGlobalAttackSpellNum", "nGlobalAttackHealSpellNum") if base_globals.get(k)}
+        mt, ml = t.classes[cls]["MageryType"], t.classes[cls]["MageryLVL"]
+        own = [n for n in stock_spells if nz(t.spells[n]["Magery"]) == mt and nz(t.spells[n]["MageryLVL"]) <= ml and mt
+               and t.spells[n]["Learnable"]]
+        own = pick("chown" + tag, own, 30)
+        others = pick("chother" + tag, [n for n in stock_spells if n not in own and any(nz(t.spells[n]["Abil-%d" % i]) for i in range(10))], 10)
+        picks = sorted(own + others) + [9001, 9007, 9006]
+        for n in picks:
+            spell_needs(n)
+        for opt, (combat_on, anti, mr) in (("plain", (0, 0, 0)), ("combat", (1, 1, 35))):
+            f = json.loads(json.dumps(base_forms))
+            f["chkSpellOptions"] = {"$array": {"0": {"Value": combat_on}, "2": {"Value": anti}}}
+            f["txtSpellOptions"] = {"$array": {"0": {"Text": str(mr)}}}
+            steps = [{"call": "RefreshAll"}] + [sp_step(n) for n in picks]
+            add("char-%s-%s" % (tag, opt), steps, f, base_globals, {})
+        # a character whose level box (1) is empty: the spell pane ignores the character
+        f = json.loads(json.dumps(base_forms))
+        f["txtGlobalLevel"]["$array"]["1"] = {"Text": "0"}
+        steps = [{"call": "RefreshAll"}] + [sp_step(n) for n in picks[:12]]
+        add("char-%s-nolevel" % tag, steps, f, base_globals, {})
+
+    scn = finish(t, need, cases, char_items, char_spells)
     with open(OUT, "w") as f:
         json.dump(scn, f, sort_keys=True, separators=(",", ":"))
         f.write("\n")
@@ -459,7 +604,7 @@ def finish(t, need, cases, char_items, char_spells):
     forms["frmMain"].update({
         "txtDetail": {"Text": ""}, "lvDetail": {"$recordlv": []}, "lvLoc": {"$recordlv": []},
         "lvAssigned": {"$recordlv": []}, "lvMap": {"$recordlv": []},
-        "lblCharmMod": {"Caption": ""},
+        "lblCharmMod": {"Caption": ""}, "chkGlobalFilter": {"Value": 0},
     })
     return {
         "family": "misc_detail",
@@ -478,7 +623,7 @@ def finish(t, need, cases, char_items, char_spells):
         "shims": ["lairs"],
         "tolerance": {"default": 0},
         "frm": pipe["frm"],
-        "db_extra": {"TBInfo": EXTRA_TB, "Monsters": EXTRA_MON, "Shops": EXTRA_SHOPS},
+        "db_extra": {"TBInfo": EXTRA_TB, "Monsters": EXTRA_MON, "Shops": EXTRA_SHOPS, "Spells": EXTRA_SPELLS},
         "globals": {**pipe["globals"], "nNMRVer": 1.83, "bHideRecordNumbers": False, "nGlobalAttackTypeMME": 0},
         "forms": forms,
         "data": data,

@@ -679,8 +679,13 @@ class RecItems(ExtObject):
         if n == "count":
             return V.I32(len(self.lv.rows))
         if n == "add":
-            item = RecItem()
-            self.lv.rows.append(item)
+            # Add([Index], [Key], [Text]): the text of `Add(, , "x")`; Index inserts at that 1-based place
+            text = V.c_str(args[2]) if len(args) > 2 and args[2] is not V.MISSING else ""
+            item = RecItem(text)
+            at = V.int_value(args[0]) if args and args[0] is not V.MISSING else len(self.lv.rows) + 1
+            if at < 1 or at > len(self.lv.rows) + 1:
+                raise VBError(35600, "Index out of bounds")
+            self.lv.rows.insert(at - 1, item)
             return item
         if n == "clear":
             self.lv.rows.clear()

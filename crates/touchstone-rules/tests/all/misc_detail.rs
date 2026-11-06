@@ -561,3 +561,106 @@ fn npc_command_refs_match_the_oracle() {
         bad.join("\n")
     );
 }
+
+fn global_f64(setup: &Value, case: &Value, k: &str, default: f64) -> f64 {
+    let v = &case["inputs"]["globals"][k];
+    let v = if v.is_null() { &setup["globals"][k] } else { v };
+    v.as_f64().unwrap_or(default)
+}
+
+// Expected values: fixtures/rules/misc_detail.json (modMain PullSpellDetail run by the oracle, for no
+// character and for two characters RefreshAll'd from frmMain.frm).
+#[test]
+fn spell_detail_matches_the_oracle() {
+    use touchstone_rules::detail::spell::{SpellDetailOptions, pull_spell_detail};
+    use touchstone_rules::pipeline::refresh_all;
+
+    let fx = load("misc_detail");
+    let setup = &fx.header["setup"];
+    let world = world(&fx.header["data"]);
+    let mut lairs = lair_rows(&fx.header["data"]);
+    let mut bad = Vec::new();
+    let mut n = 0;
+    for case in &fx.cases {
+        let id = case["id"].as_str().unwrap();
+        let steps = case["inputs"]["steps"].as_array().unwrap();
+        if !steps
+            .iter()
+            .any(|s| s["call"].as_str() == Some("PullSpellDetail"))
+        {
+            continue;
+        }
+        let inputs = crate::pipeline::Inputs::new(&fx.header, case);
+        let state = if steps[0]["call"].as_str() == Some("RefreshAll") {
+            Some(
+                refresh_all(
+                    Profile::Stock,
+                    &world,
+                    &inputs.character(),
+                    &inputs.options(),
+                )
+                .unwrap_or_else(|e| panic!("{id}: {e}")),
+            )
+        } else {
+            None
+        };
+        let opts = SpellDetailOptions {
+            startup: global_bool(setup, case, "bStartup"),
+            combat_option: inputs.elem("chkSpellOptions", 0)["Value"].as_i64() == Some(1),
+            combat_value: touchstone_vb6::val(
+                inputs.elem("txtSpellOptions", 0)["Text"]
+                    .as_str()
+                    .unwrap_or(""),
+            ),
+            anti_magic: inputs.elem("chkSpellOptions", 2)["Value"].as_i64() == Some(1),
+            level_box: touchstone_vb6::val(
+                inputs.elem("txtGlobalLevel", 1)["Text"]
+                    .as_str()
+                    .unwrap_or(""),
+            ),
+            nmr_ver: global_f64(setup, case, "nNMRVer", 1.83),
+            only_in_game: global_bool(setup, case, "bOnlyInGame"),
+            disable_kai_autolearn: global_bool(setup, case, "bDisableKaiAutolearn"),
+            hide_record_numbers: global_bool(setup, case, "bHideRecordNumbers"),
+            avg_level_max_all_stats: global_f64(setup, case, "gAvgLevelMaxAllStats", 0.0),
+            locations: location_options(setup, case),
+        };
+        for st in steps
+            .iter()
+            .filter(|s| s["call"].as_str() == Some("PullSpellDetail"))
+        {
+            n += 1;
+            let num = i(&st["args"][0]);
+            let got = pull_spell_detail(
+                Profile::Stock,
+                &world,
+                &mut lairs,
+                state.as_ref(),
+                num,
+                &opts,
+            );
+            let want = match st["as"].as_str() {
+                Some(a) => &case["outputs"][format!("{a}.cap")],
+                None => &case["outputs"],
+            };
+            let loc = Value::Array(got.locations.rows.iter().map(loc_row).collect());
+            let mut why = Vec::new();
+            if got.text != text(&want["text"]) {
+                why.push(format!("text {:?} vs {:?}", got.text, want["text"]));
+            }
+            if loc != want["loc"] {
+                why.push(format!("loc {loc} vs {}", want["loc"]));
+            }
+            if !why.is_empty() {
+                bad.push(format!("{id} spell {num}: {}", why.join("; ")));
+            }
+        }
+    }
+    assert!(n > 250, "{n}");
+    assert!(
+        bad.is_empty(),
+        "{} of {n} mismatches:\n{}",
+        bad.len(),
+        bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n")
+    );
+}

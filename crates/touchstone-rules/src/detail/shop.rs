@@ -19,7 +19,7 @@ fn cur(v: i64) -> Currency {
 }
 
 /// `CStr(Currency)`.
-fn cur_str(c: Currency) -> String {
+pub(crate) fn cur_str(c: Currency) -> String {
     let s = c.scaled();
     let a = s.unsigned_abs();
     let sign = if s < 0 { "-" } else { "" };
@@ -366,7 +366,7 @@ fn mid_c(s: &[char], start: i32, length: i32) -> String {
         .collect()
 }
 
-fn room_name(world: &World, map: i32, room: i32) -> String {
+pub(crate) fn room_name(world: &World, map: i32, room: i32) -> String {
     if map == 0 || room == 0 {
         return "?".to_string();
     }
