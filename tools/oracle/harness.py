@@ -198,6 +198,8 @@ class Env:
         self.it.bind("objToolTip", shims.NoopShim())
         self.it.bind_proc("TColor", lambda it_, c=None: c)            # dark-mode colour map: identity
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
+        for n in spec.get("stub_procs", []):                          # display-only helpers (tool-tip text)
+            self.it.bind_proc(n, lambda it_, *a: "")
 
     # -- shims
     def _msgbox(self, it, *a):
