@@ -48,7 +48,9 @@ in for it:
 - **Identity harness.** `tests/all/quicksilver_identity.rs` runs the MME fixtures through
   `Profile::Quicksilver(&Balance::NEUTRAL)` and expects the MME answers. A card that makes a family
   parametric adds that family's fixture test there. The `weave` family (Q-013a) has no MME counterpart: `tests/all/quicksilver_weave.rs` checks its `v120` column through
-  `quicksilver::weave` and that Stock and NEUTRAL weave nothing. It covers the stats, accuracy, attack, char_panel, spell_cast and character fixtures (and more, as cards
+  `quicksilver::weave` and that Stock and NEUTRAL weave nothing. The `weave_round` family (Q-013b) composes the engine's blow
+  resolution (the share of landed blows that deal damage) with the `weave` proc figures, because the balance tool has no closed per-round
+  figure; `tests/all/quicksilver_weave_round.rs` checks it and the wiring through `get_damage_output`. It covers the stats, accuracy, attack, char_panel, spell_cast and character fixtures (and more, as cards
   add them); the spell_cast run gives the caster a casting stat, class and level so the neutral balance has something to undo.
 
 ## No manual verification

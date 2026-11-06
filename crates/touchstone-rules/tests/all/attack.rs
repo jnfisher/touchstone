@@ -336,6 +336,9 @@ pub(crate) fn check_fixture(prof: Profile) {
                     // MME has no opportunist
                     opportunist_pct: 0,
                     opportunist_avg: 0,
+                    // not an MME field
+                    landed_share: got.landed_share,
+                    landed_per_swing: got.landed_per_swing,
                     attack_desc: out["sattackdesc"].as_str().unwrap().to_string(),
                     attack_detail: out["sattackdetail"].as_str().unwrap().to_string(),
                     attack_speed: int(&out["nattackspeed"]) as i16,

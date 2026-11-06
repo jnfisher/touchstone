@@ -414,3 +414,31 @@ Quicksilver's integer forms and `fixtures/quicksilver/weave.json` pins it exactl
   whole proc, as the engine rolls it. The chance, the killing-blow question and the round are Q-013b and Q-014.
 - A slot with its own value deals that value; the proc's power, the class weave share and the target's element
   resistance only reach slots that use the rolled strength, as in the engine.
+
+## Quicksilver: the weave in the round (Q-013b)
+
+Under `Profile::Quicksilver` only; Stock and the neutral balance (weave chance 0) give exactly the answers
+they gave before. The pieces (pick, volley, proc) are Q-013a; this is how they enter the round.
+
+- The weave is added as an expectation, the way the opportunist is: per swing, the chance that the blow lands
+  and deals damage (hit chance times the share of landed blows, crits included, above the target's damage
+  reduction), times the proc chance, times the expected proc against that target. It goes into `round_total` and
+  `first_round_damage` (whole swings), so `get_damage_output`, the monster pane and the stab opener's follow-up
+  blows carry it. `round_physical` and `min_round_damage` do not (a proc is a chance, not a floor). The detail
+  line gains "Weave: N% for M" (M the mean proc after the resist roll); the opener's text gains
+  "incl. Weave: N% for M".
+- Normal, bash, smash and martial-arts blows all weave (the engine weaves after any non-stab blow); the stab
+  itself does not, the blows after it do. A manual or party damage figure is a number the caller chose and has no
+  class behind it, so it does not weave.
+- Steady state: every damaging landed blow is assumed to leave the target alive, so the weave is never cut off
+  by a kill and a blow that kills does not lose its proc. The killing-blow question stays with Q-014.
+- The target is built from the request's own numbers: magic resistance, the defence flags (Anti-Magic, Undead,
+  Animal, Living), spell immunity and the cold, fire, stone, lightning and water resistances (no poison
+  resistance reaches the request). As in MME's spell branch, a request that does not say "living" is a non-living
+  target, so an Affects Living spell is not picked against it; the monster pane and monster lists do say.
+- The pick is recomputed for every target (it depends on immunity and what a spell spares), which is slow in a
+  long monster list for a hybrid under Quicksilver; stock characters pay nothing.
+- No exact engine per-round figure exists to compare with: the balance tool works at the middle of each roll,
+  on whole kits. The vectors compose the engine's blow resolution (the share of landed blows that deal damage,
+  walked over every roll) with the Q-013a proc figures (the exact mean and resist rolls), and the tests check
+  that composition and then the wiring end to end through `get_damage_output`.

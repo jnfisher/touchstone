@@ -28,11 +28,11 @@ use crate::Family;
 
 const OUT_OF_REACH: u32 = i32::MAX as u32;
 
-fn v120() -> Balance {
+pub(crate) fn v120() -> Balance {
     Balance::V120
 }
 
-fn neutral() -> Balance {
+pub(crate) fn neutral() -> Balance {
     Balance {
         class_melee_pct: ClassMeleePct::even(100),
         opportunist_pct: 0,
@@ -93,19 +93,19 @@ impl Rng for Script {
 }
 
 #[derive(Clone, Copy)]
-struct Hero {
-    class: u16,
-    level: u16,
-    mv: Move,
-    wmin: i16,
-    wmax: i16,
-    plus_max: i16,
+pub(crate) struct Hero {
+    pub(crate) class: u16,
+    pub(crate) level: u16,
+    pub(crate) mv: Move,
+    pub(crate) wmin: i16,
+    pub(crate) wmax: i16,
+    pub(crate) plus_max: i16,
     /// The martial-arts level of the move (Punch, Kick, Jumpkick abilities).
-    skill: i32,
-    ma_dmg: i32,
+    pub(crate) skill: i32,
+    pub(crate) ma_dmg: i32,
 }
 
-fn move_tag(mv: Move) -> &'static str {
+pub(crate) fn move_tag(mv: Move) -> &'static str {
     match mv {
         Move::Attack => "attack",
         Move::Bash => "bash",
@@ -117,9 +117,8 @@ fn move_tag(mv: Move) -> &'static str {
     }
 }
 
-/// The least and the most a landed, non-critical blow deals: the fighter the engine builds, through
-/// its own blow resolution with a certain hit and no damage reduction.
-fn blow_range(h: &Hero, b: &Balance) -> (i32, i32) {
+/// The fighter the engine builds for a hero's blow, before any roll.
+pub(crate) fn built_fighter(h: &Hero, b: &Balance) -> Fighter {
     let mut c = clear_player();
     c.class = ClassNo(h.class);
     c.level = h.level;
@@ -142,7 +141,13 @@ fn blow_range(h: &Hero, b: &Balance) -> (i32, i32) {
         jumpkick_dmg: h.ma_dmg,
         ..PlayerAbilities::default()
     };
-    let built = player_fighter(&c, &class, Some(&w), &[], abil, Blow::new(h.mv, AlignGroup::Evil), b);
+    player_fighter(&c, &class, Some(&w), &[], abil, Blow::new(h.mv, AlignGroup::Evil), b)
+}
+
+/// The least and the most a landed, non-critical blow deals: the fighter the engine builds, through
+/// its own blow resolution with a certain hit and no damage reduction.
+fn blow_range(h: &Hero, b: &Balance) -> (i32, i32) {
+    let built = built_fighter(h, b);
     let roll = |high: bool| {
         let mut atk = Fighter { av: 200, crit: 0, ..built.clone() };
         let def = Fighter::default();
