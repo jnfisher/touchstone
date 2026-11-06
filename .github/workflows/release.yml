@@ -1,0 +1,120 @@
+name: release
+
+# Tags and manual runs only: never part of PR CI. A manual run is a dry run: it builds both
+# archives and attaches them to the run, but publishes no release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned: newer zig needs a matching cargo-zigbuild, and zig must be new enough to cope with
+  # the linker arguments current rustc passes for aarch64.
+  CARGO_ZIGBUILD_VERSION: "0.24.1"
+  ZIG_VERSION: "0.15.1"
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: web/build
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-unknown-linux-musl, x86_64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: web/build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # rust-toolchain.toml pins the compiler; rustup installs it on first use.
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: pip install "ziglang==${ZIG_VERSION}"
+      - run: cargo install cargo-zigbuild --version "${CARGO_ZIGBUILD_VERSION}" --locked
+      # zig supplies the C compiler and linker, which bundled SQLite needs for musl targets.
+      - run: >
+          cargo zigbuild --release --locked --features embed-web
+          -p touchstone --target ${{ matrix.target }}
+      - name: Archive
+        id: pack
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          name="touchstone-${version}-${{ matrix.target }}"
+          mkdir -p "dist/${name}"
+          cp "target/${{ matrix.target }}/release/touchstone" "dist/${name}/"
+          cp packaging/touchstone.example.toml packaging/touchstone.service packaging/README.txt "dist/${name}/"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          echo "archive=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: ${{ steps.pack.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: archive-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: dist
+        run: sha256sum touchstone-*.tar.gz | tee SHA256SUMS
+      # A manual run stops here: the archives and SHA256SUMS are on the run, not published.
+      - uses: actions/upload-artifact@v4
+        if: github.ref_type != 'tag'
+        with:
+          name: release-dry-run
+          path: dist
+          retention-days: 7
+      - uses: softprops/action-gh-release@v2.6.2
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            dist/touchstone-*.tar.gz
+            dist/SHA256SUMS
+          generate_release_notes: true

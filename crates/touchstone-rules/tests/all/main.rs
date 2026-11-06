@@ -20,6 +20,7 @@ mod item_match;
 mod item_value;
 mod lairs;
 mod mega_stat;
+mod mmec;
 mod monster_glue;
 mod monster_glue_char;
 mod monster_sim;
