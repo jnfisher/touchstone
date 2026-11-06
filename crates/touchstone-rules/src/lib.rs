@@ -18,6 +18,7 @@ pub mod gear;
 pub mod hit_calc;
 pub mod item_value;
 pub mod mega_stat;
+pub mod mmec;
 pub mod monster_glue;
 pub mod monster_sim;
 pub mod paste_party;

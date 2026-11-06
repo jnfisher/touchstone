@@ -18,6 +18,7 @@ mod hit_calc;
 mod item_match;
 mod item_value;
 mod mega_stat;
+mod mmec;
 mod monster_glue;
 mod monster_glue_char;
 mod monster_sim;
