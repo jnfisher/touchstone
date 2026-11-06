@@ -8,6 +8,7 @@
 
 pub mod class_race;
 pub mod item;
+pub mod monster;
 pub mod shop;
 pub mod spell;
 

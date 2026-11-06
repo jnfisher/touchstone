@@ -27,6 +27,7 @@ mod locations;
 mod mega_stat;
 mod misc_detail;
 mod mmec;
+mod monster_detail;
 mod monster_glue;
 mod monster_glue_char;
 mod monster_rows;

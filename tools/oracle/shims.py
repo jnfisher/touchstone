@@ -605,6 +605,7 @@ class RecSubItem(ExtObject):
         self.text = text
         self.tag = None
         self.fore = None
+        self.bold = None
 
     def vb_get(self, name, args):
         n = name.lower()
@@ -614,6 +615,8 @@ class RecSubItem(ExtObject):
             return "" if self.tag is None else self.tag
         if n == "forecolor":
             return V.mk_i32(0) if self.fore is None else self.fore
+        if n == "bold":
+            return bool(self.bold)
         raise VBError(438)
 
     def vb_set(self, name, args, value):
@@ -624,6 +627,8 @@ class RecSubItem(ExtObject):
             self.tag = value
         elif n == "forecolor":
             self.fore = value
+        elif n == "bold":
+            self.bold = bool(value)
         else:
             raise VBError(438)
 
@@ -666,6 +671,7 @@ class RecItem(ExtObject):
         self.text = text
         self.tag = None
         self.fore = None
+        self.bold = None
         self.subs = []
 
     def vb_get(self, name, args):
@@ -676,6 +682,8 @@ class RecItem(ExtObject):
             return "" if self.tag is None else self.tag
         if n == "forecolor":
             return V.mk_i32(0) if self.fore is None else self.fore
+        if n == "bold":
+            return bool(self.bold)
         if n == "listsubitems":
             if args:
                 return RecSubItems(self).vb_default(args)
@@ -692,6 +700,8 @@ class RecItem(ExtObject):
             self.tag = value
         elif n == "forecolor":
             self.fore = value
+        elif n == "bold":
+            self.bold = bool(value)
         elif n == "selected":
             pass
         else:
@@ -796,6 +806,27 @@ class RecordingListViewShim(ControlShim):
             return [s.text, tag(s.tag), None if s.fore is None else int(V.int_value(s.fore))]
         return [[r.text, tag(r.tag), [cell(s) for s in r.subs]] + ([int(V.int_value(r.fore))] if r.fore is not None else [])
                 for r in self.rows]
+
+    def dump_detail(self, enc):
+        """The detail panes' rows (Pull*Detail), compact: a row that has no Tag, ForeColor, Bold or sub-items is its Text alone;
+        otherwise [Text, Tag, ForeColor, Bold, cells] (Tag and ForeColor null when never assigned, Bold true only when set to
+        True), where a cell is its Text alone or [Text, Tag, ForeColor, Bold] the same way."""
+        def tag(x):
+            return None if x is None else (x if isinstance(x, str) else V.c_str(x))
+
+        def col(x):
+            return None if x is None else int(V.int_value(x))
+
+        def cell(s):
+            if s.tag is None and s.fore is None and not s.bold:
+                return s.text
+            return [s.text, tag(s.tag), col(s.fore), bool(s.bold)]
+
+        def row(r):
+            if r.tag is None and r.fore is None and not r.bold and not r.subs:
+                return r.text
+            return [r.text, tag(r.tag), col(r.fore), bool(r.bold), [cell(s) for s in r.subs]]
+        return [row(r) for r in self.rows]
 
 
 class ControlArrayShim(ExtObject):
