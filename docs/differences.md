@@ -289,6 +289,30 @@ Under `Profile::Quicksilver` only; the stock rules are untouched.
   maximum. `stats::train_cost`, `soft_cap` and `train_max` are the Quicksilver functions; the character editor
   does not use `train_max` yet.
 
+## Quicksilver: spell damage (Q-012)
+
+- The casting-stat bonus and the class share (R7, R8) scale what `CalculateSpellCast` adds for Inflict Damage,
+  Inflict Damage on Armour and a drain that does not last, before magic resistance and elements; a drain's heal is
+  scaled with it. The engine scales after the target's element resistance and, for the armour kind, before the
+  monster's magic resistance, so the two can differ from MME's order by a point of rounding. Heals, buffs and lasting
+  drains are not scaled. Weapon, item and monster casts never reach this function.
+- The class and the casting stat come from the loaded character (the class's mana stat with gear); a party member
+  pasted in uses the same. The "nobody" profile the spell detail pane uses before a character is loaded has no class
+  and no stat, so it shows the unscaled amounts. MME's cast level (the level you ask the spell at) never feeds the
+  class share, which reads the character's own level, as the engine does.
+- The area resist (R9) is an expectation. An area spell that reaches monsters (targets Divided Area, Divided Area
+  including self, Divided Attack Area, Full Area, Full Attack Area) with an Inflict Damage or Inflict Damage on Armour
+  slot has its round damage multiplied by `1 - p * cut / 100`. The chance `p` is the engine's: a resist roll of
+  `genrdn(1, 100)` (the values 1 to 99) at or under `min(MR / 2, 98)`, so `MR / 2` out of 99, not out of 100. The
+  Min/Avg/Max cast, which are single rolls, are not cut.
+- MME's own "chance to fully-resist" figure is kept as it is. A Never-resist area spell has none, so it only gets the
+  cut; an Always-resist one shows both. Quicksilver's own area roll on a monster is a cut and never a stop, so for
+  those the profile is a little harsher than the server; parity with MME's figure was preferred over replacing it.
+- An area spell that mixes a Steal Hit Points slot with a damage slot has the whole round damage cut, not only the
+  damage slot's share. Such a spell is not expected in the data.
+- The divided kinds split the roll between targets in the game; MME's calculator shows one target's full share and
+  the profile keeps that.
+
 ## Quicksilver: backstab damage and crit (Q-009)
 
 - A Quicksilver stab (R1) reads the level held to `scalecap` in both level terms, divides stealth by

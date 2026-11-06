@@ -8,10 +8,14 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
+use touchstone_model::Magery;
 use touchstone_rules::Profile;
 use touchstone_rules::accuracy::calc_dodge;
 use touchstone_rules::attack::crit_after_knee;
 use touchstone_rules::quicksilver::Balance;
+use touchstone_rules::spell_cast::{
+    SpellCasterProfile, area_resist_chance, area_resist_keep, casting_stat, scale_spell_damage,
+};
 use touchstone_rules::stats::{calc_mr, soft_cap, train_cost, train_max};
 
 struct Vectors {
@@ -299,5 +303,162 @@ fn knees_vectors_reach_past_each_knee() {
     };
     for kind in ["crit", "mr", "dodge"] {
         assert!(moved(kind) > 20, "{kind}: v120 and neutral rarely differ");
+    }
+}
+
+#[test]
+fn spells_header_and_ids() {
+    let v = load("spells");
+    assert_eq!(v.header["family"], "spells");
+    assert_eq!(v.header["content_version"], "1.20.0");
+    assert_eq!(
+        v.header["case_count"].as_u64().unwrap(),
+        v.cases.len() as u64
+    );
+    let ids: Vec<&str> = v.cases.iter().map(|c| c["id"].as_str().unwrap()).collect();
+    assert!(ids.windows(2).all(|w| w[0] < w[1]), "ids sorted and unique");
+    for kind in ["stat", "class", "damage", "casting", "area"] {
+        assert!(v.cases.iter().any(|c| c["kind"] == kind), "no {kind} cases");
+    }
+    let keys = &v.header["balance_keys"];
+    let (b, n) = (Balance::V120, Balance::NEUTRAL);
+    for (key, bv, nv) in [
+        (
+            "spell_stat_permille",
+            b.spell_stat_permille,
+            // The engine's neutral permille is the NEUTRAL profile's: 0
+            n.spell_stat_permille,
+        ),
+        ("spell_stat_knee", b.spell_stat_knee, n.spell_stat_knee),
+        (
+            "aoe_resist_cut_max_pct",
+            b.aoe_resist_cut_max_pct,
+            n.aoe_resist_cut_max_pct,
+        ),
+        (
+            "aoe_resist_cut_div",
+            b.aoe_resist_cut_div,
+            n.aoe_resist_cut_div,
+        ),
+    ] {
+        assert_eq!(int(&keys[key]["v120"]), bv as i32, "{key} v120");
+        assert_eq!(int(&keys[key]["neutral"]), nv as i32, "{key} neutral");
+    }
+}
+
+fn caster(stat: i32, class: i32, level: i32) -> SpellCasterProfile {
+    SpellCasterProfile {
+        casting_stat: stat,
+        class,
+        level,
+        ..SpellCasterProfile::default()
+    }
+}
+
+/// One spells case under `profile`, compared with the vector's `column`.
+fn check_spells(profile: Profile, column: &str) {
+    let v = load("spells");
+    let mut bad = Vec::new();
+    for c in &v.cases {
+        let i = &c["inputs"];
+        let id = c["id"].as_str().unwrap();
+        let want = &c[column];
+        match c["kind"].as_str().unwrap() {
+            "stat" => {
+                let got =
+                    scale_spell_damage(profile, int(&i["amount"]), &caster(int(&i["stat"]), 0, 0));
+                if got != int(want) {
+                    bad.push(format!("{id}: got {got}, vector {column} {want}"));
+                }
+            }
+            "class" => {
+                let who = caster(0, int(&i["class"]), int(&i["level"]));
+                let got = scale_spell_damage(profile, int(&i["amount"]), &who);
+                if got != int(want) {
+                    bad.push(format!("{id}: got {got}, vector {column} {want}"));
+                }
+            }
+            "damage" => {
+                let who = caster(int(&i["stat"]), int(&i["class"]), int(&i["level"]));
+                let got = scale_spell_damage(profile, int(&i["amount"]), &who);
+                if got != int(want) {
+                    bad.push(format!("{id}: got {got}, vector {column} {want}"));
+                }
+            }
+            "casting" => {
+                let magery = Magery::from_code(int(&i["magery"])).unwrap();
+                let got = casting_stat(magery, int(&i["int"]), int(&i["wil"]), int(&i["cha"]));
+                if got != int(want) {
+                    bad.push(format!("{id}: got {got}, vector {column} {want}"));
+                }
+            }
+            "area" => {
+                // The engine's exact sum of integer shares over the roll space, against the closed
+                // form 'share x (1 - p x cut)': each resisting roll truncates its share, losing less
+                // than 1, so the sum sits within `resisting_rolls` below the closed form.
+                let (mr, share) = (int(&i["mr"]), int(&i["share"]));
+                let rolls = f64::from(int(&want["rolls"]));
+                let sum = f64::from(int(&want["sum"]));
+                let closed = f64::from(share) * rolls * area_resist_keep(profile, mr);
+                let resisting = int(&want["resisting_rolls"]);
+                if sum > closed + 1e-6 || closed - sum > f64::from(resisting) + 1e-6 {
+                    bad.push(format!(
+                        "{id}: closed form {closed}, engine sum {sum}, {resisting} resisting rolls"
+                    ));
+                }
+                // The chance is the engine's count of resisting rolls, the cut its cut. Stock never
+                // resists (the cut is off), as does a neutral balance.
+                let (chance, cut) = area_resist_chance(profile, mr);
+                let (want_chance, want_cut) = match profile {
+                    Profile::Stock => (0, 0),
+                    Profile::Quicksilver(_) => (resisting, int(&want["cut_pct"])),
+                };
+                if chance != want_chance || (resisting > 0 && cut != want_cut) {
+                    bad.push(format!(
+                        "{id}: chance/cut {chance}/{cut}, vector {want_chance}/{want_cut}"
+                    ));
+                }
+            }
+            other => panic!("unknown kind {other}"),
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} of {} differ; first:\n{}",
+        bad.len(),
+        v.cases.len(),
+        bad.iter().take(8).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// R7, R8, R9: Quicksilver with the 1.20.0 balance reproduces the engine's answers.
+#[test]
+fn spells_v120_column_matches_quicksilver_profile() {
+    check_spells(Profile::quicksilver_v120(), "v120");
+}
+
+/// The neutral column is the engine with the three rules off: the stock path and the NEUTRAL
+/// profile both give it.
+#[test]
+fn spells_neutral_column_matches_stock_and_neutral_profiles() {
+    check_spells(Profile::Stock, "neutral");
+    check_spells(Profile::Quicksilver(&Balance::NEUTRAL), "neutral");
+}
+
+/// The vectors must reach each rule, or the V120 test proves nothing.
+#[test]
+fn spells_vectors_reach_each_rule() {
+    let v = load("spells");
+    let moved = |kind: &str| {
+        v.cases
+            .iter()
+            .filter(|c| c["kind"] == kind && c["v120"] != c["neutral"])
+            .count()
+    };
+    for (kind, least) in [("stat", 100), ("class", 100), ("damage", 100), ("area", 50)] {
+        assert!(
+            moved(kind) > least,
+            "{kind}: v120 and neutral rarely differ"
+        );
     }
 }

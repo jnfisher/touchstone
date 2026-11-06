@@ -64,3 +64,16 @@ fn paste_party_fixtures_identical_under_neutral() {
 fn char_panel_fixtures_identical_under_neutral() {
     crate::char_panel::check_fixture(neutral());
 }
+
+/// R7, R8, R9: `CalculateSpellCast` (casting-stat and class scaling, the area resist factor) over its
+/// whole fixture with a caster that has a casting stat, class and level.
+#[test]
+fn spell_cast_fixtures_identical_under_neutral() {
+    crate::spell_cast::check_fixture(neutral());
+}
+
+/// R7, R8: the character profile carries the casting stat that `CalculateSpellCast` reads.
+#[test]
+fn character_fixtures_identical_under_neutral() {
+    crate::character::check_fixture(neutral());
+}
