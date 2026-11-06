@@ -2,6 +2,7 @@
 // the mapping from the form to `POST /api/character/evaluate`, and the REST client for saved
 // characters. Every derived number comes from the server; nothing is computed here.
 import type { Item } from "./api";
+import type { ExpHrBlock } from "./settings";
 
 type FetchFn = typeof fetch;
 
@@ -52,6 +53,8 @@ export interface CharacterDoc {
   carried?: { item: number; qty: number }[];
   stash?: { item: number; qty: number }[];
   extra?: { section: string; key: string; value: string }[];
+  /** This character's own exp/hr models and knobs, used when "by character" is on in Settings. */
+  exp_hr?: ExpHrBlock;
 }
 
 export interface EvalOptions {

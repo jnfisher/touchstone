@@ -11,11 +11,12 @@ use axum::routing::{get, post};
 use serde_json::json;
 
 use crate::state::AppState;
-use crate::{calc, character, detail, equip, evaluate, paste};
+use crate::{calc, character, detail, equip, evaluate, paste, settings};
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/info", get(info))
+        .route("/api/settings", get(settings::get).put(settings::put))
         .route("/api/exp", get(calc::exp_table))
         .route("/api/calc/exp", post(calc::calc_exp))
         .route("/api/calc/coin", post(calc::calc_coin))

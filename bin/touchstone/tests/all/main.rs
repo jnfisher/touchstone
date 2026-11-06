@@ -6,6 +6,7 @@ mod detail;
 mod equip;
 mod evaluate;
 mod paste;
+mod settings;
 
 mod health {
     use axum::body::Body;

@@ -6,19 +6,30 @@
 //! ([`count_lairs_by_max_regen`]) and fills the per-monster spawn arrays
 //! ([`calculate_average_lairs`]). The median/outlier helpers behind the walk-time average are here too.
 //!
-//! `GetLairInfo` (the per-group cache) and `GetDamageOutput` are callees owned by other cards; the
-//! caller supplies them through [`LairEnv`]. `GetLairInfo` is P3-16's.
+//! `GetLairInfo` (the per-group cache) and `GetDamageOutput` are callees the statistics reach through
+//! [`LairEnv`]. Card P3-16 adds the cache ([`LairCache`]: `LoadLairInfo`, `GetLairInfoIndex`,
+//! `SetLairInfo`, `GetLairInfo`) and the real [`LairEnv`] over it ([`CharLairEnv`]).
 //!
 //! Where an MME procedure has an `On Error ... Resume out` handler, the port returns what the
 //! procedure had assigned when the error hit, as MME does; no `Result` escapes from those.
 //! Stock only: the GreaterMUD and Paramud lair branches are not ported.
 
-use touchstone_vb6 as vb;
-use touchstone_vb6::{Currency, Vb6Error};
+use std::collections::HashMap;
 
+use touchstone_model::{Lair, Monster, World};
+use touchstone_vb6 as vb;
+use touchstone_vb6::{Currency, Rnd, Vb6Error};
+
+use crate::character::PartyFilter;
 use crate::combat::{
-    DF_ANIMAL, DF_ANTI_MAGIC, DF_LIVING, DF_UNDEAD, DamageOutput, calc_average_non_zero,
+    CombatRoundsArgs, DF_ANIMAL, DF_ANTI_MAGIC, DF_LIVING, DF_UNDEAD, DamageEnv, DamageOutput,
+    DamageRequest, calc_average_non_zero, calc_combat_rounds, get_damage_output,
 };
+use crate::monster_glue::{
+    GlueEnv, PreCalcInput, calculate_monster_damage_vs_char_all, get_pre_calculated_monster_damage,
+};
+use crate::monster_sim::MonsterSimInput;
+use crate::{Profile, RulesError};
 
 type Res<T> = Result<T, Vb6Error>;
 
@@ -31,7 +42,7 @@ const MAJ_THRESH_PCT: i32 = 51;
 // Types
 
 /// MME's `LairInfoType`, field for field (`n` and `s` prefixes dropped; Currency stays [`Currency`],
-/// Integer is `i16`, Long is `i32`). P3-16's `GetLairInfo` returns the same type.
+/// Integer is `i16`, Long is `i32`). `GetLairInfo` returns the same type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LairInfo {
     pub group_index: String,
@@ -885,4 +896,833 @@ fn average_lairs(
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// The lair cache (card P3-16)
+
+/// MME keeps the per-group lair cache in two module globals, `colLairs` and `dictLairInfo`. This is
+/// both, plus `tLastAvgLairInfo`. Slot 0 of `colLairs` is the one `ReDim colLairs(0)` leaves, which
+/// no group uses. Build it with [`LairCache::load`] (`LoadLairInfo`).
+#[derive(Debug, Clone, Default)]
+pub struct LairCache {
+    lairs: Vec<LairInfo>,
+    /// `dictLairInfo`: `vbTextCompare` keys (case-insensitive), values are `colLairs` indexes.
+    index: HashMap<String, usize>,
+    /// `tLastAvgLairInfo`: the monster list's last average lair; the party-damage refresh resets it.
+    pub last_avg_lair_info: LairInfo,
+}
+
+/// What `GetLairInfo` reads from frmMain and the module globals besides its arguments.
+#[derive(Debug, Clone, Copy)]
+pub struct LairQuery<'a> {
+    pub profile: Profile,
+    /// `bStartup`: while the app is starting, `GetLairInfo` returns the cached lair as it is.
+    pub startup: bool,
+    /// `frmMain.chkGlobalFilter.Value = 1`.
+    pub use_character: bool,
+    /// `optMonsterFilter(1)` and `txtMonsterLairFilter(0)`: the party size.
+    pub party: &'a PartyFilter,
+    /// `sGlobalAttackConfig`.
+    pub global_attack_config: &'a str,
+}
+
+/// What `GetLairInfo` asks `GetDamageOutput` about an average lair: `GetDamageOutput(0, ac, dr, mr,
+/// dodge, flags, 100, spell_immu_lvl, magic_lvl, , bs_defense, rcol, rfir, rsto, rlit, rwat)`.
+/// (`AvgDefence` is the shorter question `GetLairAveragesFromLocs` asks.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LairDefence {
+    pub ac: i16,
+    pub dr: i16,
+    pub mr: i16,
+    pub dodge: i16,
+    /// `eDefenseFlags` (`DF_*` in `combat`).
+    pub flags: i32,
+    pub spell_immu_lvl: i16,
+    pub magic_lvl: i16,
+    pub bs_defense: i16,
+    pub rcol: i16,
+    pub rfir: i16,
+    pub rsto: i16,
+    pub rlit: i16,
+    pub rwat: i16,
+}
+
+/// The outside procedures `GetLairInfo` calls. `CalcCombatRounds` is called directly.
+pub trait LairCallouts {
+    /// `GetDamageOutput` against an average lair.
+    fn damage_output(&mut self, q: &LairDefence) -> DamageOutput;
+    /// `GetPreCalculatedMonsterDamage(number, label, n_party)`: the value only.
+    fn monster_damage(&mut self, number: i32, n_party: i16) -> f64;
+    /// `UBound(nMonsterDamageVsChar())`; `None` when MME never dimensioned the array (error 9).
+    fn damage_array_bound(&self) -> Option<i32>;
+}
+
+fn to_i16(x: i32) -> Res<i16> {
+    i16::try_from(x).map_err(|_| Vb6Error::Overflow)
+}
+
+impl LairCache {
+    /// An empty cache: only the unused slot 0.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            lairs: vec![LairInfo::default()],
+            index: HashMap::new(),
+            last_avg_lair_info: LairInfo::default(),
+        }
+    }
+
+    /// The stored lair of a group, by its `colLairs` slot (0 and unknown slots read as `None`).
+    #[must_use]
+    pub fn stored(&self, group_index: &str) -> Option<&LairInfo> {
+        self.index
+            .get(&group_index.to_lowercase())
+            .map(|&i| &self.lairs[i])
+    }
+
+    /// Port of modMMudDatabase `GetLairInfoIndex`: the slot of a group index, appending a new
+    /// (empty) slot for one not seen before. The empty text has no slot: 0.
+    pub fn get_lair_info_index(&mut self, group_index: &str) -> i32 {
+        if group_index.is_empty() {
+            return 0;
+        }
+        if self.lairs.is_empty() {
+            self.lairs.push(LairInfo::default());
+        }
+        let key = group_index.to_lowercase();
+        let slot = if let Some(&i) = self.index.get(&key) {
+            i
+        } else {
+            let i = self.lairs.len();
+            self.lairs.push(LairInfo {
+                group_index: group_index.to_string(),
+                ..LairInfo::default()
+            });
+            self.index.insert(key, i);
+            i
+        };
+        i32::try_from(slot).unwrap_or(i32::MAX)
+    }
+
+    fn slot(&mut self, group_index: &str) -> usize {
+        usize::try_from(self.get_lair_info_index(group_index)).unwrap_or(0)
+    }
+
+    /// Port of modMMudDatabase `SetLairInfo`: stores the lair under its group index. The damage
+    /// fields and the attack config are stored only when the update carries a config; the max
+    /// regen only when positive. A group index shorter than 5 characters is ignored.
+    pub fn set_lair_info(&mut self, u: &LairInfo) {
+        if u.group_index.chars().count() < 5 {
+            return;
+        }
+        let x = self.slot(&u.group_index);
+        let c = &mut self.lairs[x];
+        c.mob_list.clone_from(&u.mob_list);
+        c.mobs = u.mobs;
+        c.avg_exp = u.avg_exp;
+        c.avg_dmg = u.avg_dmg;
+        c.avg_hp = u.avg_hp;
+        c.avg_ac = u.avg_ac;
+        c.avg_dr = u.avg_dr;
+        c.avg_mr = u.avg_mr;
+        c.avg_dodge = u.avg_dodge;
+        c.avg_delay = u.avg_delay;
+        c.avg_walk = u.avg_walk;
+        c.total_lairs = u.total_lairs;
+        c.magic_lvl = u.magic_lvl;
+        c.max_magic_lvl = u.max_magic_lvl;
+        c.spell_immu_lvl = u.spell_immu_lvl;
+        c.max_spell_immu_lvl = u.max_spell_immu_lvl;
+        c.num_undeads = u.num_undeads;
+        c.num_anti_magic = u.num_anti_magic;
+        c.num_animals = u.num_animals;
+        c.num_living = u.num_living;
+        c.avg_bs_defense = u.avg_bs_defense;
+        c.avg_rcol = u.avg_rcol;
+        c.avg_rfir = u.avg_rfir;
+        c.avg_rsto = u.avg_rsto;
+        c.avg_rlit = u.avg_rlit;
+        c.avg_rwat = u.avg_rwat;
+        c.accy_majority = u.accy_majority;
+        c.accy_max = u.accy_max;
+        if !u.global_attack_config.is_empty() {
+            c.damage_out = u.damage_out;
+            c.first_round_damage_out = u.first_round_damage_out;
+            c.min_round_damage_out = u.min_round_damage_out;
+            c.surprise_chance = u.surprise_chance;
+            c.surprise_damage_out = u.surprise_damage_out;
+            c.surprise_min_damage_out = u.surprise_min_damage_out;
+            c.global_attack_config.clone_from(&u.global_attack_config);
+        }
+        if u.max_regen.scaled() > 0 {
+            c.max_regen = u.max_regen;
+        }
+    }
+
+    /// Port of modMMudDatabase `LoadLairInfo`: builds the cache from the `Lairs` table, reading each
+    /// lair's monsters from `Monsters` for the trait counts, resist and defence averages and the
+    /// melee accuracy majority. Stock only (the GreaterMUD delay offset is not ported).
+    ///
+    /// A VB error (a value that does not fit its field, an average over a mob count that rounds to
+    /// zero) ends the load there, as MME's handler does: the lairs before it stay.
+    #[must_use]
+    pub fn load(world: &World, profile: Profile, nmr_ver: f64) -> Self {
+        let Profile::Stock = profile;
+        let mut cache = Self::new();
+        let mut carry = AccuracyCarry::default();
+        for lair in &world.lairs {
+            if load_one(&mut cache, world, nmr_ver, lair, &mut carry).is_err() {
+                break;
+            }
+        }
+        cache
+    }
+
+    /// Port of modMMudDatabase `GetLairInfo`: the cached lair of `group_index` for a given max regen,
+    /// with what the loaded character (or the lair-mode party) does to it and it to them: damage per
+    /// round, rounds to kill (`rtk`) and to clear (`rtc`), damage taken. `max_regen` 0 (the
+    /// argument left out) is read from the fourth part of the index. The damage is stored back
+    /// in the cache for a party of one, and reused while `sGlobalAttackConfig` stays the same.
+    ///
+    /// A group index of fewer than 5 characters, or without a regen, gives an empty lair. A VB error
+    /// part-way returns the fields assigned so far, as MME's handler does.
+    pub fn get_lair_info(
+        &mut self,
+        q: &LairQuery,
+        co: &mut dyn LairCallouts,
+        group_index: &str,
+        max_regen: i16,
+    ) -> LairInfo {
+        let mut out = LairInfo::default();
+        let _ = self.lair_info_steps(q, co, group_index, max_regen, &mut out);
+        out
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn lair_info_steps(
+        &mut self,
+        q: &LairQuery,
+        co: &mut dyn LairCallouts,
+        group_index: &str,
+        mut max_regen: i16,
+        out: &mut LairInfo,
+    ) -> Res<()> {
+        let Profile::Stock = q.profile;
+        if group_index.chars().count() < 5 {
+            return Ok(());
+        }
+        if max_regen == 0 {
+            let parts: Vec<&str> = group_index.split('-').collect();
+            if parts.len() < 4 {
+                return Ok(());
+            }
+            max_regen = vb::cint(vb::val(parts[3]))?;
+        }
+        let x = self.slot(group_index);
+        let c = &self.lairs[x];
+        out.group_index.clone_from(&c.group_index);
+        out.mob_list.clone_from(&c.mob_list);
+        out.mobs = c.mobs;
+        out.avg_exp = c.avg_exp;
+        out.avg_dmg = c.avg_dmg;
+        out.avg_hp = c.avg_hp;
+        out.avg_ac = c.avg_ac;
+        out.avg_dr = c.avg_dr;
+        out.avg_mr = c.avg_mr;
+        out.avg_dodge = c.avg_dodge;
+        out.damage_out = c.damage_out;
+        out.first_round_damage_out = c.first_round_damage_out;
+        out.min_round_damage_out = c.min_round_damage_out;
+        out.surprise_damage_out = c.surprise_damage_out;
+        out.surprise_min_damage_out = c.surprise_min_damage_out;
+        out.surprise_chance = c.surprise_chance;
+        out.global_attack_config.clone_from(&c.global_attack_config);
+        out.max_regen = cur_long(i32::from(max_regen));
+        out.avg_delay = c.avg_delay;
+        out.avg_walk = c.avg_walk;
+        out.total_lairs = c.total_lairs;
+        out.magic_lvl = c.magic_lvl;
+        out.max_magic_lvl = c.max_magic_lvl;
+        out.spell_immu_lvl = c.spell_immu_lvl;
+        out.max_spell_immu_lvl = c.max_spell_immu_lvl;
+        out.num_undeads = c.num_undeads;
+        out.num_anti_magic = c.num_anti_magic;
+        out.num_animals = c.num_animals;
+        out.num_living = c.num_living;
+        out.avg_bs_defense = c.avg_bs_defense;
+        out.avg_rcol = c.avg_rcol;
+        out.avg_rfir = c.avg_rfir;
+        out.avg_rsto = c.avg_rsto;
+        out.avg_rlit = c.avg_rlit;
+        out.avg_rwat = c.avg_rwat;
+        out.accy_majority = c.accy_majority;
+        out.accy_max = c.accy_max;
+        out.rtk = 1.0;
+        out.rtc = f64::from(max_regen);
+        out.damage_mitigated = 0;
+
+        if out.mob_list.is_empty() || q.startup {
+            return Ok(());
+        }
+        // From here MME's locals: -9999 means "no figure".
+        let mut n_party: i16 = 1;
+        if q.party.lair_mode {
+            n_party = vb::cint(vb::val(&q.party.lair_text[0]))?;
+        }
+        n_party = n_party.clamp(1, 6);
+
+        let (mut damage_out, mut first_round, mut surprise);
+        if n_party == 1
+            && out.global_attack_config.chars().count() > 1
+            && out.global_attack_config == q.global_attack_config
+        {
+            // the cached figures were copied into `out` above
+            damage_out = out.damage_out;
+            first_round = out.first_round_damage_out;
+            surprise = out.surprise_damage_out;
+        } else {
+            let mut flags = 0;
+            let half_mobs = out.mobs.checked_div(cur_long(2))?;
+            if out.num_anti_magic > 0 && cur_long(i32::from(out.num_anti_magic)) >= half_mobs {
+                flags |= DF_ANTI_MAGIC;
+            }
+            let ratio_mobs = out.mobs.to_f64() * LAIR_FLAG_RATIO;
+            if out.num_undeads > 0 && f64::from(out.num_undeads) >= ratio_mobs {
+                flags |= DF_UNDEAD;
+            }
+            if out.num_living > 0 && f64::from(out.num_living) >= ratio_mobs {
+                flags |= DF_LIVING;
+            }
+            if out.num_animals > 0 && f64::from(out.num_animals) >= ratio_mobs {
+                flags |= DF_ANIMAL;
+            }
+            let d = co.damage_output(&LairDefence {
+                ac: out.avg_ac,
+                dr: out.avg_dr,
+                mr: out.avg_mr,
+                dodge: out.avg_dodge,
+                flags,
+                spell_immu_lvl: out.spell_immu_lvl,
+                magic_lvl: out.magic_lvl,
+                bs_defense: out.avg_bs_defense,
+                rcol: out.avg_rcol,
+                rfir: out.avg_rfir,
+                rsto: out.avg_rsto,
+                rlit: out.avg_rlit,
+                rwat: out.avg_rwat,
+            });
+            damage_out = cur_to_long(d.average_damage)?;
+            first_round = cur_to_long(d.first_round_damage)?;
+            surprise = cur_to_long(d.surprise_damage)?;
+            let surprise_min = cur_to_long(d.surprise_min_damage)?;
+            let min_round = cur_to_long(d.min_round_damage)?;
+            if damage_out > -9999 || surprise > -9999 {
+                if damage_out > -9990 {
+                    out.damage_out = damage_out;
+                    out.first_round_damage_out = first_round;
+                    out.min_round_damage_out = min_round;
+                } else {
+                    out.damage_out = 0;
+                    out.first_round_damage_out = 0;
+                    out.min_round_damage_out = 0;
+                }
+                if surprise > -9990 {
+                    out.surprise_damage_out = surprise;
+                    out.surprise_chance = d.surprise_damage_chance;
+                    out.surprise_min_damage_out = surprise_min;
+                } else {
+                    out.surprise_damage_out = 0;
+                    out.surprise_chance = 0;
+                    out.surprise_min_damage_out = 0;
+                }
+                if n_party == 1 {
+                    out.global_attack_config = q.global_attack_config.to_string();
+                    self.set_lair_info(out);
+                }
+            } else {
+                damage_out = 9_999_999;
+            }
+        }
+        if damage_out <= -9990 {
+            damage_out = 0;
+        }
+        if first_round <= -9990 {
+            first_round = 0;
+        }
+        if surprise <= -9990 {
+            surprise = 0;
+        }
+
+        let vs_others = q.use_character || n_party > 1;
+        if vs_others {
+            let mobs: Vec<&str> = out.mob_list.split(',').collect();
+            let bound = co
+                .damage_array_bound()
+                .ok_or(Vb6Error::InvalidProcedureCall)?;
+            for m in &mobs {
+                let n = vb::val(m);
+                if n <= f64::from(bound) {
+                    let d = co.monster_damage(vb::clng(n)?, n_party);
+                    out.damage_mitigated = vb::clng(f64::from(out.damage_mitigated) + d)?;
+                }
+            }
+            let count = i32::try_from(mobs.len()).map_err(|_| Vb6Error::Overflow)?;
+            out.damage_mitigated =
+                vb::clng(rnd(f64::from(out.damage_mitigated) / f64::from(count), 1)?)?;
+        }
+        if vs_others && out.avg_dmg.scaled() > 0 && cur_long(out.damage_mitigated) != out.avg_dmg {
+            out.damage_mitigated =
+                cur_to_long(out.avg_dmg.checked_sub(cur_long(out.damage_mitigated))?)?;
+            out.avg_dmg = out.avg_dmg.checked_sub(cur_long(out.damage_mitigated))?;
+        } else {
+            out.damage_mitigated = 0;
+        }
+        out.avg_dmg_lair = out.avg_dmg;
+
+        let mut rtk;
+        if vb::add_i32(damage_out, surprise)? > 0 {
+            let info = calc_combat_rounds(
+                q.profile,
+                &CombatRoundsArgs {
+                    damage_out,
+                    mob_health: out.avg_hp,
+                    mob_damage: cur_to_long(out.avg_dmg_lair)?,
+                    num_mobs: 1.0,
+                    surprise_damage_out: f64::from(surprise),
+                    first_round_damage_out: first_round,
+                    ..CombatRoundsArgs::default()
+                },
+            );
+            rtk = info.rtk;
+            if rtk > 0.0 && rtk < 1.0 {
+                rtk = 1.0;
+            }
+            out.rtk = rtk;
+            if rtk > 1.0 {
+                out.avg_dmg_lair = Currency::from_f64(rnd(out.avg_dmg_lair.to_f64() * rtk, 1)?)?;
+            }
+        } else {
+            rtk = 0.0;
+            out.rtk = rtk;
+        }
+
+        if out.max_regen > cur_long(1) && out.avg_dmg_lair.scaled() > 0 {
+            // (regen + 1) / (2 * regen) is a Currency quotient, so it keeps four decimals
+            let alive = out
+                .max_regen
+                .checked_add(cur_long(1))?
+                .checked_div(cur_long(2).checked_mul(out.max_regen)?)?
+                .to_f64();
+            out.avg_dmg_lair =
+                Currency::from_f64(rnd(vb::div(out.avg_dmg_lair.to_f64(), alive)?, 1)?)?;
+        }
+
+        if vb::add_i32(damage_out, surprise)? > 0 {
+            let rtc = if out.max_regen > cur_long(1) {
+                rtk * out.max_regen.to_f64()
+            } else {
+                rtk
+            };
+            out.rtc = rtc;
+        } else {
+            out.rtc = 0.0;
+        }
+
+        // display-only damage taken over a full clear
+        let mut mob_count = out.max_regen.to_f64();
+        if mob_count < 1.0 {
+            mob_count = 1.0;
+        }
+        let dmg = out.avg_dmg.to_f64();
+        if out.rtc > 0.0 {
+            out.avg_dmg_clear_round = Currency::from_f64(rnd(dmg * (mob_count + 1.0) / 2.0, 1)?)?;
+            out.avg_dmg_clear =
+                Currency::from_f64(rnd(dmg * out.rtk * mob_count * (mob_count + 1.0) / 2.0, 1)?)?;
+        } else {
+            out.avg_dmg_clear_round = Currency::from_f64(rnd(dmg * mob_count, 1)?)?;
+        }
+        Ok(())
+    }
+}
+
+/// The variables `LoadLairInfo` declares inside its loop (`Dim` is not re-run per iteration): a lair
+/// without a positive mob count does not assign them, so it sees the previous lair's values.
+#[derive(Debug, Clone, Copy, Default)]
+struct AccuracyCarry {
+    dom_acc_lair: i32,
+    has_majority: bool,
+}
+
+/// One lair of `LoadLairInfo`; an error is MME's handler ending the load.
+#[allow(clippy::too_many_lines)]
+fn load_one(
+    cache: &mut LairCache,
+    world: &World,
+    nmr_ver: f64,
+    lair: &Lair,
+    carry: &mut AccuracyCarry,
+) -> Res<()> {
+    let mut t = LairInfo {
+        group_index: lair.group_index.clone(),
+        ..LairInfo::default()
+    };
+    t.mob_list.clone_from(&lair.mob_list);
+    t.mobs = cur_long(lair.mobs);
+    t.avg_delay = f64::from(lair.avg_delay);
+    t.avg_exp = Currency::from_f64(lair.avg_exp)?;
+    t.avg_dmg = Currency::from_f64(lair.avg_dmg)?;
+    t.avg_hp = vb::clng(lair.avg_hp)?;
+    t.avg_ac = to_i16(lair.avg_ac)?;
+    t.avg_dr = to_i16(lair.avg_dr)?;
+    t.avg_mr = to_i16(lair.avg_mr)?;
+    t.avg_dodge = to_i16(lair.avg_dodge)?;
+    t.avg_walk = Currency::from_f64(lair.avg_walk)?;
+    t.total_lairs = lair.total_lairs;
+
+    let mut accy = CountDict::new();
+    let mut melee_total_pct = 0_i32;
+    let mut max_acc_lair = 0_i32;
+    let (mut num_undeads, mut num_anti_magic, mut num_animals, mut num_living) = (0_i32, 0, 0, 0);
+    let (mut bs_defense, mut max_magic, mut max_immu) = (0_i32, 0_i32, 0_i32);
+    let (mut rcol, mut rfir, mut rsto, mut rlit, mut rwat) = (0_i32, 0_i32, 0_i32, 0_i32, 0_i32);
+    let (mut magic_lvl, mut spell_immu_lvl) = (0_i32, 0_i32);
+
+    if t.mobs.scaled() > 0 && !world.monsters.is_empty() {
+        let mut magic_counts = CountDict::new();
+        let mut spell_counts = CountDict::new();
+        for part in t.mob_list.split(',') {
+            let n = vb::clng(vb::val(part))?;
+            if n <= 0 {
+                continue;
+            }
+            let Some(m) = world.get_monster(n) else {
+                continue;
+            };
+            load_monster(
+                m,
+                nmr_ver,
+                &mut MonsterTally {
+                    num_undeads: &mut num_undeads,
+                    num_anti_magic: &mut num_anti_magic,
+                    num_animals: &mut num_animals,
+                    num_living: &mut num_living,
+                    bs_defense: &mut bs_defense,
+                    max_magic: &mut max_magic,
+                    max_immu: &mut max_immu,
+                    resists: [&mut rcol, &mut rfir, &mut rsto, &mut rlit, &mut rwat],
+                    magic_counts: &mut magic_counts,
+                    spell_counts: &mut spell_counts,
+                    accy: &mut accy,
+                    melee_total_pct: &mut melee_total_pct,
+                    max_acc_lair: &mut max_acc_lair,
+                },
+            )?;
+        }
+        magic_lvl = magic_counts.mode(0);
+        spell_immu_lvl = spell_counts.mode(0);
+
+        // `\` rounds the mob count to a Long: a count under one half is a division by zero
+        let mobs = t.mobs.to_f64();
+        for v in [
+            &mut bs_defense,
+            &mut rcol,
+            &mut rfir,
+            &mut rsto,
+            &mut rlit,
+            &mut rwat,
+        ] {
+            if *v != 0 {
+                *v = vb::idiv(f64::from(*v), mobs)?;
+            }
+        }
+
+        carry.dom_acc_lair = 0;
+        let mut dom_pct_lair = 0_i32;
+        carry.has_majority = false;
+        if !accy.items.is_empty() {
+            carry.dom_acc_lair = accy.mode(0);
+            dom_pct_lair = accy.count_of(carry.dom_acc_lair);
+        }
+        let sum_pct = if melee_total_pct < 1 {
+            100
+        } else {
+            melee_total_pct
+        };
+        if i64::from(dom_pct_lair) * 100 >= i64::from(MAJ_THRESH_PCT) * i64::from(sum_pct) {
+            carry.has_majority = true;
+        }
+    }
+
+    t.num_undeads = to_i16(num_undeads)?;
+    t.num_anti_magic = to_i16(num_anti_magic)?;
+    t.num_animals = to_i16(num_animals)?;
+    t.num_living = to_i16(num_living)?;
+    t.magic_lvl = to_i16(magic_lvl)?;
+    t.max_magic_lvl = to_i16(max_magic)?;
+    t.spell_immu_lvl = to_i16(spell_immu_lvl)?;
+    t.max_spell_immu_lvl = to_i16(max_immu)?;
+    t.avg_bs_defense = to_i16(bs_defense)?;
+    t.avg_rcol = to_i16(rcol)?;
+    t.avg_rfir = to_i16(rfir)?;
+    t.avg_rsto = to_i16(rsto)?;
+    t.avg_rlit = to_i16(rlit)?;
+    t.avg_rwat = to_i16(rwat)?;
+    // both branches of MME's majority test end up with the dominant accuracy when any melee was pooled
+    t.accy_majority = if carry.has_majority || !accy.items.is_empty() {
+        carry.dom_acc_lair
+    } else {
+        0
+    };
+    t.accy_max = max_acc_lair;
+    cache.set_lair_info(&t);
+    Ok(())
+}
+
+/// The accumulators one monster adds to (`LoadLairInfo`'s per-lair variables).
+struct MonsterTally<'a> {
+    num_undeads: &'a mut i32,
+    num_anti_magic: &'a mut i32,
+    num_animals: &'a mut i32,
+    num_living: &'a mut i32,
+    bs_defense: &'a mut i32,
+    max_magic: &'a mut i32,
+    max_immu: &'a mut i32,
+    /// Cold, fire, stone, lightning, water.
+    resists: [&'a mut i32; 5],
+    magic_counts: &'a mut CountDict,
+    spell_counts: &'a mut CountDict,
+    accy: &'a mut CountDict,
+    melee_total_pct: &'a mut i32,
+    max_acc_lair: &'a mut i32,
+}
+
+fn load_monster(m: &Monster, nmr_ver: f64, t: &mut MonsterTally) -> Res<()> {
+    if m.undead == 1 {
+        *t.num_undeads = vb::add_i32(*t.num_undeads, 1)?;
+    }
+    *t.bs_defense = vb::add_i32(*t.bs_defense, m.bs_defense)?;
+    let (mut had_magic, mut had_immu) = (false, false);
+    let (mut is_living, mut is_animal) = (true, false);
+    for slot in &m.abilities {
+        if slot.ability == 0 {
+            continue;
+        }
+        match slot.ability {
+            3 => *t.resists[0] = vb::add_i32(*t.resists[0], slot.value)?,
+            5 => *t.resists[1] = vb::add_i32(*t.resists[1], slot.value)?,
+            65 => *t.resists[2] = vb::add_i32(*t.resists[2], slot.value)?,
+            66 => *t.resists[3] = vb::add_i32(*t.resists[3], slot.value)?,
+            147 => *t.resists[4] = vb::add_i32(*t.resists[4], slot.value)?,
+            28 => {
+                had_magic = true;
+                t.magic_counts.bump_count(slot.value)?;
+                *t.max_magic = (*t.max_magic).max(slot.value);
+            }
+            51 => *t.num_anti_magic = vb::add_i32(*t.num_anti_magic, 1)?,
+            78 => is_animal = true,
+            109 => is_living = false,
+            139 => {
+                had_immu = true;
+                t.spell_counts.bump_count(slot.value)?;
+                *t.max_immu = (*t.max_immu).max(slot.value);
+            }
+            _ => {}
+        }
+    }
+    if is_animal {
+        *t.num_animals = vb::add_i32(*t.num_animals, 1)?;
+    }
+    if is_living {
+        *t.num_living = vb::add_i32(*t.num_living, 1)?;
+    }
+    if !had_magic {
+        t.magic_counts.bump_count(0)?;
+    }
+    if !had_immu {
+        t.spell_counts.bump_count(0)?;
+    }
+
+    // Melee accuracy distribution: this monster's buckets, then pooled into the lair's
+    let mut prev_cum = 0_i32;
+    let mut uniq: Vec<(i32, i32)> = Vec::with_capacity(5);
+    let mut max_acc = 0_i32;
+    for a in &m.attacks {
+        if !(1..=3).contains(&a.att_type) {
+            continue;
+        }
+        let percent = if nmr_ver >= 1.8 {
+            vb::clng(vb::round(a.true_pct, 0)?)?
+        } else {
+            let cum = a.pct;
+            let p = vb::sub_i32(cum, prev_cum)?;
+            prev_cum = cum;
+            p
+        }
+        .max(0);
+        if percent == 0 {
+            continue;
+        }
+        // attack types 1 and 3 are melee; 2 (spell) is skipped after its percent was read
+        if a.att_type == 1 || a.att_type == 3 {
+            if let Some(e) = uniq.iter_mut().find(|e| e.0 == a.acc) {
+                e.1 = vb::add_i32(e.1, percent)?;
+            } else {
+                uniq.push((a.acc, percent));
+            }
+            max_acc = max_acc.max(a.acc);
+        }
+    }
+    let mut monster_pct = 0_i32;
+    for &(acc, pct) in &uniq {
+        if pct > 0 {
+            t.accy.add_to_count(acc, pct)?;
+            monster_pct = vb::add_i32(monster_pct, pct)?;
+        }
+    }
+    *t.melee_total_pct = vb::add_i32(*t.melee_total_pct, monster_pct)?;
+    *t.max_acc_lair = (*t.max_acc_lair).max(max_acc);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// The real LairEnv
+
+/// The callees `GetLairInfo` needs, over a loaded character (or party): `GetDamageOutput` from
+/// [`combat`](crate::combat), the monster-damage caches through [`monster_glue`](crate::monster_glue).
+pub struct CharCallouts<'a> {
+    pub world: &'a World,
+    /// Everything `GetDamageOutput` reads: the character, tables and party controls.
+    pub damage: DamageEnv<'a>,
+    /// `nMonsterDamageVsParty`, `nMonsterDamageVsChar`, `nMonsterDamageVsDefault`, indexed by
+    /// monster number; -1 is "not calculated". Empty: MME never dimensioned the array.
+    pub vs_party: &'a [Currency],
+    pub vs_char: &'a [Currency],
+    pub vs_default: &'a [Currency],
+    /// `nGlobalMonsterSimRounds`.
+    pub sim_rounds: i32,
+    /// MME's one global attack simulator, and the generator its runs roll with.
+    pub sim: &'a mut MonsterSimInput,
+    pub rnd: &'a mut Rnd,
+}
+
+impl LairCallouts for CharCallouts<'_> {
+    fn damage_output(&mut self, q: &LairDefence) -> DamageOutput {
+        get_damage_output(
+            &self.damage,
+            &DamageRequest {
+                single_monster: 0,
+                vs_ac: i32::from(q.ac),
+                vs_dr: i32::from(q.dr),
+                vs_mr: i32::from(q.mr),
+                vs_dodge: i32::from(q.dodge),
+                defense_flags: q.flags,
+                spell_immunity_lvl: q.spell_immu_lvl,
+                vs_magic_lvl: q.magic_lvl,
+                vs_bs_defense: q.bs_defense,
+                vs_cold: q.rcol,
+                vs_fire: q.rfir,
+                vs_stone: q.rsto,
+                vs_lightning: q.rlit,
+                vs_water: q.rwat,
+                ..DamageRequest::default()
+            },
+        )
+    }
+
+    fn monster_damage(&mut self, number: i32, n_party: i16) -> f64 {
+        let ctx = self.damage.ctx;
+        let env = GlueEnv {
+            profile: ctx.profile,
+            nmr_ver: ctx.nmr_ver,
+        };
+        let input = PreCalcInput {
+            use_character: self.damage.character.global_filter,
+            party: ctx.party,
+            vs_party: self.vs_party,
+            vs_char: self.vs_char,
+            vs_default: self.vs_default,
+        };
+        // The only errors besides VB's own (handled inside) are Unsupported profiles, which
+        // `GetLairInfo` cannot reach: stock is the only profile.
+        get_pre_calculated_monster_damage(
+            self.world,
+            &env,
+            &input,
+            number,
+            n_party,
+            self.sim_rounds,
+            self.sim,
+            self.rnd,
+        )
+        .map_or(0.0, |(v, _)| v)
+    }
+
+    fn damage_array_bound(&self) -> Option<i32> {
+        i32::try_from(self.vs_char.len())
+            .ok()
+            .and_then(|n| n.checked_sub(1))
+            .filter(|&b| b >= 0)
+    }
+}
+
+/// The real [`LairEnv`]: the cache, the `GetLairInfo` inputs and the callees over a character.
+/// `GetLairAveragesFromLocs` and `CalculateAverageLairs` run on it.
+pub struct CharLairEnv<'a> {
+    pub cache: &'a mut LairCache,
+    pub query: LairQuery<'a>,
+    pub callouts: CharCallouts<'a>,
+}
+
+impl LairEnv for CharLairEnv<'_> {
+    fn get_lair_info(&mut self, group_index: &str, max_regen: i16) -> LairInfo {
+        self.cache
+            .get_lair_info(&self.query, &mut self.callouts, group_index, max_regen)
+    }
+
+    fn get_damage_output(&mut self, q: &AvgDefence) -> DamageOutput {
+        self.callouts.damage_output(&LairDefence {
+            ac: q.ac,
+            dr: q.dr,
+            mr: q.mr,
+            dodge: q.dodge,
+            flags: q.flags,
+            spell_immu_lvl: q.spell_immu_lvl,
+            magic_lvl: q.magic_lvl,
+            bs_defense: 0,
+            rcol: 0,
+            rfir: 0,
+            rsto: 0,
+            rlit: 0,
+            rwat: 0,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// CalculateMonsterPartyDamage
+
+/// Port of frmMain `CalculateMonsterPartyDamage` without the screen work (hourglass, colouring the
+/// list, re-selecting the monster): `CalculateMonsterDamageVsCharALL(True)` for the lair-mode
+/// party (`party`), whose per-monster result is what MME stores in `nMonsterDamageVsParty`, then
+/// `tLastAvgLairInfo = GetLairInfo("")`, which empties the cache's last average lair (also when
+/// the calculation failed, as MME's handler resumes at that line).
+///
+/// # Errors
+/// Only what [`calculate_monster_damage_vs_char_all`] reports.
+#[allow(clippy::too_many_arguments)]
+pub fn calculate_monster_party_damage(
+    cache: &mut LairCache,
+    world: &World,
+    env: &GlueEnv,
+    sim_rounds: i32,
+    chr: &crate::monster_glue::CharSimInputs,
+    party: &PartyFilter,
+    sim: &mut MonsterSimInput,
+    rnd: &mut Rnd,
+) -> Result<Vec<(i32, Option<Currency>)>, RulesError> {
+    let r =
+        calculate_monster_damage_vs_char_all(world, env, true, sim_rounds, chr, party, sim, rnd);
+    cache.last_avg_lair_info = LairInfo::default();
+    r
 }

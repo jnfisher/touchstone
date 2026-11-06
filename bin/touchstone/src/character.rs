@@ -27,6 +27,7 @@ use touchstone_vb6::cstr;
 
 use crate::calc::{ApiResult, Body, bad, json, not_found, vb_error_text};
 use crate::detail::nmr_ver;
+use crate::settings::ExpHrBlock;
 use crate::state::AppState;
 
 /// Longest saved-character name; also bounds the file name.
@@ -121,6 +122,10 @@ pub struct CharacterDto {
     pub stash: Vec<StackDto>,
     /// `.mmec` keys touchstone does not model, written back on export.
     pub extra: Vec<ExtraDto>,
+    /// This character's own exp/hr models and knobs (MME's per-character `ceph*` keys); used when
+    /// "by character" is on in the settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exp_hr: Option<ExpHrBlock>,
     /// View toggles that are not part of a saved character.
     #[serde(skip_serializing)]
     pub options: EvalOptions,
@@ -256,6 +261,7 @@ impl CharacterDto {
         if self.carried.len() > MAX_STACKS || self.stash.len() > MAX_STACKS {
             return Err(format!("carried and stash hold at most {MAX_STACKS} rows"));
         }
+        self.exp_hr = self.exp_hr.map(ExpHrBlock::normalized);
         self.stats.resize(6, 0);
         self.equipped.resize(EQUIP_SLOTS, 0);
         self.bless.resize(BLESS_SLOTS, 0);
@@ -351,6 +357,7 @@ impl CharacterDto {
                     value: e.value.clone(),
                 })
                 .collect(),
+            exp_hr: None,
             options: EvalOptions::default(),
         }
     }
@@ -1047,6 +1054,18 @@ async fn read_dto(state: &AppState, name: &str) -> Result<CharacterDto, (StatusC
             Err(not_found(format!("no character {name:?}")))
         }
         Err(e) => Err(io_fail(&e)),
+    }
+}
+
+/// A stored character, or `None` when there is no such file.
+pub async fn read_dto_opt(
+    state: &AppState,
+    name: &str,
+) -> Result<Option<CharacterDto>, (StatusCode, String)> {
+    match read_dto(state, name).await {
+        Ok(dto) => Ok(Some(dto)),
+        Err((StatusCode::NOT_FOUND, _)) => Ok(None),
+        Err(e) => Err(e),
     }
 }
 
