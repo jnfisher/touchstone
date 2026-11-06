@@ -5,6 +5,7 @@ mod common;
 mod detail;
 mod equip;
 mod evaluate;
+mod paste;
 mod settings;
 
 mod health {

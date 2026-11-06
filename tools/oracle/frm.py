@@ -72,6 +72,7 @@ def build_source(raw, spec):
     for n in spec.get("enums", []):
         out += _enum_lines(code, n)
     out += [_decl_line(code, n) for n in spec.get("decls", [])]
+    out += spec.get("extra", [])        # declarations of a module the scenario does not load (list-sort enum)
     for name in spec["procs"]:
         body = _proc_lines(code, name)
         for old, new in ((spec.get("subs") or {}).get(name) or {}).items():
@@ -88,5 +89,8 @@ def build_source(raw, spec):
             idx = next(i for i, l in enumerate(body) if l.strip() == cut["cut"])
             default_tail = ["Exit Sub", "error:", 'Call HandleError("%s")' % name, "End Sub"]
             body = body[:idx] + list(cut.get("append", [])) + list(cut.get("tail", default_tail))
+        if spec.get("me_is_form"):
+            # `Me.hWnd`, `Me.Enabled`: in a module `Me` is nothing, so name the form (its shim takes any property)
+            body = [re.sub(r"\bMe\.", "frmMain.", l) for l in body]
         out += body
     return "\n".join(out) + "\n"

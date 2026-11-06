@@ -7,6 +7,7 @@ pub mod config;
 mod detail;
 pub mod equip;
 pub mod evaluate;
+pub mod paste;
 pub mod settings;
 pub mod source;
 pub mod state;

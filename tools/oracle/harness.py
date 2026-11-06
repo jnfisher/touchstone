@@ -172,13 +172,14 @@ class Env:
         self.db = shims.Database(database, db_extra) if database else None
         self.rec = shims.Recorder()
         self.msgbox_answers = []
+        self.stubbed = []       # scenario stubs that replace a procedure of a loaded module (ExpandCombo)
         it = self.it = Interpreter()
         for f in (modules or MODULES):
             it.load_file(os.path.join(mme, f))
         if frm:
             self._load_form_procs(mme, frm)
         it.ensure_ready()
-        for name in SHIMMED_PROCS:
+        for name in SHIMMED_PROCS + self.stubbed:
             it.procs.pop(name.lower(), None)
         self._bind_procs()
         it.intrinsic_hooks["msgbox"] = self._msgbox
@@ -231,6 +232,12 @@ class Env:
         self.it.bind_proc("ReadINI", lambda it_, *a: "0")             # settings.ini is not read
         for n in [n for one in specs for n in one.get("stub_procs", [])]:   # display-only helpers (tool-tip text)
             self.it.bind_proc(n, lambda it_, *a: "")
+        # `stub_replace`: stubs for procedures of a loaded module (ExpandCombo), which the module's own copy would otherwise win
+        for n in [n for one in specs for n in one.get("stub_replace", [])]:
+            self.it.bind_proc(n, lambda it_, *a: "")
+            self.stubbed.append(n)
+        for n in [n for one in specs for n in one.get("stub_false", [])]:   # yes/no helpers of the UI (is a window loaded)
+            self.it.bind_proc(n, lambda it_, *a: False)
 
     # -- shims
     def _msgbox(self, it, *a):
@@ -663,6 +670,21 @@ class Env:
         if expr.startswith("%lv."):
             # a frmMain ListView's rows after the steps ran: [{"text", "subs": [{"t", "g"?}]}]
             return self.it.externals["frmmain"].vb_get(expr[4:], []).dump(encode)
+        if expr.startswith("%lvn."):
+            # a frmMain recording ListView reduced to Text and Tag per row (the record number and the attack kind)
+            # as "number" or "number:tag" strings, to keep the fixtures small
+            return [r[0] if r[1] is None else "%s:%s" % (r[0], r[1])
+                    for r in self.it.externals["frmmain"].vb_get(expr[5:], []).dump(encode)]
+        if expr.startswith("%list."):
+            # "%list.cmbEquip[0..19]": the ItemData of every entry of each control-array element, in list order
+            m = re.match(r"^%list\.(\w+)\[(\d+)\.\.(\d+)\]$", expr)
+            form = self.it.externals["frmmain"]
+            out = []
+            for k in range(int(m[2]), int(m[3]) + 1):
+                ctl = form.vb_get(m[1], [V.I16(k)])
+                data = ctl.items.get("itemdata", {})
+                out.append([int(V.int_value(data.get(j, 0))) for j in sorted(ctl.items.get("list", {}))])
+            return out
         if expr.startswith("%g."):
             return encode(self.it.get_global(expr[3:]))
         if expr.startswith("%gt."):

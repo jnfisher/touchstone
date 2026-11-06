@@ -14,6 +14,7 @@ pub mod combat;
 pub mod equip;
 pub mod exp;
 pub mod exp_per_hour;
+pub mod filters;
 pub mod game_text;
 pub mod gear;
 pub mod hit_calc;
