@@ -41,7 +41,7 @@ fn v120() -> Balance {
 }
 
 /// Chance 0 for both weave tiers: the one engine key the weaver's neutral setting changes.
-fn neutral() -> Balance {
+pub(crate) fn neutral() -> Balance {
     Balance {
         weave_pct: 0,
         weave_pct_magery1: 0,
@@ -50,7 +50,7 @@ fn neutral() -> Balance {
 }
 
 /// One spell of the synthetic book.
-struct Spec {
+pub(crate) struct Spec {
     number: i16,
     req_level: u16,
     energy: u16,
@@ -90,7 +90,7 @@ const fn spec(number: i16, req_level: u16, energy: u16, (min, max): (i16, i16), 
 
 /// Magery codes: 1 mage, 2 priest, 3 druid, 4 bard. Abilities: 1 damage, 17 damage on armour,
 /// 23 kill dead, 97 good, 98 evil, 108 affects living, 151 cast on ending, 144 non magical.
-fn book() -> Vec<Spec> {
+pub(crate) fn book() -> Vec<Spec> {
     vec![
         Spec { min_inc: (1, 2), max_inc: (3, 2), element: 1, ..spec(101, 10, 500, (20, 30), 1) },
         Spec { max_inc: (1, 4), cap: 40, element: 0, abilities: &[(1, 0)], ..spec(102, 25, 250, (8, 14), 1) },
@@ -113,7 +113,7 @@ fn book() -> Vec<Spec> {
     ]
 }
 
-fn spec_json(s: &Spec) -> Value {
+pub(crate) fn spec_json(s: &Spec) -> Value {
     json!({
         "number": s.number, "req_level": s.req_level, "energy": s.energy,
         "min": s.min, "max": s.max, "min_inc": [s.min_inc.0, s.min_inc.1],
@@ -179,7 +179,7 @@ fn engine_spell(s: &Spec) -> Spell {
     }
 }
 
-fn engine_class(number: u16, magery: u8, magelvl: i16) -> Class {
+pub(crate) fn engine_class(number: u16, magery: u8, magelvl: i16) -> Class {
     Class {
         number: number.into(),
         name: String::new(),
@@ -318,20 +318,20 @@ impl Rng for Script {
 
 /// The monster as the case describes it.
 #[derive(Clone, Copy)]
-struct Target1 {
-    mr: i32,
-    anti: bool,
+pub(crate) struct Target1 {
+    pub(crate) mr: i32,
+    pub(crate) anti: bool,
     /// cold, fire, stone, lightning, water, poison resistance in percent
-    el: [i32; 6],
-    immunity: i32,
-    animal: bool,
-    non_living: bool,
+    pub(crate) el: [i32; 6],
+    pub(crate) immunity: i32,
+    pub(crate) animal: bool,
+    pub(crate) non_living: bool,
 }
 
 impl Target1 {
-    const PLAIN: Self = Self { mr: 1, anti: false, el: [0; 6], immunity: 0, animal: false, non_living: false };
+    pub(crate) const PLAIN: Self = Self { mr: 1, anti: false, el: [0; 6], immunity: 0, animal: false, non_living: false };
 
-    fn json(&self) -> Value {
+    pub(crate) fn json(&self) -> Value {
         json!({
             "mr": self.mr, "anti_magic": self.anti, "cold": self.el[0], "fire": self.el[1],
             "stone": self.el[2], "lightning": self.el[3], "water": self.el[4],
@@ -367,11 +367,11 @@ impl AbilityLookup for Target1 {
     }
 }
 
-struct World {
+pub(crate) struct World {
     spells: std::collections::HashMap<SpellNo, Spell>,
 }
 
-fn world() -> World {
+pub(crate) fn world() -> World {
     World { spells: book().iter().map(|s| (SpellNo(s.number), engine_spell(s))).collect() }
 }
 
@@ -391,7 +391,7 @@ fn engine_pick<'a>(
     pick(cands, level, &|n| w.spells.get(&n), b)
 }
 
-const CLASSES: [(u16, u8, i16); 7] = [
+pub(crate) const CLASSES: [(u16, u8, i16); 7] = [
     (10, 1, 2), // gypsy
     (11, 1, 2), // warlock
     (4, 2, 2),  // cleric
@@ -458,7 +458,7 @@ fn pick_case(w: &World, tag: &str, class: (u16, u8, i16), level: u16, t: &Target
 }
 
 /// The exact mean damage of one unresisted proc, and how many of the 99 resist rolls stop it.
-fn proc_answer(
+pub(crate) fn proc_answer(
     w: &World,
     class: (u16, u8, i16),
     level: u16,

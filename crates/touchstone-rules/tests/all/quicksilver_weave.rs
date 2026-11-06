@@ -34,7 +34,7 @@ fn load() -> Vectors {
     }
 }
 
-fn int(v: &Value) -> i32 {
+pub(crate) fn int(v: &Value) -> i32 {
     i32::try_from(
         v.as_i64()
             .unwrap_or_else(|| panic!("integer expected, got {v}")),
@@ -43,7 +43,12 @@ fn int(v: &Value) -> i32 {
 }
 
 fn book(v: &Vectors) -> Vec<Spell> {
-    v.header["balance_keys"]["book"]
+    book_of(&v.header)
+}
+
+/// The synthetic book of a vector header, as MME-shaped rows.
+pub(crate) fn book_of(header: &Value) -> Vec<Spell> {
+    header["balance_keys"]["book"]
         .as_array()
         .expect("book in the header")
         .iter()
@@ -91,7 +96,7 @@ fn book(v: &Vectors) -> Vec<Spell> {
         .collect()
 }
 
-fn class(i: &Value) -> Class {
+pub(crate) fn class(i: &Value) -> Class {
     Class {
         number: int(&i["class"]),
         name: String::new(),
@@ -107,7 +112,7 @@ fn class(i: &Value) -> Class {
     }
 }
 
-fn target(t: &Value) -> WeaveTarget {
+pub(crate) fn target(t: &Value) -> WeaveTarget {
     WeaveTarget {
         mr: int(&t["mr"]),
         anti_magic: t["anti_magic"].as_bool().unwrap(),
@@ -124,7 +129,11 @@ fn target(t: &Value) -> WeaveTarget {
     }
 }
 
-fn usable<'a>(profile: Profile, spells: &'a [Spell], classes: &'a [Class]) -> UsableEnv<'a> {
+pub(crate) fn usable<'a>(
+    profile: Profile,
+    spells: &'a [Spell],
+    classes: &'a [Class],
+) -> UsableEnv<'a> {
     UsableEnv {
         profile,
         spells,

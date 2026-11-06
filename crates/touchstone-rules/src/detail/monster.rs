@@ -23,8 +23,8 @@ use crate::attack::AttackRequest;
 use crate::character::{AttackType, AttackTypeMud, CharacterProfile};
 use crate::combat::{
     AR_ANIMAL, AR_LIVING, AR_NONE, AR_UNDEAD, AR_UNKNOWN, CombatRoundsArgs, DF_ANIMAL,
-    DF_ANTI_MAGIC, DF_LIVING, DF_UNDEAD, DamageEnv, DamageRequest, attack_with, calc_combat_rounds,
-    get_damage_output, populate, surprise_round,
+    DF_ANTI_MAGIC, DF_LIVING, DF_UNDEAD, DamageEnv, DamageRequest, add_weave, attack_with,
+    calc_combat_rounds, get_damage_output, populate, surprise_round, weave_target,
 };
 use crate::exp_per_hour::{ExpPerHourInfo, ExpPerHourInput, ExpPerHourSettings, calc_exp_per_hour};
 use crate::lairs::{
@@ -1642,6 +1642,18 @@ fn char_damage_out(
                             bs_defense: i32::from(st.bs_defense),
                             ..AttackRequest::default()
                         },
+                        &weave_target(
+                            flags,
+                            calc_mr,
+                            calc_immu,
+                            [
+                                calc_res[0],
+                                calc_res[1],
+                                calc_res[2],
+                                calc_res[3],
+                                calc_res[5],
+                            ],
+                        ),
                     )?;
                     st.pass.surprise = bs.damage;
                     st.pass.surprise_min = bs.min_damage;
@@ -1670,7 +1682,7 @@ fn char_damage_out(
                         },
                         _ => (5, weapon0),
                     };
-                    let a = attack_with(
+                    let mut a = attack_with(
                         &env.callouts.damage,
                         forced,
                         &AttackRequest {
@@ -1683,6 +1695,25 @@ fn char_damage_out(
                             ..AttackRequest::default()
                         },
                     );
+                    // Quicksilver's weave (R6), the same term `get_damage_output` adds.
+                    add_weave(
+                        &env.callouts.damage,
+                        forced,
+                        &weave_target(
+                            flags,
+                            calc_mr,
+                            calc_immu,
+                            [
+                                calc_res[0],
+                                calc_res[1],
+                                calc_res[2],
+                                calc_res[3],
+                                calc_res[5],
+                            ],
+                        ),
+                        vb::fix(a.swings),
+                        &mut a,
+                    )?;
                     let (t_attack_desc, t_attack_detail) =
                         (a.attack_desc.clone(), a.attack_detail.clone());
                     if calc_magic > 0 && st.weapon_magic < i32::from(calc_magic) {

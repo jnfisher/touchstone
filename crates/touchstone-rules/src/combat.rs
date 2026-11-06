@@ -30,7 +30,8 @@ use crate::attack::{
     calculate_attack,
 };
 use crate::character::{AttackType, AttackTypeMud, Character, Context, populate_character_profile};
-use crate::spell_cast::{CastRequest, SpellCastEnv, calculate_resist_damage};
+use crate::quicksilver::weave::{self, WeaveTarget};
+use crate::spell_cast::{CastRequest, SpellCastEnv, UsableEnv, calculate_resist_damage};
 
 /// `STOCK_MOB_HPREGEN_ROUNDS`: rounds between a monster's HP regeneration ticks.
 pub const STOCK_MOB_HPREGEN_ROUNDS: f64 = 18.0;
@@ -618,6 +619,87 @@ pub(crate) fn attack_with(
     )
 }
 
+/// What a weave needs to know of the monster a blow lands on, from the request's own values.
+///
+/// A target is "living" only when the request says so, the same test MME's spell branch makes for
+/// an Affects Living spell, so a request with no defence flags is a non-living one.
+pub fn weave_target(flags: i32, mr: i32, spell_immunity: i16, elements: [i16; 5]) -> WeaveTarget {
+    let [cold, fire, stone, lightning, water] = elements.map(i32::from);
+    WeaveTarget {
+        mr,
+        anti_magic: (flags & DF_ANTI_MAGIC) != 0,
+        cold,
+        fire,
+        stone,
+        lightning,
+        water,
+        poison: 0,
+        spell_immunity: i32::from(spell_immunity),
+        undead: (flags & DF_UNDEAD) != 0,
+        animal: (flags & DF_ANIMAL) != 0,
+        non_living: (flags & DF_LIVING) == 0,
+    }
+}
+
+/// The weave of a Quicksilver hybrid (R6) in the damage of a normal blow: adds the expected damage of
+/// the proc to `hit`'s round and first-round figures and says so in its detail text. `blows` is the
+/// whole blows the first-round figure counts. `hit` is a non-stab blow of the character `t` against
+/// `target`; the caller keeps manual damage out.
+///
+/// Steady state, as the opportunist is: every landed blow that deals damage is assumed to leave the
+/// target alive (Q-014 owns the killing blow). Nothing changes, not even the text, under Stock, the
+/// neutral balance (chance 0), for a class that does not weave or when no spell qualifies.
+///
+/// Returns the proc chance in percent and the mean proc damage, when there is one.
+///
+/// # Errors
+/// The VB6 overflow of the sum.
+pub fn add_weave(
+    env: &DamageEnv,
+    t: &crate::character::CharacterProfile,
+    target: &WeaveTarget,
+    blows: f64,
+    hit: &mut attack::AttackDamage,
+) -> Result<Option<(u32, i32)>, Vb6Error> {
+    let ctx = env.ctx;
+    let Some(class) = ctx.classes.iter().find(|c| c.number == t.class) else {
+        return Ok(None);
+    };
+    let Some(weaver) = weave::weaver(ctx.profile, class) else {
+        return Ok(None);
+    };
+    let usable = UsableEnv {
+        profile: ctx.profile,
+        spells: ctx.spells,
+        classes: ctx.classes,
+        nmr_ver: ctx.nmr_ver,
+        only_in_game: false,
+        disable_kai_autolearn: false,
+    };
+    let per_hit = weave::expected_per_hit(&usable, class, t.align, &t.spell_caster(), target);
+    if per_hit <= 0.0 || hit.swings <= 0.0 {
+        return Ok(None);
+    }
+    let landed = hit.landed_per_swing;
+    hit.round_total = vb::add_i32(
+        hit.round_total,
+        vb::clng(vb::round(per_hit * hit.swings * landed, 0)?)?,
+    )?;
+    hit.first_round_damage = vb::add_i32(
+        hit.first_round_damage,
+        vb::clng(vb::round(per_hit * blows * landed, 0)?)?,
+    )?;
+    let mean = vb::clng(vb::round(
+        per_hit * 100.0 / f64::from(weaver.chance_pct),
+        0,
+    )?)?;
+    if !hit.attack_detail.is_empty() {
+        let text = format!("Weave: {}% for {mean}", weaver.chance_pct);
+        hit.attack_detail = crate::textblock::auto_append(&hit.attack_detail, &text, ", ");
+    }
+    Ok(Some((weaver.chance_pct, mean)))
+}
+
 /// The opening round of a stab, as `GetDamageOutput` and the monster pane report it.
 pub(crate) struct SurpriseRound {
     /// `nSurpriseDamage`: the stab's average hit plus its weapon's cast damage; under Quicksilver
@@ -636,21 +718,42 @@ pub(crate) fn surprise_round(
     env: &DamageEnv,
     t: &crate::character::CharacterProfile,
     ar: &AttackRequest,
+    target: &WeaveTarget,
 ) -> Result<SurpriseRound, Vb6Error> {
     let bs = attack_with(env, t, ar);
     let mut damage = vb::add_i32(bs.avg_hit, bs.avg_extra_hit)?;
     let mut min_damage = vb::add_i32(bs.min_dmg, bs.avg_extra_swing)?;
     let mut detail = bs.attack_detail;
-    if let Some(open) =
+    if let Some(mut open) =
         attack::calc_stab_opener(env.ctx.profile, &attack_env(env), &attack_profile(t), ar)
     {
+        // The blows after the stab are normal ones, so a hybrid's weave fires on them (R6).
+        let mut weave_text = String::new();
+        if matches!(env.ctx.profile, Profile::Quicksilver(_)) && open.follow_blows > 0 {
+            let mut normal = attack_with(
+                env,
+                t,
+                &AttackRequest {
+                    attack_type: 5,
+                    ..*ar
+                },
+            );
+            let before = normal.first_round_damage;
+            if let Some((pct, mean)) =
+                add_weave(env, t, target, f64::from(open.follow_blows), &mut normal)?
+            {
+                open.follow_damage =
+                    vb::add_i32(open.follow_damage, normal.first_round_damage - before)?;
+                weave_text = format!(" incl. Weave: {pct}% for {mean}");
+            }
+        }
         damage = vb::add_i32(damage, open.follow_damage)?;
         min_damage = vb::add_i32(min_damage, open.follow_min_damage)?;
         if !detail.is_empty() {
             if !detail.ends_with(' ') {
                 detail.push(' ');
             }
-            detail.push_str(&format!("+ {}", open.text()));
+            detail.push_str(&format!("+ {}{weave_text}", open.text()));
         }
     }
     Ok(SurpriseRound {
@@ -858,6 +961,7 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
                         bs_defense: i32::from(vs_bs_defense),
                         ..AttackRequest::default()
                     },
+                    &weave_target(df, vs_mr, immunity_lvl, [rcol, rfir, rsto, rlit, rwat]),
                 )?;
                 surprise = cur_long(bs.damage);
                 surprise_min = cur_long(bs.min_damage);
@@ -957,7 +1061,7 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
 
                 if i32::from(vs_magic_lvl) <= weapon_magic {
                     if st.weapon_number[0] > 0 {
-                        let hit = attack_with(
+                        let mut hit = attack_with(
                             env,
                             &t,
                             &AttackRequest {
@@ -970,6 +1074,9 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
                                 ..AttackRequest::default()
                             },
                         );
+                        let foe =
+                            weave_target(df, vs_mr, immunity_lvl, [rcol, rfir, rsto, rlit, rwat]);
+                        add_weave(env, &t, &foe, vb::fix(hit.swings), &mut hit)?;
                         average = cur_long(hit.round_total);
                         swings_out = hit.swings;
                         min_round = cur_long(hit.min_round_damage);
@@ -1092,7 +1199,7 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
                         3 => 3,
                         _ => 1,
                     };
-                    let hit = attack_with(
+                    let mut hit = attack_with(
                         env,
                         &t,
                         &AttackRequest {
@@ -1104,6 +1211,8 @@ fn damage_steps(env: &DamageEnv, req: &DamageRequest) -> R<DamageOutput> {
                             ..AttackRequest::default()
                         },
                     );
+                    let foe = weave_target(df, vs_mr, immunity_lvl, [rcol, rfir, rsto, rlit, rwat]);
+                    add_weave(env, &t, &foe, vb::fix(hit.swings), &mut hit)?;
                     average = cur_long(hit.round_total);
                     min_round = cur_long(hit.min_round_damage);
                     swings_out = hit.swings;

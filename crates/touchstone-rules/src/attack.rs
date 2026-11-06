@@ -642,6 +642,12 @@ pub struct AttackDamage {
     pub opportunist_pct: i16,
     /// The mean damage of one bonus hit that fires, after damage reduction.
     pub opportunist_avg: i32,
+    /// The share of landed blows (crits included) that deal damage, that is, whose roll is above the
+    /// target's damage reduction. Not an MME field; the Quicksilver weave (R6) fires on such a
+    /// blow, and so does the opportunist.
+    pub landed_share: f64,
+    /// The expected blows per swing that land and deal damage: the hit chance times `landed_share`.
+    pub landed_per_swing: f64,
     pub attack_desc: String,
     pub attack_detail: String,
     pub attack_speed: i16,
@@ -1799,9 +1805,10 @@ fn finish(
     // R4: per landed blow, the proc chance times the mean bonus, only for blows that deal damage
     // (the target is assumed to survive them, as the rest of the steady state does).
     let mut opportunist_per_hit = 0.0_f64;
+    let landed = (1.0 - n_percent) * share_above(raw_min, raw_max, vs_dr) + n_percent * crit_share;
+    r.landed_share = landed;
+    r.landed_per_swing = landed * hit;
     if let Some(o) = opportunist {
-        let landed =
-            (1.0 - n_percent) * share_above(raw_min, raw_max, vs_dr) + n_percent * crit_share;
         let mean = opportunist_mean((o.min, o.max), vs_dr);
         opportunist_per_hit = landed * f64::from(o.pct) / 100.0 * mean;
         r.opportunist_pct = i16::try_from(o.pct).unwrap_or(100);

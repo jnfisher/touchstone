@@ -167,7 +167,7 @@ fn share_cases_match_the_balance() {
 }
 
 /// The weapon text is never asked: the test weapon has no cast ability.
-struct NoCasts;
+pub(crate) struct NoCasts;
 
 impl CastText for NoCasts {
     fn spell_name(&self, n: i32) -> String {
@@ -178,7 +178,7 @@ impl CastText for NoCasts {
     }
 }
 
-fn weapon(min: i32, max: i32, speed: i32) -> Item {
+pub(crate) fn weapon(min: i32, max: i32, speed: i32) -> Item {
     Item {
         number: 1,
         name: "test weapon".into(),
@@ -212,13 +212,13 @@ fn weapon(min: i32, max: i32, speed: i32) -> Item {
     }
 }
 
-struct Rig {
+pub(crate) struct Rig {
     items: [Item; 1],
     equipped: EquippedGlobals,
 }
 
 impl Rig {
-    fn new(min: i32, max: i32) -> Self {
+    pub(crate) fn new(min: i32, max: i32) -> Self {
         Self {
             items: [weapon(min, max, 1200)],
             equipped: EquippedGlobals::default(),
@@ -238,12 +238,17 @@ impl Rig {
         }
     }
 
-    fn attack(&self, profile: Profile, ch: &CharacterProfile, req: &AttackRequest) -> AttackDamage {
+    pub(crate) fn attack(
+        &self,
+        profile: Profile,
+        ch: &CharacterProfile,
+        req: &AttackRequest,
+    ) -> AttackDamage {
         calculate_attack(profile, &self.env(), ch, req, &mut String::new())
     }
 }
 
-fn hero(class: i32, level: i32) -> CharacterProfile {
+pub(crate) fn hero(class: i32, level: i32) -> CharacterProfile {
     CharacterProfile {
         level,
         class,
@@ -256,7 +261,7 @@ fn hero(class: i32, level: i32) -> CharacterProfile {
     }
 }
 
-fn request(attack_type: i32, weapon_number: i32) -> AttackRequest {
+pub(crate) fn request(attack_type: i32, weapon_number: i32) -> AttackRequest {
     AttackRequest {
         attack_type,
         weapon_number,
