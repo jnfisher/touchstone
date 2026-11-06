@@ -46,9 +46,8 @@ export interface RowsResult {
 	messages: string[];
 }
 
-/** The display boxes of the tab (`chkMapOptions`, `bHideRecordNumbers`) and the character's illumination. */
+/** The display boxes of the tab (`chkMapOptions`) and the character's illumination. Record numbers follow the Settings window. */
 export interface RoomOptions {
-	hideNumbers: boolean;
 	hideNpc: boolean;
 	hideLairs: boolean;
 	hideCmds: boolean;
@@ -56,7 +55,6 @@ export interface RoomOptions {
 	illu: number;
 }
 export const DEFAULT_ROOM_OPTIONS: RoomOptions = {
-	hideNumbers: false,
 	hideNpc: false,
 	hideLairs: false,
 	hideCmds: false,
@@ -70,7 +68,6 @@ export type ExitDir = (typeof EXIT_DIRS)[number];
 
 export function roomQuery(o: RoomOptions): string {
 	const p = new URLSearchParams();
-	if (o.hideNumbers) p.set('hide_numbers', 'true');
 	if (o.hideNpc) p.set('hide_npc', 'true');
 	if (o.hideLairs) p.set('hide_lairs', 'true');
 	if (o.hideCmds) p.set('hide_cmds', 'true');
@@ -143,13 +140,12 @@ export function createRoomsClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
 			list: string,
 			rowText: string,
 			percent: string,
-			hideNumbers: boolean,
 			signal?: AbortSignal
 		): Promise<RowsResult> {
 			return read(
 				await post(
 					'/api/rooms/cmd-rooms',
-					{ list, row_text: rowText, percent, hide_numbers: hideNumbers },
+					{ list, row_text: rowText, percent },
 					signal
 				)
 			);

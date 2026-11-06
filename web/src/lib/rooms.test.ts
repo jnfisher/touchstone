@@ -37,18 +37,17 @@ describe('requests', () => {
 			calls.push([String(url), init]);
 			return new Response(JSON.stringify({ rows: [] }), { status: 200 });
 		});
-		await client.room(1, 2, { ...DEFAULT_ROOM_OPTIONS, hideNumbers: true });
+		await client.room(1, 2, { ...DEFAULT_ROOM_OPTIONS, hideNpc: true });
 		await client.findText('dirt path', 50);
 		await client.findExits('Stone Tunnel', true, ['N', 'S']);
-		await client.cmdRooms('1/2|1/3', 'Room cmd "x": a', '3%', false);
-		expect(calls[0][0]).toBe('/api/rooms/1/2?hide_numbers=true');
+		await client.cmdRooms('1/2|1/3', 'Room cmd "x": a', '3%');
+		expect(calls[0][0]).toBe('/api/rooms/1/2?hide_npc=true');
 		expect(calls[1][0]).toBe('/api/rooms/find-text?q=dirt+path&limit=50');
 		expect(JSON.parse(String(calls[2][1]?.body))).toEqual({ name: 'Stone Tunnel', exact: true, exits: ['N', 'S'] });
 		expect(JSON.parse(String(calls[3][1]?.body))).toEqual({
 			list: '1/2|1/3',
 			row_text: 'Room cmd "x": a',
-			percent: '3%',
-			hide_numbers: false
+			percent: '3%'
 		});
 	});
 	it('reports the server reason', async () => {

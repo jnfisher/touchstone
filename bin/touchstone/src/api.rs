@@ -65,6 +65,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(monster_damage::status_route),
         )
         .route("/api/shops/{number}/prices", get(calc::shop_prices))
+        .route("/api/abilities", get(detail::ability_list))
         .route("/api/abilities/{table}/{number}", get(detail::abilities))
         .route("/api/spells/{number}/effect", get(detail::spell_effect))
         .route("/api/spells/{number}/casts", get(spell_tools::casts_route))

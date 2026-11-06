@@ -102,7 +102,8 @@ pub async fn counters_route(
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 pub struct CastsQuery {
-    pub hide_record_numbers: bool,
+    /// Left out, the `hide_record_numbers` setting decides.
+    pub hide_record_numbers: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -124,7 +125,9 @@ pub async fn casts_route(
     let mut lairs = StoredLairs(loaded.lair_cache());
     let opt = LocationOptions {
         nmr_ver: nmr_ver(&world.info.nmr_version),
-        hide_record_numbers: q.hide_record_numbers,
+        hide_record_numbers: q
+            .hide_record_numbers
+            .unwrap_or_else(|| state.hide_record_numbers()),
         global_filter: false,
         charm_tag: String::new(),
         attack_type: 0,
@@ -170,7 +173,12 @@ pub async fn chest_route(
     Query(q): Query<CastsQuery>,
 ) -> ApiResult {
     let world = &state.current().world;
-    let (status, message, rows) = match chest_contents(world, number, q.hide_record_numbers) {
+    let (status, message, rows) = match chest_contents(
+        world,
+        number,
+        q.hide_record_numbers
+            .unwrap_or_else(|| state.hide_record_numbers()),
+    ) {
         ChestResult::NoSuchItem(n) => {
             ("no_item", Some(format!("Item #{n} not found.")), Vec::new())
         }

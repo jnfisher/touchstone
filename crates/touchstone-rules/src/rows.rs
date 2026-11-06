@@ -98,6 +98,8 @@ pub struct RowEnv<'a> {
     pub accuracy_tag: &'a str,
     /// `txtGlobalLevel(0).Text` while `chkGlobalFilter` is on.
     pub global_level_text: Option<&'a str>,
+    /// `bHideRecordNumbers`: names inside ability text print without their record numbers.
+    pub hide_record_numbers: bool,
 }
 
 impl<'a> RowEnv<'a> {
@@ -114,6 +116,7 @@ impl<'a> RowEnv<'a> {
             avg_level_max_all_stats: 0.0,
             accuracy_tag: "",
             global_level_text: None,
+            hide_record_numbers: false,
         }
     }
 
@@ -123,7 +126,7 @@ impl<'a> RowEnv<'a> {
             names: self.names,
             textblocks: self.textblocks,
             spells: &self.world.spells,
-            hide_record_numbers: false,
+            hide_record_numbers: self.hide_record_numbers,
             quick_spell,
             global_level_text: self.global_level_text,
             avg_level_max_all_stats: self.avg_level_max_all_stats,
