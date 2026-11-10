@@ -30,10 +30,10 @@
 			Calculate Reachability
 		</DropdownMenu.Item>
 		<DropdownMenu.Item data-testid="opt-damage-char" disabled={!opts.canCalcDamage} onSelect={() => void opts.calcDamage('char')}>
-			Calc. Monster Dmg vs Char
+			{opts.charDamageLabel}
 		</DropdownMenu.Item>
 		<DropdownMenu.Item data-testid="opt-damage-party" disabled={!opts.canCalcPartyDamage} onSelect={() => void opts.calcDamage('party')}>
-			Calc. Monster Dmg vs Party
+			{opts.partyDamageLabel}
 		</DropdownMenu.Item>
 		<DropdownMenu.Item data-testid="opt-damage-clear" disabled={!!damage.busy} onSelect={() => void opts.clearDamage()}>
 			Clear Calculated Monster Dmg

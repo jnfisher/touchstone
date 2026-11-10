@@ -107,3 +107,9 @@ export function createDamageClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
 
 export type DamageClient = ReturnType<typeof createDamageClient>;
 export const damageClient = createDamageClient();
+
+/** Who a calculation is for, as the status chip and the Options items word it. */
+export function damageWho(mode: DamageMode, characterName: string, partyNames: readonly string[]): string {
+	if (mode === 'char') return characterName.trim() || 'Unnamed';
+	return partyNames.length ? partyNames.join(', ') : 'the party boxes';
+}
