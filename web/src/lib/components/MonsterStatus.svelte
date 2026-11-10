@@ -27,7 +27,10 @@
 					: undefined
 	);
 	const state = $derived(
-		[damage.status.char.calculated ? 'character' : '', damage.status.party.calculated ? 'party' : '']
+		[
+			damage.status.char.calculated ? `character${damage.calculatedFor.char ? ` ${damage.calculatedFor.char}` : ''}` : '',
+			damage.status.party.calculated ? `party${damage.calculatedFor.party ? ` (${damage.calculatedFor.party})` : ''}` : ''
+		]
 			.filter(Boolean)
 			.join(' and ')
 	);

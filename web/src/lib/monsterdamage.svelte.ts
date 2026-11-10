@@ -28,6 +28,8 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 	let note = $state<string>();
 	/** Counts every change to the stored damage, so the Monsters list and pane read it again. */
 	let version = $state(0);
+	/** Who the stored damage was calculated for (a character's name, or the party's members), per mode. */
+	let calculatedFor = $state<{ char?: string; party?: string }>({});
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let seenToken: number | undefined;
 
@@ -55,12 +57,20 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 		get version() {
 			return version;
 		},
+		get calculatedFor() {
+			return calculatedFor;
+		},
 		refresh,
 		/**
 		 * `CalculateMonsterDamageVsCharALL` for the open character or the party boxes. False when nothing ran: a
 		 * calculation is already going, or a character calculation has no class and race.
 		 */
-		async calculate(doc: CharacterDoc | undefined, mode: DamageMode, party: PartyBoxes): Promise<boolean> {
+		async calculate(
+			doc: CharacterDoc | undefined,
+			mode: DamageMode,
+			party: PartyBoxes,
+			who?: string
+		): Promise<boolean> {
 			if (busy || !doc) return false;
 			// the party calculation reads only the party boxes (MME runs it with no character loaded); the server fills in a class and race
 			if (mode === 'char' && !canCalculate(doc)) return false;
@@ -72,6 +82,7 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 			try {
 				const done = await client.calculate(calcBody(doc, mode, party));
 				ok = !done.cancelled;
+				if (ok) calculatedFor = { ...calculatedFor, [mode]: who };
 				if (done.cancelled) note = 'Monster damage calculation cancelled; the previous values are kept.';
 			} catch (e) {
 				error = message(e);
@@ -100,6 +111,7 @@ export function createDamageStore(client: DamageClient = damageClient, opts: Dam
 			error = undefined;
 			try {
 				status = await client.clear();
+				calculatedFor = {};
 			} catch (e) {
 				error = message(e);
 			} finally {

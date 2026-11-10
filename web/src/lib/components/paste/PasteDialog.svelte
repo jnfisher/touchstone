@@ -25,6 +25,8 @@
 		type PasteClient,
 		type Prompt
 	} from '$lib/paste';
+	import { getMonsterFilterStore } from '$lib/monsters.svelte';
+	import { boxesFromFilter } from '$lib/partyrealm';
 	import PartyTable from './PartyTable.svelte';
 	import QuestionDialog from './QuestionDialog.svelte';
 
@@ -39,6 +41,7 @@
 	} = $props();
 
 	const paste = getPasteStore();
+	const boxes = getMonsterFilterStore();
 	let tab = $state<'character' | 'party'>('character');
 	let charText = $state('');
 	let partyText = $state('');
@@ -240,6 +243,8 @@
 			else if (res.status === 'canceled') partyNote = 'Nothing was changed.';
 			else if (res.filter) {
 				paste.setPartyFilter(res.filter);
+				const m = boxesFromFilter(res.filter);
+				boxes.applyParty(m.boxes, m.damage, form.name.slice(1).filter((n) => n.trim() !== ''));
 				filter = res.filter;
 				partyNote = 'Party filter values set.';
 			}

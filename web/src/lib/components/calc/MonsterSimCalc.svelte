@@ -17,7 +17,6 @@
 		type SimResult
 	} from '$lib/calc';
 	import { evalRequest } from '$lib/character';
-	import { getCharacterStore } from '$lib/character.svelte';
 	import CalcFrame from './CalcFrame.svelte';
 	import { useCurrentCharacter } from './current.svelte';
 	import Field from './Field.svelte';
@@ -33,12 +32,11 @@
 	let loadError = $state<string>();
 	let running = $state(false);
 
-	const store = getCharacterStore();
 	const current = useCurrentCharacter();
 
 	// The evaluate body the server turns into the defense boxes; undefined without a usable character.
 	const charBody = $derived(
-		current.active ? evalRequest($state.snapshot(store.doc), $state.snapshot(store.options)) : undefined
+		current.active ? evalRequest($state.snapshot(current.doc), $state.snapshot(current.options)) : undefined
 	);
 	let charBoxes = $state.raw<SimBoxes>();
 	let charError = $state<string>();

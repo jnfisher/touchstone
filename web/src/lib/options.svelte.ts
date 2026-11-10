@@ -10,7 +10,7 @@ import { filterReset, spellFilters } from './explorer-state.svelte';
 import { DEFAULT_SPELL_FILTERS } from './spelltools';
 import { getGlobalFilterStore, type GlobalFilterStore } from './globalfilter.svelte';
 import { getMonsterFilterStore, type MonsterFilterStore } from './monsters.svelte';
-import { canCalculate } from './monsterdamage';
+import { canCalculate, damageWho } from './monsterdamage';
 import { getDamageStore, type DamageStore } from './monsterdamage.svelte';
 import { getPasteStore, type PasteStore } from './paste.svelte';
 import { getSettingsStore, type SettingsStore } from './settings.svelte';
@@ -99,6 +99,13 @@ export function createOptionsStore(deps: OptionsDeps = {}) {
 		get canCalcPartyDamage() {
 			return !damage.busy;
 		},
+		/** The menu items name who they calculate for. */
+		get charDamageLabel() {
+			return `Calc. Monster Dmg vs Char (${damageWho('char', chars.doc.name, [])})`;
+		},
+		get partyDamageLabel() {
+			return `Calc. Monster Dmg vs Party (${boxes.partyNames.length ? boxes.partyNames.join(', ') : 'party boxes'})`;
+		},
 		/** The two checked items. */
 		get jumpToCompare() {
 			return settings.current.jump_to_compare;
@@ -141,7 +148,7 @@ export function createOptionsStore(deps: OptionsDeps = {}) {
 		},
 		/** Calc. Monster Dmg vs Char / vs Party. */
 		async calcDamage(mode: 'char' | 'party'): Promise<boolean> {
-			return damage.calculate(chars.doc, mode, boxes.controls.party);
+			return damage.calculate(chars.doc, mode, boxes.controls.party, damageWho(mode, chars.doc.name, boxes.partyNames));
 		},
 		/** Clear Calculated Monster Dmg. */
 		async clearDamage(): Promise<void> {

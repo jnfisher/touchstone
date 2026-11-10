@@ -63,7 +63,7 @@
 			</div>
 		</div>
 		<dl class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-6 gap-y-1 text-sm">
-			{#each [['Exp', id.exp.toLocaleString('en-US')], ['Alignment', id.alignment_name], ['Gang', id.gang || 'none'], ['Lives', String(id.lives)], ['Last on', lastOnText(id)], ['Unspent / total CP', `${id.unspent_cp} / ${id.total_cp}`], ['Coins', coinText(id.coins)]] as [k, v] (k)}
+			{#each [['Exp', id.exp.toLocaleString('en-US')], ['Alignment', id.alignment_name], ['Gang', id.gang || 'none'], ['Lives', String(id.lives)], ['Last on', lastOnText(id)], ['Unspent / total CP', `${id.unspent_cp} / ${id.total_cp}`], ['Coins', coinText(id.coins)], ['Attack the calculators assume', 'Normal attack (wielded weapon)']] as [k, v] (k)}
 				<div class="flex justify-between gap-2 border-b py-0.5"><dt class="text-muted-foreground">{k}</dt><dd class="tabular-nums">{v}</dd></div>
 			{/each}
 			<div class="flex justify-between gap-2 border-b py-0.5">

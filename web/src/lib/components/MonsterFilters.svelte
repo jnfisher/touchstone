@@ -4,6 +4,10 @@
 	// and the server runs FilterMonsters.
 	import { Button } from '$lib/components/ui/button';
 	import { getMonsterFilterStore } from '$lib/monsters.svelte';
+	import CharacterDropdown from './calc/CharacterDropdown.svelte';
+	import { getRealmStore } from '$lib/realm.svelte';
+	import { fullName, realmClient } from '$lib/realm';
+	import { PARTY_MAX, partyFromRealm } from '$lib/partyrealm';
 	import { isFiltering, NO_LIMIT, type ExtraFilters, type PartyBoxes } from '$lib/monsters';
 
 	const store = getMonsterFilterStore();
@@ -11,6 +15,29 @@
 	const x = $derived(c.extras);
 	const active = $derived(isFiltering(c));
 	let more = $state(false);
+
+	// A party from the realm: up to six characters, averaged into the boxes below by the same code as a paste.
+	const realm = getRealmStore();
+	let picked = $state<number[]>([]);
+	let partyBusy = $state(false);
+	let partyNote = $state<string>();
+	async function fillParty() {
+		partyBusy = true;
+		partyNote = undefined;
+		try {
+			const members = realm.characters.filter((r) => picked.includes(r.id));
+			const picks = await Promise.all(members.map(async (summary) => ({ summary, doc: await realmClient.input(summary.id) })));
+			const r = await partyFromRealm(picks);
+			if (r.boxes) {
+				store.applyParty(r.boxes, r.damage, members.map(fullName));
+				partyNote = `Party boxes filled from ${members.length} characters.`;
+			} else partyNote = r.note;
+		} catch (e) {
+			partyNote = e instanceof Error ? e.message : String(e);
+		} finally {
+			partyBusy = false;
+		}
+	}
 
 	const field =
 		'bg-background border-input focus-visible:ring-ring/50 h-7 rounded-md border px-2 text-sm tabular-nums outline-none focus-visible:ring-2 disabled:opacity-60';
@@ -175,6 +202,21 @@
 	{#if c.lair}
 		<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="mf-party">
 			<span class="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Party</span>
+			{#if realm.available}
+				<CharacterDropdown
+					characters={realm.characters}
+					selected={picked}
+					multiple
+					max={PARTY_MAX}
+					label="From the realm ({picked.length})"
+					testid="party-realm"
+					onpick={(ids) => (picked = ids)}
+				/>
+				<Button type="button" variant="outline" size="sm" disabled={!picked.length || partyBusy} onclick={() => void fillParty()} data-testid="party-realm-fill">
+					Fill party
+				</Button>
+				{#if partyNote}<span class="text-muted-foreground text-xs" data-testid="party-realm-note">{partyNote}</span>{/if}
+			{/if}
 			{#each PARTY as p (p.key)}
 				<label class={lab} title={p.tip}>
 					{p.label}
