@@ -1,6 +1,7 @@
 mod api;
 mod calc;
 mod character;
+mod chests;
 mod class_race_builder;
 mod clipboard;
 mod combat_setup;

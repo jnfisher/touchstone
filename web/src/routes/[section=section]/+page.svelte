@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import CharacterTab from '$lib/components/character/CharacterTab.svelte';
+	import ChestsTab from '$lib/components/chests/ChestsTab.svelte';
 	import CompareTab from '$lib/components/CompareTab.svelte';
 	import ExplorerView from '$lib/components/ExplorerView.svelte';
 	import RoomsTab from '$lib/components/RoomsTab.svelte';
@@ -14,6 +15,8 @@
 
 {#if slug === 'character'}
 	<CharacterTab />
+{:else if slug === 'chests'}
+	<ChestsTab />
 {:else if slug === 'rooms'}
 	<RoomsTab />
 {:else if slug === 'compare'}

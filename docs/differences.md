@@ -183,6 +183,34 @@ Places where the port reproduces MME's answer although the game (or MME's runtim
 - "Copy Chest to Clipboard" copies only the chances, one per line, as MME does (the item names are sub-items it does not read).
 - The Spell Book takes the character's magery from the global filter's class, not from items that grant magery.
 
+## Chests tab (CH-001)
+
+The tab (Chests, next to Items) is a touchstone addition. The chances and the sell prices are MME's
+(`cmdSundryChests_Click` / `GetChestItems` and `GetItemValue`); the average sale is not an MME number.
+
+- **Average sale of one opening** = the sum, over the chest's lines, of `chance * sell price in copper`, at the tab's
+  charm (50 unless the box says otherwise). `chance` is the share `GetChestItems` leaves for the item, before MME
+  rounds it to one decimal for display; a line's shown chance times its shown price can therefore differ from its
+  shown expected value by a little. An item that cannot be sold adds 0.
+- **Sell price** is `GetItemValue`'s sell side with no shop and no buying: the item's price in copper (its `Currency`
+  column gives the coin, so a price in gold or platinum is at face value in copper), times `fix(charm / 2) + 25` percent
+  when the charm is above 0, truncated. At charm 0 a shop pays the full price, as MME's function does. A shop's markup
+  only moves the buy price, so it is not used.
+- **"Can't be sold"** when no shop takes the item (its Obtained From has no `Shop`, `Shop(sell)` or `Shop(nogen)`
+  entry, which is how touchstone knows a shop stocks or buys it) or its sell value is 0 (price 0, or a charm modifier
+  that rounds it away).
+- **One opening** is what the chances imply: the lines of one chest give each item independently with the chance
+  shown, so an opening can give several items, and each adds its own expected value. Chests whose text rolls the same
+  textblock more than once (stock chests roll up to a dozen draws) are already folded into one chance per item by
+  `GetChestItems`, which MME shows the same way; the average does not draw again.
+- **Currency items.** Stock chests give only items, never coins: `GetChestItems` reads `giveitem` lines and the stock
+  chest textblocks have no coin-giving lines. An item priced in a coin (the `Currency` column) counts at that price;
+  an item with no price counts 0. `failitem` lines (an item given when a roll fails) are not read by MME's chest
+  arithmetic and so are not counted here.
+- **Dropped by** counts the `Monster #n` entries in the chest's Obtained From. The droppers grid shows the Items
+  pane's reference rows for the chest, sorted by chance with the highest first: monsters with their drop chance, and
+  the other sources (rooms, textblocks, NPCs) with a blank chance.
+
 ## Reachability (P3-45)
 
 - Edge order, and so "first found" in route ties and which gate is reported, follows the order the tables are read
