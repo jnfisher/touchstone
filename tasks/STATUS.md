@@ -110,6 +110,10 @@ the orchestrator writes each card when its dependencies are close to merged.
 | P3-04b | `pull_spell_eq` Long handling | #120 |
 | M-001 | Map layout engine (MapStartMapping / MapActivateCell / MapMapExits) | #121 |
 | M-002 | Web map view (grid, walking, legend, presets, pop-out window) | #122 |
+| CH-001 | Chests tab (contents, sell value, average sale per opening, droppers) | #124 |
+| R-001 | Realm characters: read, map, evaluate and compare with the game | #125 |
+| R-002 | Characters tab: realm list, sheet, sandbox, active-character picker | #126 |
+| R-003 | Calculators and simulations on realm characters | #127 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -124,8 +128,7 @@ None.
 
 ## Next
 
-All planned phases are done. Phase 6 was the graphical map only; the results tree, NMR import/export and notepad are
-not planned. Candidates are the follow-ups below.
+Released as 0.2.0 (realm characters, Chests tab). Candidates are the follow-ups below.
 
 ## Follow-ups noted
 
@@ -144,3 +147,6 @@ not planned. Candidates are the follow-ups below.
 - Quicksilver cells (Q-016): leftover Warlock/Bard damage gap beyond ability 87; Cleric L60 weapon-cast pricing.
 - `/api/info` polling every 30 s could use an ETag (F-002); vs Party is offered for any party size, MME needs two or more (F-002).
 - Map pop-out: selection sync with the Rooms tab (BroadcastChannel); a Find Room box in the pop-out (M-002).
+- Realm: quest flags, stash and key ring not mapped; traps/thievery/tracking/disarm/martial shown but not compared (R-001).
+- Realm party: per-member attack choice, so casters get a real Magic out (R-003).
+- Chests tab: detail-grid columns clip below 1440 px wide (CH-001); light-theme DataGrid header shows extra filter-icon columns (R-002).
