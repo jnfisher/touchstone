@@ -699,9 +699,12 @@ is picked, and nothing is written to the realm or to the saved sandbox character
   each calculator can borrow another realm character for itself; MME has no such override. A borrowed character is
   read-only and is dropped if it leaves the realm.
 - A party can be built from up to six realm characters. Each member's defenses and recovery come from the character's
-  evaluation and its damage and swings from the combat preview of its saved attack (a one-shot attack gives no
-  damage, so that member leaves its damage boxes empty, as an unpasted member does). The server's paste-party code
+  evaluation and its damage and swings from the combat preview of its saved attack (the assumed normal attack). The server's paste-party code
   then averages them. MME builds the same table from pasted text, and its heals box stays empty here.
+- The game stores no attack choice for a character, and MME's default for a fresh one is one-shot, which has no damage
+  figure (the party's damage output and exp/hr would be placeholders). The realm input therefore carries a normal
+  attack: the wielded weapon, or bare hands when none is wielded, for every class, casters included. The sheet and
+  each calculator say so. A punch default was rejected: it gives no damage for classes without a martial art.
 - The paste dialog's Continue now writes the party boxes of the Monsters tab too (it only displayed them before).
 - The status chip and the Options items name the character or party the damage was calculated for; MME shows no name.
 - Reachability does not depend on a character, so there is nothing for it to follow.

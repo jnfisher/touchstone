@@ -22,7 +22,7 @@ use touchstone_rules::pipeline::CharacterState;
 use touchstone_rules::spells::spell_is_bless_spell;
 
 use crate::calc::{ApiResult, json as ok_json, not_found};
-use crate::character::{CharacterDto, equip_slot, refresh, state_json};
+use crate::character::{AttackDto, CharacterDto, equip_slot, refresh, state_json};
 use crate::state::{AppState, iso_from_unix};
 
 /// MME's weapon slot in the 20-slot equip layout.
@@ -145,6 +145,16 @@ fn no_slot_reason(item: &Item) -> String {
             "MME has no equip slot for an item of type {} worn at location {}",
             item.item_type, item.worn
         )
+    }
+}
+
+/// The game keeps no attack choice for a character, and MME's own default (one-shot) has no damage figure, so
+/// the calculators would be useless. A realm character makes a normal attack: its wielded weapon, or bare hands
+/// when it wields none (MME's weapon attack with an empty slot).
+pub fn default_attack() -> AttackDto {
+    AttackDto {
+        attack_type: 1,
+        ..AttackDto::default()
     }
 }
 
@@ -288,6 +298,7 @@ pub fn map_character(world: &World, rc: &RealmCharacter) -> Mapped {
         });
     }
     let dto = CharacterDto {
+        attack: default_attack(),
         name: rc.first_name.clone(),
         race: world.get_race(rc.race).map(|r| r.number),
         class: world.get_class(rc.class).map(|c| c.number),
@@ -912,4 +923,15 @@ pub async fn input_route(State(state): State<Arc<AppState>>, Path(id): Path<i64>
         return unavailable();
     };
     Ok(axum::Json(&find(&sheets, id)?.input).into_response())
+}
+
+#[cfg(test)]
+mod default_attack_tests {
+    use super::default_attack;
+
+    #[test]
+    fn every_realm_character_makes_a_normal_attack() {
+        assert_eq!(default_attack().attack_type, 1);
+        assert_eq!(default_attack().martial_art, 0);
+    }
 }

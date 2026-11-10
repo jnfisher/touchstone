@@ -28,7 +28,7 @@
 				No character is loaded. Pick one in the header, or a class and race on the Character tab (F10).
 			{/if}
 		{:else if current.active}
-			<span data-testid="use-character-who">{src.name}{src.kind ? `, ${src.kind}` : ''}, level {src.level}</span>{src.via === 'override' ? ' (chosen for this calculator)' : ''}: the fields show its values.
+			<span data-testid="use-character-who">{src.name}{src.kind ? `, ${src.kind}` : ''}, level {src.level}</span>{src.via === 'override' ? ' (chosen for this calculator)' : ''}: the fields show its values.{#if src.realmId !== undefined && current.attackName} Attack assumed: {current.attackName} (a realm character has no saved attack).{/if}
 			<button type="button" class="text-primary underline" data-testid="use-character-sheet" onclick={() => current.openSheet((p) => void goto(p))}>Open sheet</button>
 		{:else}
 			Off: type the numbers in yourself.

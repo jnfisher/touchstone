@@ -610,3 +610,44 @@ async fn a_source_without_a_realm_says_so() {
         assert!(v.get("characters").is_none());
     }
 }
+
+// The game keeps no attack for a character, so the mapped input carries a default (a normal attack: the wielded
+// weapon, or bare hands); the combat preview, which the party and exp/hr paths read, must give a real damage figure for each.
+#[tokio::test]
+async fn every_fixture_character_has_a_real_damage_figure() {
+    let Some(state) = fixture_state() else { return };
+    let (_, list) = get(&state, "/api/realm/characters").await;
+    for c in list["characters"].as_array().unwrap() {
+        let id = c["id"].as_i64().unwrap();
+        let (_, input) = get(&state, &format!("/api/realm/characters/{id}/input")).await;
+        let (st, p) = post(
+            &state,
+            "/api/character/combat-preview",
+            &serde_json::json!({"character": input, "draft": input["attack"]}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{p}");
+        let dmg = p["attack"]["damage"].as_i64().unwrap();
+        assert!(
+            (1..999_999).contains(&dmg),
+            "character {id} ({}): damage {dmg}, attack {}",
+            c["first_name"],
+            input["attack"]
+        );
+    }
+}
+
+#[tokio::test]
+async fn damage_vs_a_realm_character_calculates() {
+    let Some(state) = fixture_state() else { return };
+    let (_, input) = get(&state, "/api/realm/characters/3/input").await;
+    let (st, r) = post(
+        &state,
+        "/api/monster-damage/calculate",
+        &serde_json::json!({"character": input, "mode": "char"}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let (_, status) = get(&state, "/api/monster-damage/status").await;
+    assert_eq!(status["char"]["calculated"], true);
+}

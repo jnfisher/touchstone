@@ -143,6 +143,10 @@ export function createCurrentCharacter(deps: CurrentDeps) {
 		get level() {
 			return source().doc.level;
 		},
+		/** `GetCurrentAttackName` of the character in use; a realm character's is assumed (it has no saved attack). */
+		get attackName(): string | undefined {
+			return source().evaluated?.attack_name;
+		},
 		/** Which character this calculator uses, for its line of text. */
 		get source(): CharacterSource {
 			return describe;
