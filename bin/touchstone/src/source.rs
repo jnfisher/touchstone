@@ -57,12 +57,13 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
             let handle = silvermere::open(&src.path)
                 .with_context(|| format!("opening silvermere database {}", src.path.display()))?;
             let version = handle.data_version()?;
-            let world = handle.load_world()?;
+            let (world, realm) = handle.load_snapshot()?;
             let info = SourceInfo {
                 kind: "silvermere",
                 path: src.path.display().to_string(),
             };
-            let loaded = Loaded::build_with(world, info.clone(), Some(version), 1, &rules)?;
+            let loaded =
+                Loaded::build_with(world, info.clone(), Some(version), 1, &rules)?.with_realm(realm);
             Ok(Started {
                 state: AppState::with_data_dir(loaded, cfg.data_dir.clone()),
                 live: Some(Arc::new(LiveSource {
@@ -89,11 +90,11 @@ impl LiveSource {
         if version == self.seen_version.load(Ordering::Relaxed) {
             return Ok(false);
         }
-        let world = handle.load_world()?;
+        let (world, realm) = handle.load_snapshot()?;
         let n = self.loads.load(Ordering::Relaxed) + 1;
         let loaded =
             match Loaded::build_with(world, self.info.clone(), Some(version), n, &self.rules) {
-                Ok(l) => l,
+                Ok(l) => l.with_realm(realm),
                 Err(e) => {
                     // The game will not change this content under us; asking again every poll
                     // would only repeat the message. A later commit is looked at afresh.

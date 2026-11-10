@@ -13,8 +13,8 @@ use serde_json::json;
 use crate::state::AppState;
 use crate::{
     calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, map, monster_damage, monster_sim, panes, paste, profile, reach, rooms, route,
-    settings, spell_tools,
+    item_manager, map, monster_damage, monster_sim, panes, paste, profile, reach, realm, rooms,
+    route, settings, spell_tools,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -132,6 +132,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/clipboard/lines", post(clipboard::lines_route))
         .route("/api/compare/classify", post(compare::classify_route))
         .route("/api/evaluate/{tab}", post(evaluate::evaluate_route))
+        .route("/api/realm/characters", get(realm::list_route))
+        .route("/api/realm/characters/{id}", get(realm::get_route))
+        .route("/api/realm/characters/{id}/input", get(realm::input_route))
         .route("/api/characters", get(character::list))
         .route("/api/characters/import", post(character::import))
         .route("/api/characters/{name}/export.mmec", get(character::export))

@@ -156,15 +156,18 @@ fn edit(data: &Data, idx: usize, b: &mut quicksilver_balance::character::Build<'
             c.items[pack] = other.number;
             c.itemuses[pack] = other.charges;
         }
-        // an item of a type with a wear location that MME has no slot for (a Special item with
-        // a torso location)
+        // an item of a type with a wear location that MME has no slot for (a thrown item that
+        // has a hands location)
         7 => {
             let odd = data
                 .items
                 .values()
-                .filter(|i| i.item_type == ItemType::Special && i.worn == WornLocation::Torso)
+                .filter(|i| {
+                    !matches!(i.item_type, ItemType::Armour | ItemType::Weapon)
+                        && i.worn != WornLocation::Nowhere
+                })
                 .min_by_key(|i| (i.weight, i.number))
-                .expect("a special item with a wear location");
+                .expect("an item of another type with a wear location");
             let slot = free_worn(c);
             c.worn[slot] = odd.number;
             c.wornuses[slot] = odd.charges;
@@ -196,7 +199,8 @@ fn player_record(idx: usize, c: &mut Character, b: &quicksilver_balance::charact
     c.lastdate = 1_760_000_000 + 3600 * id;
     c.deathdate = if idx == 5 { 1_759_000_000 } else { 0 };
     c.lives = if idx == 5 { 3 } else { 9 };
-    c.coins.gold = (u32::from(c.level) * 100 + id as u32) % 60_000;
+    // a purse that fits MME's extra-weight box, and one that does not
+    c.coins.gold = if idx == 5 { 4_001 } else { u32::from(c.level) * 10 + id as u32 };
     c.coins.copper = 17 * id as u32;
     c.gang = match idx {
         0 | 2 | 4 => "Ironwood".to_string(),

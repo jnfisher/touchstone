@@ -19,6 +19,7 @@ pub mod panes;
 pub mod paste;
 pub mod profile;
 pub mod reach;
+pub mod realm;
 pub mod rooms;
 pub mod route;
 pub mod settings;

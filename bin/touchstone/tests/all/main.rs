@@ -18,6 +18,7 @@ mod panes;
 mod paste;
 mod profile;
 mod reachability;
+mod realm;
 mod rooms;
 mod settings;
 mod spell_tools;
