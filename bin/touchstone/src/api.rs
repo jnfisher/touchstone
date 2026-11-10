@@ -12,9 +12,9 @@ use serde_json::json;
 
 use crate::state::AppState;
 use crate::{
-    calc, character, class_race_builder, clipboard, combat_setup, compare, detail, equip, evaluate,
-    item_manager, map, monster_damage, monster_sim, panes, paste, profile, reach, rooms, route,
-    settings, spell_tools,
+    calc, character, chests, class_race_builder, clipboard, combat_setup, compare, detail, equip,
+    evaluate, item_manager, map, monster_damage, monster_sim, panes, paste, profile, reach, rooms,
+    route, settings, spell_tools,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -80,6 +80,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/spells/{number}/casts", get(spell_tools::casts_route))
         .route("/api/spells/counters", post(spell_tools::counters_route))
         .route("/api/items/{number}/chest", get(spell_tools::chest_route))
+        .route("/api/chests", get(chests::list_route))
+        .route("/api/chests/{item}", get(chests::detail_route))
         .route("/api/spell-book/list", post(spell_tools::book_route))
         .route("/api/spell-book/class", post(spell_tools::class_route))
         .route("/api/spell-book/copy-global", post(spell_tools::copy_route))

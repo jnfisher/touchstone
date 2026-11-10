@@ -3,6 +3,7 @@
 mod api;
 pub mod calc;
 pub mod character;
+pub mod chests;
 pub mod class_race_builder;
 pub mod clipboard;
 pub mod combat_setup;

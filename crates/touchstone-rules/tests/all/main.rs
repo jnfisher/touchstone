@@ -9,6 +9,7 @@ mod attack;
 mod calculators;
 mod char_panel;
 mod character;
+mod chest_sale;
 mod chests;
 mod class_race_builder;
 mod clipboard;

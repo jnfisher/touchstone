@@ -180,6 +180,24 @@ fn friendly(copper: f64, reduced: f64, coin: &str) -> R<(String, String)> {
     Ok((s, short))
 }
 
+/// The wording `GetItemValue` gives a sell price, for any copper amount: `(text, short)`, as in
+/// [`ItemValue::friendly_sell`] and [`ItemValue::friendly_sell_short`]. The amount is rounded to whole
+/// copper first (half to even), so an average that is not a whole number reads like a price. Added for
+/// the Chests tab; MME has no such procedure.
+///
+/// # Errors
+/// [`RulesError::Vb6`] if a conversion fails.
+pub fn friendly_copper(copper: f64) -> R<(String, String)> {
+    let copper = vb(round(copper.max(0.0), 0))?;
+    let (reduced, coin) = if copper >= 100.0 {
+        let (r, c) = reduce_coin(copper);
+        (if r > 0.0 { vb(round(r, 2))? } else { r }, c)
+    } else {
+        (copper, "Copper")
+    };
+    friendly(copper, reduced, coin)
+}
+
 /// Subtracts 4294967295 until the value fits an unsigned 32 bit total (MME's "overflow bug").
 fn wrap_u32(mut x: f64) -> f64 {
     while x > 4_294_967_295.0 {
