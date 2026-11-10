@@ -400,7 +400,11 @@ impl CharacterDto {
 
 /// Where `InvenEquipItem` puts an item: by its own worn type, not by the key it was saved under.
 /// `use_2nd_wrist` is MME's `Use2ndWrist` setting (on by default).
-fn equip_slot(item: &touchstone_model::Item, eq: &[i32; 20], use_2nd_wrist: bool) -> Option<usize> {
+pub(crate) fn equip_slot(
+    item: &touchstone_model::Item,
+    eq: &[i32; 20],
+    use_2nd_wrist: bool,
+) -> Option<usize> {
     let n = item.number;
     match item.item_type {
         1 => Some(16),
@@ -760,7 +764,7 @@ fn error_text(code: Option<i32>) -> Option<String> {
     code.map(|c| vb_error_text(u32::try_from(c).unwrap_or(0)))
 }
 
-fn state_json(
+pub(crate) fn state_json(
     profile: Profile,
     world: &World,
     st: &CharacterState,

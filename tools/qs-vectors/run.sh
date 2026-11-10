@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerates fixtures/quicksilver/*.json from Quicksilver's own rules (card Q-005).
+# Regenerates fixtures/quicksilver/*.json (and realm_characters.sql, card R-001) from Quicksilver's own rules (card Q-005).
 #   tools/qs-vectors/run.sh            write the vectors
 #   tools/qs-vectors/run.sh --check    regenerate in memory and compare with the committed files
 # Environment:

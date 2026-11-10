@@ -5,6 +5,7 @@
 //! in `docs/data-gaps.md`.
 mod error;
 mod load;
+mod realm;
 
 use std::path::Path;
 
@@ -12,6 +13,7 @@ use rusqlite::{Connection, OpenFlags};
 use touchstone_model::World;
 
 pub use error::{Error, Result};
+pub use realm::{CastSpell, Realm, RealmCharacter, Slotted};
 
 /// Migration versions this build reads: silvermere's two, and Quicksilver's 9001
 /// (`content_version` on `world_import`). A database may hold any prefix-closed subset that
@@ -47,6 +49,15 @@ impl Silvermere {
         // A read-only transaction: COMMIT only ends the snapshot.
         self.conn.execute_batch("COMMIT")?;
         world
+    }
+
+    /// The world and the realm's characters from one consistent snapshot, so a character never
+    /// names an item the world has not got yet.
+    pub fn load_snapshot(&self) -> Result<(World, Realm)> {
+        self.conn.execute_batch("BEGIN")?;
+        let both = load::load(&self.conn).and_then(|w| Ok((w, realm::load(&self.conn)?)));
+        self.conn.execute_batch("COMMIT")?;
+        both
     }
 
     /// SQLite's `data_version` for this connection: it changes when another connection commits

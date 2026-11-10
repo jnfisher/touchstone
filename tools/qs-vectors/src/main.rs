@@ -11,6 +11,7 @@ mod exphr_d;
 mod knees;
 mod melee;
 mod opener;
+mod realm;
 mod regen;
 mod spells;
 mod training;
@@ -87,6 +88,17 @@ fn main() {
             std::fs::write(&path, &text).expect("write fixture");
             println!("{}: {} cases, {} bytes", path.display(), fam.cases.len(), text.len());
         }
+    }
+    // the realm characters are SQL, not a JSON family
+    let text = realm::sql();
+    let path = Path::new(&dir).join("realm_characters.sql");
+    if check {
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+            stale.push(path.display().to_string());
+        }
+    } else {
+        std::fs::write(&path, &text).expect("write fixture");
+        println!("{}: {} bytes", path.display(), text.len());
     }
     if !stale.is_empty() {
         eprintln!("out of date (rerun tools/qs-vectors/run.sh): {}", stale.join(", "));

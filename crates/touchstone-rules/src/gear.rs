@@ -1096,7 +1096,7 @@ fn quicksilver_energy_use(input: &GearInput, slots: &[Slot]) -> i32 {
 }
 
 /// The average of a spell's Min and Max at `level`, truncated as `bless_one` does.
-fn spell_average_cast(spell: &Spell, set_level: i32) -> Res<i32> {
+pub fn spell_average_cast(spell: &Spell, set_level: i32) -> Res<i32> {
     let mut level = set_level;
     if level > spell.cap && spell.cap > 0 {
         level = spell.cap;

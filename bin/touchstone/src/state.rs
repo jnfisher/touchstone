@@ -45,6 +45,8 @@ pub struct Loaded {
     lair_cache: OnceLock<LairCache>,
     /// The computed reachability of this load (a reload starts without one).
     pub reach: crate::reach::ReachSlot,
+    /// The realm's characters of this load; `None` for a source that has none (an `.mdb`).
+    pub realm: Option<crate::realm::RealmSlot>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -148,6 +150,7 @@ impl Loaded {
             profile,
             lair_cache: OnceLock::new(),
             reach: crate::reach::ReachSlot::default(),
+            realm: None,
             info: InfoJson {
                 source,
                 loaded_at: iso_now(),
@@ -158,6 +161,13 @@ impl Loaded {
                 counts,
             },
         })
+    }
+
+    /// This load with the realm's characters read from the same snapshot.
+    #[must_use]
+    pub fn with_realm(mut self, realm: touchstone_data::silvermere::Realm) -> Self {
+        self.realm = Some(crate::realm::RealmSlot::new(realm));
+        self
     }
 
     /// The lair cache of this load.
@@ -283,7 +293,7 @@ fn iso_now() -> String {
 }
 
 /// UTC `YYYY-MM-DDTHH:MM:SSZ` from Unix seconds (days-to-civil, proleptic Gregorian).
-fn iso_from_unix(secs: u64) -> String {
+pub(crate) fn iso_from_unix(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
     let rem = secs % 86_400;
     let z = days + 719_468;

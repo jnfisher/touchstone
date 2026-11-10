@@ -615,6 +615,68 @@ a normal blow's energy (when positive, and not for the fixed-1000 attacks).
   MME's cap, so swings agree, and `fixtures/quicksilver/energy.json` (255 characters, two levels each) is compared on
   swings. The engine's cost sits within one of the percentage of the cost without the ability, from later truncating steps.
 
+## Realm characters (R-001)
+
+`GET /api/realm/characters/{id}` shows a character of the live Quicksilver or silvermere database through touchstone's
+own pipeline (`refresh_all` under the source's detected profile) beside the values the game stores, with each stored
+value that has a touchstone counterpart compared. The mapping and the tolerances below are touchstone's choices; MME has
+no realm, so nothing here is parity with MME, only a statement of where the game's record and MME's calculation part.
+
+**The mapping** (`bin/touchstone/src/realm.rs`):
+
+- A worn item goes where MME's own equip rule puts it by the item's worn type (the game's worn list is just the first
+  free slot, so its order says nothing); the wielded weapon takes the weapon slot. A second item for a slot MME holds one
+  in, a weapon in a worn slot beside the wielded one, a pair already full, and an item whose type has no MME slot (a
+  thrown item with a hands location, say) go in `unmapped` with the reason, and stay in the pack, so their weight counts.
+- The pack, less one copy of each mapped worn and wielded item, is the carried list (MME counts a carried Special item's
+  abilities and its weight). A readied light is carried like any other item; MME has no light slot.
+- The coins go in MME's extra-weight box (three coins of a type weigh one), which holds at most 999; a purse heavier
+  than that is capped and listed in `unmapped` as `coins`.
+- Alignment comes from the evil points: below -50 good, from 40 evil, otherwise neutral. A character's quest flags,
+  Item Manager stash, key ring and attack choice are not mapped (the attack choice is MME's default).
+- A running spell that is a bless spell takes a bless slot, in game order; any other running spell (a curse, a
+  summon, a debuff) has no MME slot and is `unmapped`, though its effect is in the stored values.
+- A class or race the data has no row for gives no sheet: the character is still listed, with `sheet_error`.
+
+**The comparison.** Whole-number values (stats, mana, magic resistance, spellcasting, stealth, picklocks, weight,
+the percentage of the load, the Alter totals) must agree exactly. Max HP agrees when the stored value is inside MME's
+min to max range for the class and level, because the game rolls hit points at training and MME gives the range. The
+game's perception is compared on its ability part: MME's Perception box shows the ability total alone, so the game's
+Int, Wil and Cha term is taken off the stored value first. The Alter totals (AV, defence, damage, critical, damage
+resistance, DR percent, shield, defence modifier, heal and mana rate, room light) are plain sums over race, class,
+equipped items, carried items that count and the bless slots (the best of the three for AV), which is what the game's
+dynamic-stat fold does; Alter Energy Usage is the pipeline's own running average. Weight is the items alone (the game
+stores the coins apart). Not compared, because MME has no counterpart: martial arts, thievery, disarm traps, tracking and
+traps (MME shows only the ability bonus for traps), energy per round, and the current (not maximum) HP and mana.
+
+**Known kinds of difference** (the `cause` of a differing field; any difference without one is unexplained and the
+fixture test fails on it):
+
+- `no-magic-class`: the game stores 0 mana and a casting base of -150 for a class with no magic; MME computes mana and
+  spellcasting from the formulas for any class (6 mana at level 1, and so on).
+- `kai-mana`: the game gives a Kai class a mana of its level less one; MME treats Kai as any caster.
+- `no-stealth-skill`: with no class or race stealth skill the game stores 0; MME shows the ability total alone (armour
+  that gives a stealth penalty shows it for a Warrior, say).
+- `no-picklocks-skill`: the game gives picklocks only to a character with the picklocks ability (stored 0 otherwise);
+  MME calculates a picklocks figure for every class.
+- `coin-weight-capped`: the load percentage counts the coins, which MME can only take up to 999 weight of.
+- `active-spell`: the game stores the effect of its running spells at the value each cast rolled; touchstone's bless
+  slot takes the spell's average cast at the character's level (and ignores a spell that is not a bless spell, and
+  "Negate ability"). Any stored value can differ for this reason while a spell runs; so can current stats.
+- `unmapped-item`: an item `unmapped` still counts in the game (its abilities, its slot) and is not in the calculation.
+
+Stored current stats include temporary effects (stat spells, poison) that the base stats and the gear do not, which is the
+same `active-spell` difference. A stored value that touchstone has no cause for is a finding, not an error: it is shown,
+flagged, and the card's pins show none for the fixture characters.
+
+**Fixture result** (`fixtures/quicksilver/realm_characters.sql`, 12 characters built by Quicksilver's own training ladder
+and engine, `realm_pins.json`): 302 of 324 compared fields agree (93%). Every stat, max HP, magic resistance, perception,
+weight, Alter Energy Usage and every other Alter total agrees for all 12; max mana and spellcasting differ for the
+four non-casters and the Kai (stored 0 or the Kai rule against MME's formula), stealth differs for the five characters
+with no stealth skill, picklocks for the nine with no picklocks ability, and the load percentage for the one
+character whose purse is over the box. The Alter totals agree even with running spells because the fixture's spells are
+cast at the strength touchstone's bless slot assumes; a real realm's rolled values will show as `active-spell`.
+
 ## PullSpellEQ integer edges (P3-04b)
 
 - MME's `For y = nMin + 1 To nMax` over EndCast and Summon ranges keeps the limit as the Currency it is and
