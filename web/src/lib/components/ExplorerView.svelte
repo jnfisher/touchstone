@@ -29,7 +29,7 @@
 	import { dialogs } from '$lib/dialogs.svelte';
 	import { chestRows, spellBarOptions, spellFilterOptions, spellOptionsEnabled } from '$lib/spelltools';
 	import { getDamageStore } from '$lib/monsterdamage.svelte';
-	import type { DamagePrompt } from '$lib/monsterdamage';
+	import { damageWho, type DamagePrompt } from '$lib/monsterdamage';
 	import {
 		buildLookups,
 		listRows,
@@ -122,7 +122,7 @@
 		const q = question;
 		question = undefined;
 		if (!q || a === 'cancel') return;
-		if (a === 'yes' && (await damage.calculate(store.doc, q.mode, monsterBoxes.controls.party))) return;
+		if (a === 'yes' && (await damage.calculate(store.doc, q.mode, monsterBoxes.controls.party, damageWho(q.mode, store.doc.name, monsterBoxes.partyNames)))) return;
 		await damage.dismiss(q);
 	}
 	let evaluated = $state.raw<{ tab: string; table: EvalTable }>();

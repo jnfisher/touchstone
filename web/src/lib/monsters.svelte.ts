@@ -11,6 +11,8 @@ export function createMonsterFilterStore(storage: Pick<Storage, 'getItem' | 'set
 	let controls = $state<MonsterControls>(readControls(storage));
 	// Bumped when reachability is (re)computed: the list and the pane ask the server again.
 	let reachRev = $state(0);
+	// Who the party boxes were last filled from (realm characters or a paste); the boxes themselves are numbers.
+	let partyNames = $state.raw<string[]>([]);
 	const keep = () => writeControls(storage, controls);
 	return {
 		get controls() {
@@ -18,6 +20,12 @@ export function createMonsterFilterStore(storage: Pick<Storage, 'getItem' | 'set
 		},
 		get reachRev() {
 			return reachRev;
+		},
+		get partyNames() {
+			return partyNames;
+		},
+		setPartyNames(names: string[]) {
+			partyNames = names;
 		},
 		bumpReach() {
 			reachRev += 1;
@@ -28,6 +36,12 @@ export function createMonsterFilterStore(storage: Pick<Storage, 'getItem' | 'set
 		},
 		setParty(change: Partial<PartyBoxes>) {
 			controls = { ...controls, party: { ...controls.party, ...change } };
+			keep();
+		},
+		/** The party boxes filled from a party (realm characters or a paste): the numbers, the damage-in box when the party set it, and who they are. */
+		applyParty(boxes: Partial<PartyBoxes>, damage: string | null | undefined, names: string[]) {
+			controls = { ...controls, ...(damage ? { damage } : {}), party: { ...controls.party, ...boxes } };
+			partyNames = names;
 			keep();
 		},
 		setExtras(change: Partial<ExtraFilters>) {

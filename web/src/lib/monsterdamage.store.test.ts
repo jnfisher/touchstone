@@ -148,3 +148,26 @@ describe('monster damage store', () => {
 		expect(raw.clear).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('who the damage was calculated for', () => {
+	it('words the character and the party', async () => {
+		const { damageWho } = await import('./monsterdamage');
+		expect(damageWho('char', ' Cormac ', [])).toBe('Cormac');
+		expect(damageWho('char', '', [])).toBe('Unnamed');
+		expect(damageWho('party', 'x', ['A', 'B'])).toBe('A, B');
+		expect(damageWho('party', 'x', [])).toBe('the party boxes');
+	});
+});
+
+describe('the store remembers who a calculation was for', () => {
+	it('keeps the name after a finished run and forgets it on clear', async () => {
+		const { client, finish } = fake();
+		const store = createDamageStore(client, { pollMs: 100 });
+		const run = store.calculate(ready, 'char', DEFAULT_PARTY, 'Cormac');
+		finish();
+		await run;
+		expect(store.calculatedFor.char).toBe('Cormac');
+		await store.clear();
+		expect(store.calculatedFor).toEqual({});
+	});
+});
