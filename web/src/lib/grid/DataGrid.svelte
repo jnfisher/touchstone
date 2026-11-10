@@ -44,7 +44,8 @@
 		selectedIds,
 		onSelectionIds,
 		onRowContext,
-		onRowDoubleClick
+		onRowDoubleClick,
+		onRowClick
 	}: {
 		rows: T[];
 		columnDefs: ColDef<T>[];
@@ -71,6 +72,8 @@
 		onRowContext?: (row: T, ids: string[]) => void;
 		/** A double-click on a row (the Spell Book opens the spell in its tab). */
 		onRowDoubleClick?: (row: T) => void;
+		/** A mouse click on a row, unlike a selection change not fired by the arrow keys (the Chests tab's link rows). */
+		onRowClick?: (row: T) => void;
 	} = $props();
 
 	let host: HTMLDivElement;
@@ -221,6 +224,9 @@
 				if (e.rowIndex === null || e.rowPinned) return;
 				const node = e.api.getDisplayedRowAtIndex(e.rowIndex);
 				if (node && !node.isSelected()) node.setSelected(true, true, 'rowClicked');
+			},
+			onRowClicked: (e) => {
+				if (e.data && !e.node.rowPinned) onRowClick?.(e.data);
 			},
 			onRowDoubleClicked: (e) => {
 				if (e.data && !e.node.rowPinned) onRowDoubleClick?.(e.data);

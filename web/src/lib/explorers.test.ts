@@ -14,7 +14,7 @@ const lk = { nmr: 1.83 };
 
 describe('explorer definitions', () => {
 	it('covers every data tab, each with unique column ids', () => {
-		for (const s of SECTIONS.filter((s) => s.slug !== 'character' && s.slug !== 'compare' && s.slug !== 'rooms')) {
+		for (const s of SECTIONS.filter((s) => s.slug !== 'character' && s.slug !== 'compare' && s.slug !== 'rooms' && s.slug !== 'chests')) {
 			const ex = explorerFor(s.slug);
 			expect(ex, s.slug).toBeDefined();
 			const ids = ex!.columns.map((c) => c.id);
