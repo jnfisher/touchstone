@@ -3,4 +3,5 @@
 mod derive;
 mod mdb;
 mod quicksilver;
+mod realm;
 mod silvermere;
