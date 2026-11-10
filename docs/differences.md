@@ -684,3 +684,12 @@ cast at the strength touchstone's bless slot assumes; a real realm's rolled valu
   VB6 may convert the limit too and raise error 6 for a limit beyond Long. Stock data never reaches it.
 - A Spells value outside Integer that is passed to `GetAbilityStats` (an Integer parameter) makes `PullSpellEQ`
   return an empty string (error 6, handled by `Resume out`), as in MME; no other path converts it.
+
+## Active realm character (R-002)
+
+The header's active character can be a realm character. The app's calculators and filters then read its mapped input
+(`/api/realm/characters/{id}/input`), which is touchstone's mapping, not the game's own record: the differences listed
+under "Realm characters" apply to anything calculated from it. The attack choice, quest flags and Item Manager stash
+are not in the game's record, so they are MME's defaults. A menu action that edits "the character" (set as combat
+spell, bless slots) changes an in-memory copy only; it is dropped when the character changes in the realm or another
+is picked, and nothing is written to the realm or to the saved sandbox characters.

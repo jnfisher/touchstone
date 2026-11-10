@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -13,7 +13,9 @@
 	import { createThemeStore } from '$lib/theme.svelte';
 	import { createViewStore } from '$lib/view.svelte';
 	import { pageTitle } from '$lib/view';
-	import { getCharacterStore } from '$lib/character.svelte';
+	import { getActiveCharacter, getCharacterStore } from '$lib/character.svelte';
+	import { getInfoStore } from '$lib/info.svelte';
+	import ActivePicker from '$lib/components/character/ActivePicker.svelte';
 	import GlobalFilterBar from '$lib/components/GlobalFilterBar.svelte';
 	import MenuDialogs from '$lib/components/MenuDialogs.svelte';
 	import ProfileBadge from '$lib/components/ProfileBadge.svelte';
@@ -38,6 +40,19 @@
 
 	const view = createViewStore(typeof localStorage === 'undefined' ? undefined : localStorage);
 	const character = getCharacterStore();
+	const activeChar = getActiveCharacter();
+	const infoStore = getInfoStore();
+	// the roster, the open sheet and the active character follow the server's live reloads (the load number)
+	$effect(() => infoStore.use());
+	onMount(() => void activeChar.start());
+	let lastLoad: number | undefined;
+	$effect(() => {
+		const n = infoStore.current?.load_count;
+		untrack(() => {
+			if (n !== undefined && lastLoad !== undefined && n !== lastLoad) void activeChar.sync();
+			if (n !== undefined) lastLoad = n;
+		});
+	});
 	const options = getOptionsStore();
 	const nav = getNavStore();
 	// the app's own back/forward list (MME's nav history): every page the router shows is a visit
@@ -81,7 +96,10 @@
 	{:else}
 	<div class="flex h-screen flex-col">
 		<header class="flex items-center justify-between border-b px-4 py-1.5">
-			<h1 class="text-lg font-semibold">touchstone</h1>
+			<div class="flex min-w-0 items-center gap-3">
+				<h1 class="text-lg font-semibold">touchstone</h1>
+				<ActivePicker />
+			</div>
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
