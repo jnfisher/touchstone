@@ -9,7 +9,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { CALCULATORS } from '$lib/calc';
-	import { SECTIONS, sectionForKey } from '$lib/sections';
+	import { SECTIONS, keyForSection, sectionForKey } from '$lib/sections';
 	import { createThemeStore } from '$lib/theme.svelte';
 	import { createViewStore } from '$lib/view.svelte';
 	import { pageTitle } from '$lib/view';
@@ -120,10 +120,12 @@
 			<div class="min-w-0 flex-1 overflow-x-auto">
 				<Tabs.Root value={current} onValueChange={(v) => void goto(`/${v}`)}>
 					<Tabs.List class="w-max">
-						{#each SECTIONS as s, i (s.slug)}
+						{#each SECTIONS as s (s.slug)}
+							{@const key = keyForSection(s.slug)}
 							<!-- the F-key hints need the room only wide screens have; the info popover lists every key -->
-							<Tabs.Trigger value={s.slug} title="{s.label} (F{i + 1})">
-								{s.label} <span class="text-muted-foreground hidden text-xs 2xl:inline" data-testid="tab-key">F{i + 1}</span>
+							<Tabs.Trigger value={s.slug} title={key ? `${s.label} (${key})` : s.label}>
+								{s.label}
+								{#if key}<span class="text-muted-foreground hidden text-xs 2xl:inline" data-testid="tab-key">{key}</span>{/if}
 							</Tabs.Trigger>
 						{/each}
 					</Tabs.List>
