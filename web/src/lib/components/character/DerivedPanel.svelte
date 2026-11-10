@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { derivedStatName } from '$lib/character';
-	import type { CharacterStore } from '$lib/character.svelte';
+	import type { EvalState } from '$lib/character';
 	import { headingCls } from '../calc/styles';
 
-	let { store }: { store: CharacterStore } = $props();
-	const ev = $derived(store.evaluated);
+	let { ev }: { ev: EvalState | undefined } = $props();
 	const rows = $derived((ev?.stats ?? []).map((v, i) => ({ i, name: derivedStatName(i), v })).filter((r) => r.i < 43 || r.v !== ''));
 </script>
 

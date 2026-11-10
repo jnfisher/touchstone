@@ -16,12 +16,16 @@ import {
   type EvalState,
 } from "./character";
 import { autoLoadLastCharEnabled } from "./settings.svelte";
+import { getRealmStore, type RealmStore } from "./realm.svelte";
+import { copyName, realmClient, type RealmClient } from "./realm";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 export interface StoreOptions {
   evalDelay?: number;
   saveDelay?: number;
+  /** Nothing is ever written to the server (the active realm character). */
+  readOnly?: boolean;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -83,6 +87,7 @@ export function createCharacterStore(
 
   function scheduleSave() {
     clearTimeout(saveTimer);
+    if (opts.readOnly) return;
     if (nameProblem(doc.name)) {
       saveStatus = "idle";
       return;
@@ -93,6 +98,7 @@ export function createCharacterStore(
   /** Saves now. Saves are serialised so an older PUT never lands after a newer one. */
   function flush(): Promise<void> {
     clearTimeout(saveTimer);
+    if (opts.readOnly) return saveChain;
     saveChain = saveChain.then(async () => {
       const snapshot = $state.snapshot(doc);
       if (nameProblem(snapshot.name)) return;
@@ -250,14 +256,241 @@ export function createCharacterStore(
 
 export type CharacterStore = ReturnType<typeof createCharacterStore>;
 
-// ---------- the shared store ----------
-// The Character tab and the calculators look at one character, as MME's windows all read the main
-// form. The store is created on first use and lives for the page.
+// ---------- the shared stores ----------
+// The editor (the Sandbox) is one store; a realm character the header picked is held in a second, read-only
+// one. The rest of the app reads `getCharacterStore()`, a facade with the same members that shows whichever
+// is active, as MME's windows all read the main form. Created on first use; they live for the page.
 
-let shared: CharacterStore | undefined;
+let sandbox: CharacterStore | undefined;
 
+/** The Sandbox editor's own store (the Characters tab's second view). */
+export function getSandboxStore(): CharacterStore {
+  return (sandbox ??= createCharacterStore());
+}
+
+export type ActiveChoice = { kind: "sandbox" } | { kind: "realm"; id: number };
+
+export const ACTIVE_KEY = "touchstone.active-character";
+
+export function parseChoice(text: string | null | undefined): ActiveChoice {
+  const m = /^realm:(\d+)$/.exec(text ?? "");
+  return m ? { kind: "realm", id: Number(m[1]) } : { kind: "sandbox" };
+}
+
+export interface ActiveDeps {
+  sandbox: CharacterStore;
+  /** The read-only store that holds the realm character. */
+  live: CharacterStore;
+  realm: Pick<RealmStore, "load" | "refresh" | "available" | "characters">;
+  client: Pick<RealmClient, "input">;
+  storage?: Pick<Storage, "getItem" | "setItem">;
+}
+
+const store_ = (s?: ActiveDeps["storage"]) => {
+  try {
+    return s ?? localStorage;
+  } catch {
+    return undefined;
+  }
+};
+
+/** A copy name that is free among the saved characters (see `copyName`). */
+export async function copyToSandbox(
+  sb: CharacterStore,
+  input: CharacterDoc,
+): Promise<string> {
+  await sb.refreshList();
+  const name = copyName(
+    input.name,
+    sb.saved.map((s) => s.name),
+  );
+  await sb.applyPasted({ ...input, name });
+  return name;
+}
+
+export function createActiveCharacter(deps: ActiveDeps) {
+  const { sandbox: sb, live, realm, client } = deps;
+  let choice = $state<ActiveChoice>(
+    (() => {
+      try {
+        return parseChoice(store_(deps.storage)?.getItem(ACTIVE_KEY));
+      } catch {
+        return { kind: "sandbox" } as ActiveChoice;
+      }
+    })(),
+  );
+  let switches = $state(0);
+  let inputError = $state<string>();
+  let applied: string | undefined;
+  let ticket = 0;
+
+  const current = (): CharacterStore => (choice.kind === "realm" ? live : sb);
+
+  function persist() {
+    try {
+      store_(deps.storage)?.setItem(
+        ACTIVE_KEY,
+        choice.kind === "realm" ? `realm:${choice.id}` : "sandbox",
+      );
+    } catch {
+      // private window or blocked storage: the choice just is not remembered
+    }
+  }
+
+  /** Reads the realm character's input; unchanged input leaves the open copy (and its edits) alone. */
+  async function loadInput() {
+    if (choice.kind !== "realm") return;
+    const id = choice.id;
+    const mine = ++ticket;
+    try {
+      const input = await client.input(id);
+      if (mine !== ticket) return;
+      const key = JSON.stringify(input);
+      if (key !== applied) {
+        applied = key;
+        live.set(input);
+      }
+      inputError = undefined;
+    } catch (e) {
+      if (mine !== ticket) return;
+      inputError = message(e);
+    }
+  }
+
+  function select(next: ActiveChoice) {
+    choice = next;
+    switches++;
+    persist();
+    ticket++;
+    applied = undefined;
+    if (next.kind === "realm") {
+      live.startNew();
+      void loadInput();
+    }
+  }
+
+  /** The persisted choice is only kept while the realm has that character. */
+  function validate() {
+    if (choice.kind !== "realm" || !realm.available) {
+      if (choice.kind === "realm" && !realm.available) select({ kind: "sandbox" });
+      return;
+    }
+    const id = choice.id;
+    if (!realm.characters.some((c) => c.id === id)) select({ kind: "sandbox" });
+  }
+
+  const facade: CharacterStore = {
+    get doc() {
+      return current().doc;
+    },
+    get options() {
+      return current().options;
+    },
+    get evaluated() {
+      return current().evaluated;
+    },
+    get evalError() {
+      return current().evalError;
+    },
+    get saved() {
+      return sb.saved;
+    },
+    get saveStatus() {
+      return current().saveStatus;
+    },
+    get saveError() {
+      return current().saveError;
+    },
+    get nameProblem() {
+      return current().nameProblem;
+    },
+    get storedName() {
+      return current().storedName;
+    },
+    get loadEpoch() {
+      return sb.loadEpoch + live.loadEpoch + switches;
+    },
+    get replaceEpoch() {
+      return sb.replaceEpoch + live.replaceEpoch + switches;
+    },
+    edit: (change) => current().edit(change),
+    setOptions: (change) => current().setOptions(change),
+    refreshList: () => sb.refreshList(),
+    // These replace the whole character: they are the editor's, and using one makes the sandbox the
+    // active character.
+    startNew() {
+      sb.startNew();
+      select({ kind: "sandbox" });
+    },
+    async load(name) {
+      await sb.load(name);
+      select({ kind: "sandbox" });
+    },
+    async remove() {
+      await sb.remove();
+    },
+    async importMmec(file, overwrite) {
+      const r = await sb.importMmec(file, overwrite);
+      if (r === "ok") select({ kind: "sandbox" });
+      return r;
+    },
+    async applyPasted(next) {
+      await sb.applyPasted(next);
+      select({ kind: "sandbox" });
+    },
+    set(next) {
+      sb.set(next);
+      select({ kind: "sandbox" });
+    },
+    flush: () => sb.flush(),
+    evaluateNow: () => current().evaluateNow(),
+  };
+
+  return {
+    /** The store the rest of the app reads. */
+    store: facade,
+    get choice() {
+      return choice;
+    },
+    /** The realm character's id when one is active. */
+    get realmId() {
+      return choice.kind === "realm" ? choice.id : undefined;
+    },
+    get inputError() {
+      return inputError;
+    },
+    select,
+    /** Reads the roster, then resolves the remembered choice against it. */
+    async start() {
+      await realm.load();
+      validate();
+      await loadInput();
+    },
+    /** The server reloaded: the roster, the open sheet and the active character are read again. */
+    async sync() {
+      await realm.refresh();
+      validate();
+      await loadInput();
+    },
+  };
+}
+
+export type ActiveCharacter = ReturnType<typeof createActiveCharacter>;
+
+let active: ActiveCharacter | undefined;
+
+export function getActiveCharacter(): ActiveCharacter {
+  return (active ??= createActiveCharacter({
+    sandbox: getSandboxStore(),
+    live: createCharacterStore(undefined, { readOnly: true }),
+    realm: getRealmStore(),
+    client: realmClient,
+  }));
+}
+
+/** What the rest of the app reads as "the character". */
 export function getCharacterStore(): CharacterStore {
-  return (shared ??= createCharacterStore());
+  return getActiveCharacter().store;
 }
 
 const LAST_KEY = "touchstone.character.last";
@@ -271,6 +504,9 @@ export function rememberLastCharacter(name: string | undefined) {
   }
 }
 
+const sandboxOf = (s: CharacterStore): CharacterStore =>
+  s === active?.store ? getSandboxStore() : s;
+
 const opened = new WeakMap<CharacterStore, Promise<string | undefined>>();
 
 /**
@@ -278,8 +514,10 @@ const opened = new WeakMap<CharacterStore, Promise<string | undefined>>();
  * edited. Runs once per store; resolves to the name opened.
  */
 export function openLastCharacter(
-  store: CharacterStore,
+  given: CharacterStore,
 ): Promise<string | undefined> {
+  // the saved characters are the sandbox's, whichever character is active
+  const store = sandboxOf(given);
   let p = opened.get(store);
   if (!p) {
     p = (async () => {
