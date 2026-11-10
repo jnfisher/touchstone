@@ -212,7 +212,8 @@ pub(super) fn load(conn: &Connection) -> Result<Realm> {
         let id: i64 = r.get("id")?;
         let bil = l("expbil")?;
         let exp = if bil > 0 {
-            bil.saturating_mul(1_000_000_000).saturating_add(l("exprem")?)
+            bil.saturating_mul(1_000_000_000)
+                .saturating_add(l("exprem")?)
         } else {
             l("exprem")?.max(l("exp")?)
         };

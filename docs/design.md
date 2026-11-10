@@ -164,3 +164,25 @@ Questions go through the same stateless prompt loop as the paste dialog. The cha
 the stores; `RowContextMenu.svelte` renders them. Calculators and the combat setup open prefilled through `handoff.svelte.ts`.
 `POST /api/clipboard/{character,monster,shop,lines}` answer `{text, error}` from `touchstone_rules::clipboard`; the page copies with
 `navigator.clipboard` and falls back to a selectable dialog.
+
+## Realm characters (R-001)
+
+A live silvermere or Quicksilver source also has players. `Silvermere::load_snapshot` reads the world and the realm
+(`characters` and its `character_*` tables) from one snapshot, so a reload brings new characters and changed gear with
+it; an `.mdb` source has no realm. The reader names every column and never reads `accounts`, the suicide password, the
+login name kept on a character, or `character_profiles`, so none of them can reach an API response. A realm character is
+read-only: `bin/touchstone/src/realm.rs` maps it to the character input the Characters tab posts (worn gear by MME's own
+equip rule, the rest of the pack as carried stacks, the spellbook as learned spells, running bless spells as bless slots,
+coins as extra weight; what has no place goes in an `unmapped` list), evaluates it under the source's profile, and
+compares the game's stored values with touchstone's. The sheets of a load are built on first use and kept until the next
+reload.
+
+- `GET /api/realm/characters`: `{available, characters}`, one summary row each (id, names, race, class, level, exp, gang,
+  map, room, last on, lives, `differs`, the count of flagged comparisons). `available: false` for a source with no realm.
+- `GET /api/realm/characters/{id}`: identity, the game's stored values, the evaluated sheet (the shape of
+  `/api/character/evaluate`), worn gear with the MME slot each took, inventory, spellbook, running spells, abilities,
+  `comparison` (`{field, label, game, touchstone, differs, tolerance, cause}`) and `unmapped`.
+- `GET /api/realm/characters/{id}/input`: the mapped character, ready to copy into the sandbox editor or post to the
+  calculators.
+
+`docs/differences.md` ("Realm characters") lists the tolerances and the known kinds of difference.

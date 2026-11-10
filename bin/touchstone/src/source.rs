@@ -62,8 +62,8 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
                 kind: "silvermere",
                 path: src.path.display().to_string(),
             };
-            let loaded =
-                Loaded::build_with(world, info.clone(), Some(version), 1, &rules)?.with_realm(realm);
+            let loaded = Loaded::build_with(world, info.clone(), Some(version), 1, &rules)?
+                .with_realm(realm);
             Ok(Started {
                 state: AppState::with_data_dir(loaded, cfg.data_dir.clone()),
                 live: Some(Arc::new(LiveSource {

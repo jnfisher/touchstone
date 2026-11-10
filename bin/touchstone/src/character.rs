@@ -400,7 +400,11 @@ impl CharacterDto {
 
 /// Where `InvenEquipItem` puts an item: by its own worn type, not by the key it was saved under.
 /// `use_2nd_wrist` is MME's `Use2ndWrist` setting (on by default).
-pub(crate) fn equip_slot(item: &touchstone_model::Item, eq: &[i32; 20], use_2nd_wrist: bool) -> Option<usize> {
+pub(crate) fn equip_slot(
+    item: &touchstone_model::Item,
+    eq: &[i32; 20],
+    use_2nd_wrist: bool,
+) -> Option<usize> {
     let n = item.number;
     match item.item_type {
         1 => Some(16),

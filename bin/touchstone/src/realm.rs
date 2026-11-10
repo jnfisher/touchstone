@@ -378,12 +378,7 @@ pub mod cause {
 /// The "Alter ..." totals the game keeps, summed over the same sources the mapped character has:
 /// race, class, equipped items, carried items that count, and the bless slots (a spell ability of
 /// 0 takes the spell's average cast, as the pipeline's bless fold does).
-fn alter_total(
-    world: &World,
-    dto: &CharacterDto,
-    abilities: &[i32],
-    best_of: bool,
-) -> i64 {
+fn alter_total(world: &World, dto: &CharacterDto, abilities: &[i32], best_of: bool) -> i64 {
     let mut total = 0i64;
     let mut best: Option<i64> = None;
     let mut add = |value: i32| {
@@ -400,7 +395,11 @@ fn alter_total(
     };
     for &n in dto.bless.iter().filter(|&&n| n > 0) {
         if let Some(sp) = world.get_spell(n) {
-            for a in sp.abilities.iter().filter(|a| abilities.contains(&a.ability)) {
+            for a in sp
+                .abilities
+                .iter()
+                .filter(|a| abilities.contains(&a.ability))
+            {
                 let v = if a.value != 0 {
                     a.value
                 } else {
@@ -581,10 +580,23 @@ pub fn compare(
         i64::from(rc.energy_use),
         Some(f64::from(s.energy_use)),
     )));
-    let alter = |abilities: &[i32], best_of: bool| alter_total(world, dto, abilities, best_of) as f64;
+    let alter =
+        |abilities: &[i32], best_of: bool| alter_total(world, dto, abilities, best_of) as f64;
     for (field, label, game, abilities, best_of) in [
-        ("av_bonus", "Alter AV", rc.av_bonus, &[22, 105, 106][..], true),
-        ("ac_bonus", "Alter Defence Value", rc.ac_bonus, &[2][..], false),
+        (
+            "av_bonus",
+            "Alter AV",
+            rc.av_bonus,
+            &[22, 105, 106][..],
+            true,
+        ),
+        (
+            "ac_bonus",
+            "Alter Defence Value",
+            rc.ac_bonus,
+            &[2][..],
+            false,
+        ),
         ("dmg_bonus", "Alter Damage", rc.dmg_bonus, &[4][..], false),
         (
             "crit_bonus",
@@ -603,7 +615,13 @@ pub fn compare(
         ("dr_pct", "Alter DR by percent", rc.dr_pct, &[99][..], false),
         ("shield", "Protective Shield", rc.shield, &[10][..], false),
         ("def_mod", "Defence Modifier", rc.def_mod, &[104][..], false),
-        ("heal_rate", "Alter healing rate", rc.heal_rate, &[123][..], false),
+        (
+            "heal_rate",
+            "Alter healing rate",
+            rc.heal_rate,
+            &[123][..],
+            false,
+        ),
         (
             "mana_rate",
             "Alter Mana Regeneration",
@@ -611,9 +629,20 @@ pub fn compare(
             &[145][..],
             false,
         ),
-        ("room_light", "Alter Room Light", rc.room_light, &[14][..], false),
+        (
+            "room_light",
+            "Alter Room Light",
+            rc.room_light,
+            &[14][..],
+            false,
+        ),
     ] {
-        let mut c = exact(field, label, i64::from(game), Some(alter(abilities, best_of)));
+        let mut c = exact(
+            field,
+            label,
+            i64::from(game),
+            Some(alter(abilities, best_of)),
+        );
         c.tolerance = "exact; touchstone sums the ability over race, class, equipped and carried items and bless spells";
         out.push(why(c));
     }
