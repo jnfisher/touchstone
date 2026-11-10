@@ -251,35 +251,36 @@ const plain = { type: 'rightAligned', filter: false } as const;
 
 export function realmColumns(): ColDef<RealmSummary>[] {
 	return [
-		{ colId: 'name', headerName: 'Name', field: 'first_name', minWidth: 110 },
-		{ colId: 'last', headerName: 'Last name', field: 'last_name', minWidth: 110 },
-		{ colId: 'race', headerName: 'Race', field: 'race_name', maxWidth: 110 },
-		{ colId: 'class', headerName: 'Class', field: 'class_name', maxWidth: 120 },
-		{ colId: 'level', headerName: 'Level', field: 'level', type: 'rightAligned', filter: 'agNumberColumnFilter', maxWidth: 90 },
+		{ colId: 'name', headerName: 'Name', field: 'first_name', width: 100 },
+		{ colId: 'last', headerName: 'Last name', field: 'last_name', width: 100 },
+		{ colId: 'race', headerName: 'Race', field: 'race_name', width: 90 },
+		{ colId: 'class', headerName: 'Class', field: 'class_name', width: 95 },
+		{ colId: 'level', headerName: 'Level', field: 'level', type: 'rightAligned', filter: 'agNumberColumnFilter', width: 75 },
 		{
 			colId: 'exp',
 			headerName: 'Exp',
 			field: 'exp',
 			type: 'rightAligned',
 			filter: 'agNumberColumnFilter',
+			width: 135,
 			valueFormatter: (p) => (typeof p.value === 'number' ? p.value.toLocaleString('en-US') : '')
 		},
-		{ colId: 'gang', headerName: 'Gang', field: 'gang', maxWidth: 130 },
+		{ colId: 'gang', headerName: 'Gang', field: 'gang', width: 100 },
 		{
 			colId: 'laston',
 			headerName: 'Last on',
 			valueGetter: (p) => p.data?.last_on,
 			valueFormatter: (p) => (p.data ? lastOnText(p.data) : ''),
-			minWidth: 140
+			width: 140
 		},
-		{ colId: 'lives', headerName: 'Lives', field: 'lives', ...plain, maxWidth: 80 },
+		{ colId: 'lives', headerName: 'Lives', field: 'lives', ...plain, width: 70 },
 		{
 			colId: 'differs',
 			headerName: 'Differs',
 			field: 'differs',
 			type: 'rightAligned',
 			filter: 'agNumberColumnFilter',
-			maxWidth: 90,
+			width: 80,
 			tooltipValueGetter: () => "Stored values touchstone's calculation disagrees with"
 		}
 	];

@@ -29,8 +29,8 @@ header, drives everything that uses "the character".
   second instance that holds the active realm character. `getCharacterStore()` now returns a facade with the
   same members that reads whichever of the two is active; `getSandboxStore()` is the editor itself.
   Replacing the whole character (paste, new, load, import) goes to the sandbox and makes it active; an edit
-  made through the facade to a realm character (a menu's "set as combat spell") stays in memory and is lost at
-  the next reload of the realm, as the realm is the source of truth.
+  made through the facade to a realm character (a menu's "set as combat spell") stays in memory (never saved) until that character changes in the
+  realm or another is picked, as the realm is the source of truth.
 - Realm data lives in its own store (`realm.svelte.ts`): the roster, the selected sheet and a `refresh()` the
   layout calls whenever the info load number changes, so the list, the open sheet and the active character
   follow a live reload.

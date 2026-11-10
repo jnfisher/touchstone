@@ -80,7 +80,7 @@
 		</div>
 		{#if copyError}<p class="text-destructive text-sm" role="alert">{copyError}</p>{/if}
 		<div class="relative min-h-0 flex-1">
-			<SplitPane storageKey="touchstone.split.realm" autoWidth={gridWidth === undefined ? undefined : Math.min(gridWidth, 800)} bind:collapsed>
+			<SplitPane storageKey="touchstone.split.realm" autoWidth={gridWidth === undefined ? undefined : Math.min(gridWidth, 950)} bind:collapsed>
 				{#snippet left()}
 					<DataGrid
 						{rows}

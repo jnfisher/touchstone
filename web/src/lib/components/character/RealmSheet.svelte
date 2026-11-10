@@ -100,15 +100,15 @@
 					<table class="w-full text-sm" data-testid="sheet-{g.title.toLowerCase().replace(/ /g, '-')}">
 						<thead>
 							<tr class="text-muted-foreground text-[11px] tracking-wide uppercase">
-								<th class="py-0.5 text-left font-medium">{g.title}</th><th class="text-right font-medium">Touchstone</th><th class="text-right font-medium">Game</th>
+								<th class="py-0.5 text-left font-medium">{g.title}</th><th class="pl-3 text-right font-medium">Touchstone</th><th class="pl-3 text-right font-medium">Game</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each g.rows as r (r.field)}
 								<tr class="border-t {r.differs ? 'bg-warning/15' : ''}" title={r.tip} data-differs={r.differs} data-field={r.field}>
 									<td class="py-0.5">{r.label}</td>
-									<td class="text-right tabular-nums {r.differs ? 'text-warning font-medium' : ''}">{r.touchstone}</td>
-									<td class="text-right tabular-nums">{r.game}</td>
+									<td class="pl-3 text-right tabular-nums {r.differs ? 'text-warning font-medium' : ''}">{r.touchstone}</td>
+									<td class="pl-3 text-right tabular-nums">{r.game}</td>
 								</tr>
 							{/each}
 						</tbody>
