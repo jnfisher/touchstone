@@ -122,6 +122,75 @@ for the Tailscale address), or with `ufw`:
 sudo ufw allow from 192.168.1.0/24 to any port 8370 proto tcp
 ```
 
+## Alternative: a user service next to a per-user game (silver-mirror)
+
+If the game runs as a `systemd --user` unit under your own account (Quicksilver in
+`~/quicksilver`, as on silver-mirror), the system install above does not fit: home directories are
+usually mode 0700, so a separate `touchstone` user cannot reach the database. Run touchstone as
+your own user instead, the same way as the game. No `sudo` is needed except to enable lingering.
+
+silver-mirror runs Mealie on Tailscale Serve at `https://<host>.<tailnet>.ts.net/`, wayfarer on
+port 7373 and Quicksilver on 2323 and 8080. touchstone takes **7374**, bound to the Tailscale
+address only. Check a port is free first with `ss -ltnp | grep 7374`.
+
+Install the binary and write the config (after downloading and verifying the archive as above):
+
+```sh
+B=~/.local/share/touchstone
+mkdir -p "$B/data"
+install -m 0755 touchstone-$VERSION-aarch64-unknown-linux-musl/touchstone "$B/touchstone"
+TS_IP=$(tailscale ip -4)
+cat > "$B/touchstone.toml" <<EOF
+# Tailscale only: touchstone has no authentication.
+bind = "$TS_IP:7374"
+data_dir = "$B/data"
+
+[source]
+kind = "silvermere"
+path = "$HOME/quicksilver/data/quicksilver.db"
+EOF
+```
+
+Write `~/.config/systemd/user/touchstone.service`:
+
+```ini
+[Unit]
+Description=touchstone (MMUD Explorer web server)
+# The game must be running first so its -wal/-shm files exist for the read-only reader.
+After=network-online.target quicksilver.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=%h/.local/share/touchstone
+ExecStart=%h/.local/share/touchstone/touchstone serve --config %h/.local/share/touchstone/touchstone.toml
+Restart=on-failure
+RestartSec=5
+UMask=0027
+
+[Install]
+WantedBy=default.target
+```
+
+`After=quicksilver.service` only orders units within the same manager, so it works here because
+the game is also a user unit. `Restart=on-failure` with no start limit covers the case where the
+game's database is not ready yet at boot.
+
+Enable it, and make sure lingering is on so user units start at boot without a login:
+
+```sh
+sudo loginctl enable-linger "$USER"     # `loginctl show-user $USER -p Linger` shows Linger=yes if already on
+systemctl --user daemon-reload
+systemctl --user enable --now touchstone
+journalctl --user -u touchstone -e
+curl -s "http://$(tailscale ip -4):7374/api/info"
+```
+
+Open `http://<host>:7374/` from any machine on the tailnet. To update, replace
+`~/.local/share/touchstone/touchstone` and run `systemctl --user restart touchstone`. To uninstall,
+`systemctl --user disable --now touchstone`, then remove the unit file and
+`~/.local/share/touchstone` (saved characters are in its `data/`).
+
 ## Update
 
 ```sh
