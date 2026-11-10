@@ -693,3 +693,15 @@ under "Realm characters" apply to anything calculated from it. The attack choice
 are not in the game's record, so they are MME's defaults. A menu action that edits "the character" (set as combat
 spell, bless slots) changes an in-memory copy only; it is dropped when the character changes in the realm or another
 is picked, and nothing is written to the realm or to the saved sandbox characters.
+
+## Calculators on realm characters (R-003)
+- MME has one loaded character that every calculator reads. Here the header's active character plays that part, and
+  each calculator can borrow another realm character for itself; MME has no such override. A borrowed character is
+  read-only and is dropped if it leaves the realm.
+- A party can be built from up to six realm characters. Each member's defenses and recovery come from the character's
+  evaluation and its damage and swings from the combat preview of its saved attack (a one-shot attack gives no
+  damage, so that member leaves its damage boxes empty, as an unpasted member does). The server's paste-party code
+  then averages them. MME builds the same table from pasted text, and its heals box stays empty here.
+- The paste dialog's Continue now writes the party boxes of the Monsters tab too (it only displayed them before).
+- The status chip and the Options items name the character or party the damage was calculated for; MME shows no name.
+- Reachability does not depend on a character, so there is nothing for it to follow.
