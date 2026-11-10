@@ -89,46 +89,47 @@ export const chestsClient = createChestsClient();
 // ---------- the grids ----------
 
 const money = { type: 'rightAligned', filter: 'agNumberColumnFilter' } as const;
+const plain = { type: 'rightAligned', filter: false } as const;
 
 /** The chest list: name, number, contents, average sale per opening, dropped by. */
 export function summaryColumns(): ColDef<ChestSummary>[] {
 	return [
-		{ colId: 'name', headerName: 'Name', field: 'name', flex: 1 },
-		{ colId: 'number', headerName: 'Number', field: 'item', type: 'rightAligned', filter: 'agNumberColumnFilter' },
+		{ colId: 'name', headerName: 'Name', field: 'name', maxWidth: 230 },
+		{ colId: 'number', headerName: 'No.', field: 'item', ...plain },
 		{ colId: 'contents', headerName: 'Contents', field: 'contents', type: 'rightAligned', filter: 'agNumberColumnFilter' },
 		{
 			colId: 'average',
-			headerName: 'Avg sale / opening',
+			headerName: 'Avg sale',
 			valueGetter: (p) => p.data?.average_copper,
 			valueFormatter: (p) => p.data?.average_short ?? '',
 			tooltipValueGetter: (p) => p.data?.average,
 			...money
 		},
-		{ colId: 'dropped', headerName: 'Dropped by', field: 'dropped_by', type: 'rightAligned', filter: 'agNumberColumnFilter' }
+		{ colId: 'dropped', headerName: 'Drops', field: 'dropped_by', type: 'rightAligned', filter: 'agNumberColumnFilter' }
 	];
 }
 
 /** The contents grid: item, chance, sell price and expected value (chance times price). */
 export function contentColumns(): ColDef<ChestContent>[] {
 	return [
-		{ colId: 'name', headerName: 'Item', field: 'name', flex: 1 },
-		{ colId: 'number', headerName: 'Number', field: 'item', type: 'rightAligned', filter: 'agNumberColumnFilter' },
+		{ colId: 'name', headerName: 'Item', field: 'name', filter: false, minWidth: 150, maxWidth: 220 },
 		{
 			colId: 'chance',
 			headerName: 'Chance',
 			valueGetter: (p) => p.data?.percent,
 			valueFormatter: (p) => p.data?.percent_text ?? '',
 			sort: 'desc',
-			...money
+			...plain
 		},
 		{
 			colId: 'sell',
-			headerName: 'Sells for',
+			headerName: 'Sells',
 			valueGetter: (p) => p.data?.sell_copper,
 			valueFormatter: (p) => (p.data ? (p.data.sellable ? p.data.sell_short : "can't be sold") : ''),
 			tooltipValueGetter: (p) => p.data?.sell,
-			cellClass: (p) => (p.data?.sellable ? undefined : 'ts-cell-nomatch'),
-			...money
+			// cellClass replaces the right-aligned type's own class, so it is repeated here
+			cellClass: (p) => (p.data?.sellable ? 'ag-right-aligned-cell' : ['ag-right-aligned-cell', 'ts-cell-nomatch']),
+			...plain
 		},
 		{
 			colId: 'expected',
@@ -136,7 +137,7 @@ export function contentColumns(): ColDef<ChestContent>[] {
 			valueGetter: (p) => p.data?.expected_copper,
 			valueFormatter: (p) => p.data?.expected_short ?? '',
 			tooltipValueGetter: (p) => p.data?.expected,
-			...money
+			...plain
 		}
 	];
 }
@@ -188,14 +189,14 @@ export function dropperRows(refs: readonly RefRow[]): DropperRow[] {
 
 export function dropperColumns(): ColDef<DropperRow>[] {
 	return [
-		{ colId: 'kind', headerName: 'Source', valueGetter: (p) => (p.data ? kindLabel(p.data.kind) : '') },
-		{ colId: 'name', headerName: 'Name', field: 'name', flex: 1 },
+		{ colId: 'kind', headerName: 'Source', filter: false, maxWidth: 110, valueGetter: (p) => (p.data ? kindLabel(p.data.kind) : '') },
+		{ colId: 'name', headerName: 'Name', field: 'name', filter: false, minWidth: 240, maxWidth: 300 },
 		{
 			colId: 'chance',
 			headerName: 'Drop chance',
 			valueGetter: (p) => p.data?.percent,
 			valueFormatter: (p) => p.data?.percent_text ?? '',
-			...money
+			...plain
 		}
 	];
 }

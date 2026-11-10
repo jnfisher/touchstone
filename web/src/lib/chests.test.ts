@@ -73,8 +73,8 @@ describe('client', () => {
 
 describe('chest list grid', () => {
 	const cols = summaryColumns();
-	it('has name, number, contents, average sale per opening and dropped by', () => {
-		expect(cols.map((c) => c.headerName)).toEqual(['Name', 'Number', 'Contents', 'Avg sale / opening', 'Dropped by']);
+	it('has name, number, contents, average sale per opening and drops (dropped by)', () => {
+		expect(cols.map((c) => c.headerName)).toEqual(['Name', 'No.', 'Contents', 'Avg sale', 'Drops']);
 		expect(new Set(cols.map((c) => c.colId)).size).toBe(cols.length);
 	});
 	it('sorts the average by its copper value but shows the short coin form', () => {
@@ -82,14 +82,14 @@ describe('chest list grid', () => {
 		expect(cell(avg, 'valueGetter', summary)).toBe(514721.7);
 		expect(cell(avg, 'valueFormatter', summary)).toBe('51P');
 		expect(cell(avg, 'tooltipValueGetter', summary)).toBe('514,722 Copper (51.47 Platinum)');
-		expect(avg.filter).toBe('agNumberColumnFilter');
+		expect(avg.filter).toBe('agNumberColumnFilter'); // the list is filterable by name, contents, sale and drops
 	});
 });
 
 describe('contents grid', () => {
 	const cols = contentColumns();
 	it('lists item, chance, sell price and expected value, best chance first', () => {
-		expect(cols.map((c) => c.headerName)).toEqual(['Item', 'Number', 'Chance', 'Sells for', 'Expected']);
+		expect(cols.map((c) => c.headerName)).toEqual(['Item', 'Chance', 'Sells', 'Expected']);
 		expect(byId(cols, 'chance').sort).toBe('desc');
 	});
 	it('shows what an item sells for, or that it cannot be sold', () => {
@@ -97,8 +97,8 @@ describe('contents grid', () => {
 		expect(cell(sell, 'valueFormatter', content({}))).toBe('400G');
 		const none = content({ sellable: false, sell_copper: 0, sell: "can't be sold", sell_short: '' });
 		expect(cell(sell, 'valueFormatter', none)).toBe("can't be sold");
-		expect((sell.cellClass as (p: unknown) => unknown)({ data: none })).toBe('ts-cell-nomatch');
-		expect((sell.cellClass as (p: unknown) => unknown)({ data: content({}) })).toBeUndefined();
+		expect((sell.cellClass as (p: unknown) => unknown)({ data: none })).toEqual(['ag-right-aligned-cell', 'ts-cell-nomatch']);
+		expect((sell.cellClass as (p: unknown) => unknown)({ data: content({}) })).toBe('ag-right-aligned-cell');
 	});
 	it('shows the expected value as chance times price', () => {
 		const ex = byId(cols, 'expected');

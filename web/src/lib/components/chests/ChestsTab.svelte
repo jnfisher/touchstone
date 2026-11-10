@@ -95,7 +95,7 @@
 		{:else if !store.list}
 			<p class="text-muted-foreground" data-testid="loading">Loading chests...</p>
 		{:else}
-			<SplitPane storageKey="touchstone.split.chests" autoWidth={gridWidth} bind:collapsed>
+			<SplitPane storageKey="touchstone.split.chests" autoWidth={gridWidth === undefined ? undefined : Math.min(gridWidth, 750)} bind:collapsed>
 				{#snippet left()}
 					<DataGrid
 						rows={store.list!.chests}
