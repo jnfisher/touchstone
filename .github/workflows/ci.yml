@@ -58,7 +58,9 @@ jobs:
   rust:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    # Pinned: on the 26.04 image behind ubuntu-latest apt could not resolve the Ubuntu mirrors,
+    # so a miss of the stock database cache could not install mdbtools.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -74,12 +76,12 @@ jobs:
       - name: Convert the stock database
         if: steps.mdb.outputs.cache-hit != 'true'
         run: |
-          # The runner's mirrors sometimes fail to resolve for a minute or two; try again before giving up.
-          for attempt in 1 2 3 4 5; do
-            if sudo apt-get update && sudo apt-get install -y --no-install-recommends mdbtools; then
+          # The runner's mirrors sometimes fail to resolve for a moment; try again before giving up.
+          for attempt in 1 2 3; do
+            if sudo apt-get install -y --no-install-recommends mdbtools; then
               break
             fi
-            if [ "$attempt" = 5 ]; then
+            if [ "$attempt" = 3 ]; then
               echo "mdbtools could not be installed" >&2
               exit 1
             fi
