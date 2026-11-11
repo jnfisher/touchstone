@@ -23,6 +23,7 @@ mod realm;
 mod rooms;
 mod settings;
 mod spell_tools;
+mod weapon_sim;
 
 mod health {
     use axum::body::Body;

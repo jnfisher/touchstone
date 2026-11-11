@@ -6,6 +6,7 @@
 	import HitCalc from '$lib/components/calc/HitCalc.svelte';
 	import MonsterSimCalc from '$lib/components/calc/MonsterSimCalc.svelte';
 	import SwingCalc from '$lib/components/calc/SwingCalc.svelte';
+	import WeaponSimCalc from '$lib/components/calc/WeaponSimCalc.svelte';
 
 	const name = $derived(page.params.name ?? '');
 </script>
@@ -24,5 +25,7 @@
 		<HitCalc />
 	{:else if name === 'monster-sim'}
 		<MonsterSimCalc />
+	{:else if name === 'weapon-sim'}
+		<WeaponSimCalc />
 	{/if}
 {/key}

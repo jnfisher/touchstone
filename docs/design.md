@@ -115,6 +115,8 @@ the UI fetches whole tables once and filters and sorts in the browser:
   when sent with `global_filter: true`; without one, MME's no-character view. Cached per request
   until the data reloads. Monsters (exp/hr, damage) are a later card.
 - `POST /api/calc/{swing,hit,backstab,exp,coin,monster-attack-sim}`: the calculator windows.
+- `POST /api/calc/weapon-sim` with `{character, ignore_level, ignore_alignment, include_limited, target, rounds,
+  candidates, seed, pinned}`: the Weapon Simulator, touchstone's own (see below).
 - `GET/PUT /api/settings`: the options that change results (exp/hr models and knobs, monster sim
   rounds, route waypoint interval, open-last-character), stored as `<data_dir>/settings.json`. PUT
   applies MME's Save rules (knob clamp, round and interval ranges, A+B+C when no model is ticked)
@@ -186,3 +188,18 @@ reload.
   calculators.
 
 `docs/differences.md` ("Realm characters") lists the tolerances and the known kinds of difference.
+
+## Weapon Simulator (W-001)
+
+Calculators > Weapon Simulator lists the best weapons for the character in use. It is not an MME window. The server
+(`bin/touchstone/src/weapon_sim.rs`) evaluates the character once, scores every weapon it may wield with
+`CalculateAttack` (attack, bash and, for a weapon with backstab accuracy and a character with stealth, backstab),
+keeps the best few by each plus the weapon in hand and any pinned ones, and rolls those round by round
+(`touchstone_rules::weapon_sim`, seeded and deterministic). A row carries, for each attack, MME's damage a round, the
+simulated mean, spread (low, median, high, the share of rounds that deal nothing) and, when the target has hit points,
+the rounds to kill. The page has a view for regular rounds (ranked by the better of attack and bash) and one for
+backstab rounds, and shows the selected weapon's numbers above its item pane.
+
+It is sized for a Raspberry Pi: scoring is a few hundred closed-form calls, the dice are integer arithmetic on one
+core, one request runs at a time, and the request's limits (50,000 rounds, 60 weapons an attack) bound the worst
+case to a few hundred million dice. `docs/differences.md` ("Weapon simulator") says how the dice follow MME's numbers.

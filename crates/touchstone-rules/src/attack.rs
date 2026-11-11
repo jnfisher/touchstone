@@ -651,6 +651,12 @@ pub struct AttackDamage {
     pub landed_share: f64,
     /// The expected blows per swing that land and deal damage: the hit chance times `landed_share`.
     pub landed_per_swing: f64,
+    /// The least a crit deals after damage reduction (0 without a crit chance). Not an MME field:
+    /// MME keeps it in a local; the weapon simulator rolls crits between it and `max_crit`.
+    pub min_crit: i32,
+    /// The energy one swing costs (after the bash doubling and the floor of 1), 0 for manual
+    /// damage. Not an MME field; the weapon simulator carries a round's leftover energy with it.
+    pub energy: i32,
     pub attack_desc: String,
     pub attack_detail: String,
     pub attack_speed: i16,
@@ -852,7 +858,12 @@ pub fn calculate_attack(
     req: &AttackRequest,
     casts: &mut String,
 ) -> AttackDamage {
-    attack_steps(profile, env, ch, req, casts, &mut BlowIo::default()).unwrap_or_default()
+    let mut io = BlowIo::default();
+    let mut r = attack_steps(profile, env, ch, req, casts, &mut io).unwrap_or_default();
+    if r.swings > 0.0 {
+        r.energy = io.energy;
+    }
+    r
 }
 
 /// Extra input and output of one `attack_steps` run, for the opener (R2). Stock callers leave it
@@ -1800,6 +1811,7 @@ fn finish(
         max_dmg: dmg_max,
         avg_hit: cur_to_i32(avg_hit)?,
         avg_crit,
+        min_crit,
         max_crit,
         avg_extra_hit: cur_to_i32(extra_avg_hit)?,
         avg_extra_swing: cur_to_i32(extra_avg_swing)?,

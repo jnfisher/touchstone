@@ -27,6 +27,7 @@ pub mod settings;
 pub mod source;
 pub mod spell_tools;
 pub mod state;
+pub mod weapon_sim;
 mod web;
 
 use std::sync::Arc;

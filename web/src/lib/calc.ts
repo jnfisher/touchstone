@@ -10,7 +10,9 @@ export const CALCULATORS = [
 	{ slug: 'swing', label: 'Swing Calculator' },
 	{ slug: 'backstab', label: 'Backstab Calculator' },
 	{ slug: 'hit', label: 'Hit Calculator' },
-	{ slug: 'monster-sim', label: 'Monster Attack Simulator' }
+	{ slug: 'monster-sim', label: 'Monster Attack Simulator' },
+	// touchstone's own, not an MME window (lib/weaponsim.ts)
+	{ slug: 'weapon-sim', label: 'Weapon Simulator' }
 ] as const;
 export type CalcSlug = (typeof CALCULATORS)[number]['slug'];
 
@@ -986,7 +988,7 @@ export class CalcError extends Error {
 
 /** `POST /api/calc/<name>`; a 400 carries the server's reason as the error message. */
 export function createCalcClient(fetchFn: FetchFn = (...a) => fetch(...a)) {
-	async function post<T>(name: CalcSlug | 'mega-stat' | 'monster-sim/defender', body: unknown): Promise<T> {
+	async function post<T>(name: Exclude<CalcSlug, 'weapon-sim'> | 'mega-stat' | 'monster-sim/defender', body: unknown): Promise<T> {
 		const res = await fetchFn(`/api/calc/${name}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
