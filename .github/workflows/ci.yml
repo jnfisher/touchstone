@@ -74,7 +74,17 @@ jobs:
       - name: Convert the stock database
         if: steps.mdb.outputs.cache-hit != 'true'
         run: |
-          sudo apt-get install -y --no-install-recommends mdbtools
+          # The runner's mirrors sometimes fail to resolve for a minute or two; try again before giving up.
+          for attempt in 1 2 3 4 5; do
+            if sudo apt-get update && sudo apt-get install -y --no-install-recommends mdbtools; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "mdbtools could not be installed" >&2
+              exit 1
+            fi
+            sleep 30
+          done
           tools/mdb-fetch.sh
       - uses: taiki-e/install-action@v2
         with:
