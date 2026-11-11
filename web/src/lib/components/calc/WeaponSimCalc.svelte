@@ -222,6 +222,10 @@
 							<input type="checkbox" bind:checked={form.includeLimited} data-testid="wsim-limited" />
 							Limited items
 						</label>
+						<label class={check} title="Skip weapons that no room, shop, monster, chest or script in the data gives: leftovers such as test items">
+							<input type="checkbox" bind:checked={form.onlyObtainable} data-testid="wsim-obtainable" />
+							Obtainable only
+						</label>
 					</div>
 				</div>
 				<div class="flex flex-col gap-1">
@@ -359,7 +363,7 @@
 								selectedId={picked === undefined ? undefined : String(picked)}
 								quickFilter={search}
 								storageKey="weapon-sim-{view}"
-								rowState={(r: WeaponSimRow) => (r.needs_level || r.wrong_alignment ? 'muted' : undefined)}
+								rowState={(r: WeaponSimRow) => (r.needs_level || r.wrong_alignment || r.unobtainable ? 'muted' : undefined)}
 								onSelect={(r: WeaponSimRow) => (picked = r.number)}
 								onRowDoubleClick={(r: WeaponSimRow) => openInWeapons(r.number)}
 								onCount={(n) => (shown = n)}

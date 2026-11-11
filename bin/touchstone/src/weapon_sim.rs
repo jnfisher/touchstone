@@ -84,6 +84,10 @@ pub struct WeaponSimReq {
     /// Limited items are the realm's rare ones; on by default, as a best-weapon list wants them.
     #[serde(default = "yes")]
     pub include_limited: bool,
+    /// Skip weapons nothing in the data yields (no room, shop, monster, chest or script): leftovers
+    /// such as test items, which a live database lists like any other row. On by default.
+    #[serde(default = "yes")]
+    pub only_obtainable: bool,
     #[serde(default)]
     pub target: Target,
     #[serde(default = "default_rounds")]
@@ -201,6 +205,8 @@ pub struct RowJson {
     /// Kept only because a restriction is being ignored.
     pub needs_level: bool,
     pub wrong_alignment: bool,
+    /// Nothing in the data yields the weapon.
+    pub unobtainable: bool,
     pub attack: Option<ModeJson>,
     pub bash: Option<ModeJson>,
     pub backstab: Option<ModeJson>,
@@ -383,6 +389,11 @@ pub fn run(
         if !req.include_limited && item.limit != 0 && !is_equipped {
             continue;
         }
+        let obtainable = item.obtained_from.as_deref().is_some_and(|s| !s.is_empty());
+        if req.only_obtainable && !obtainable && !is_equipped && !req.pinned.contains(&item.number)
+        {
+            continue;
+        }
         let strict = usable(item, ch.level, false);
         let mut needs_level = false;
         let mut wrong_alignment = false;
@@ -506,6 +517,11 @@ pub fn run(
             pinned: req.pinned.contains(&n),
             needs_level: s.needs_level,
             wrong_alignment: s.wrong_alignment,
+            unobtainable: !s
+                .item
+                .obtained_from
+                .as_deref()
+                .is_some_and(|o| !o.is_empty()),
             attack: attack_mode,
             bash: bash_mode,
             backstab: backstab_mode,

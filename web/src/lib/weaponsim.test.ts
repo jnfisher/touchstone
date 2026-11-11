@@ -54,6 +54,7 @@ const row = (number: number, o: Partial<WeaponSimRow> = {}): WeaponSimRow => ({
 	pinned: false,
 	needs_level: false,
 	wrong_alignment: false,
+	unobtainable: false,
 	attack: mode(100),
 	bash: mode(80),
 	backstab: null,
@@ -84,6 +85,7 @@ describe('request', () => {
 			ignore_level: false,
 			ignore_alignment: false,
 			include_limited: true,
+			only_obtainable: true,
 			target: { ac: 0, dr: 0, dodge: 0, bs_defense: 0, hp: 0 },
 			rounds: 5000,
 			candidates: 25,
@@ -154,6 +156,7 @@ describe('views', () => {
 		expect(rowNote(row(1, { needs_level: true, level: 40, wrong_alignment: true, limit: 1, pinned: true }), 25)).toBe(
 			'level 40 (+15), alignment, limited, pinned'
 		);
+		expect(rowNote(row(1, { unobtainable: true }), 25)).toBe('no known source');
 		expect(rowNote(row(1), 25)).toBe('');
 	});
 });

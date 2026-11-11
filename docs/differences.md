@@ -732,6 +732,10 @@ Calculators > Weapon Simulator is a touchstone addition; MME has no such window.
 - **Rounds to kill** are not an MME figure: fights to the target's hit points with no regeneration, the stab's
   opening round followed by normal attacks in the backstab view. A fight that would take more than 60 rounds is not
   rolled; the page shows hit points over the simulated damage a round, marked `~`.
+- **Obtainable only** (on by default) leaves out a weapon whose Obtained From is empty: no room, shop, monster, chest
+  or script yields it. MME's database marks such leftovers "not in game", but a live silvermere or Quicksilver
+  database lists every row as in the game, so a test item (the stock "bow of silver", 90-900 damage) would
+  otherwise top the list. The weapon in hand and pinned weapons are kept either way.
 - **Which weapons.** `ItemIsUsableByChar` for the character's class, level and alignment, in-game weapons only; the
   global filter's minimum item level is not applied. "Ignore level" tests a weapon at the higher of the character's
   level and the weapon's minimum level, so a maximum-level rule still applies; the damage is still calculated with the

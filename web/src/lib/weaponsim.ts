@@ -28,6 +28,8 @@ export interface WeaponSimForm {
 	ignoreLevel: boolean;
 	ignoreAlignment: boolean;
 	includeLimited: boolean;
+	/** Skip weapons nothing in the data yields. */
+	onlyObtainable: boolean;
 	/** The target boxes as typed. */
 	target: Record<TargetField, string>;
 	/** The monster the target boxes were filled from, if any. */
@@ -46,6 +48,7 @@ export const WEAPON_SIM_DEFAULTS: WeaponSimForm = {
 	ignoreLevel: false,
 	ignoreAlignment: false,
 	includeLimited: true,
+	onlyObtainable: true,
 	target: { ac: '0', dr: '0', dodge: '0', bs_defense: '0', hp: '0' },
 	monster: null,
 	rounds: 5000,
@@ -89,6 +92,7 @@ export function weaponSimRequest(form: WeaponSimForm, character: object) {
 		ignore_level: form.ignoreLevel,
 		ignore_alignment: form.ignoreAlignment,
 		include_limited: form.includeLimited,
+		only_obtainable: form.onlyObtainable,
 		target: targetOf(form),
 		rounds: form.rounds,
 		candidates: form.candidates,
@@ -156,6 +160,8 @@ export interface WeaponSimRow {
 	pinned: boolean;
 	needs_level: boolean;
 	wrong_alignment: boolean;
+	/** Nothing in the data yields the weapon. */
+	unobtainable: boolean;
 	attack: SimMode | null;
 	bash: SimMode | null;
 	backstab: SimMode | null;
@@ -225,6 +231,7 @@ export function rowNote(r: WeaponSimRow, level: number): string {
 	if (r.needs_level) notes.push(`level ${r.level}${r.level > level ? ` (+${r.level - level})` : ''}`);
 	if (r.wrong_alignment) notes.push('alignment');
 	if (r.limit !== 0) notes.push('limited');
+	if (r.unobtainable) notes.push('no known source');
 	if (r.pinned && !r.equipped) notes.push('pinned');
 	return notes.join(', ');
 }
