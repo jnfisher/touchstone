@@ -58,8 +58,7 @@ jobs:
   rust:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
-    # Pinned: on the 26.04 image behind ubuntu-latest apt could not resolve the Ubuntu mirrors,
-    # so a miss of the stock database cache could not install mdbtools.
+    # Pinned to 24.04: the mdbtools fallback below names that release's packages.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -76,17 +75,22 @@ jobs:
       - name: Convert the stock database
         if: steps.mdb.outputs.cache-hit != 'true'
         run: |
-          # The runner's mirrors sometimes fail to resolve for a moment; try again before giving up.
-          for attempt in 1 2 3; do
-            if sudo apt-get install -y --no-install-recommends mdbtools; then
-              break
-            fi
-            if [ "$attempt" = 3 ]; then
-              echo "mdbtools could not be installed" >&2
-              exit 1
-            fi
-            sleep 30
-          done
+          # apt on the runner at times cannot resolve the Ubuntu mirrors for an hour or more. The
+          # same three packages are then taken from another mirror and checked against their sha256.
+          if ! sudo apt-get install -y --no-install-recommends mdbtools; then
+            dir="$(mktemp -d)"
+            base="https://mirrors.kernel.org/ubuntu/pool/universe/m/mdbtools"
+            ver="1.0.0+dfsg-1.2ubuntu1_amd64"
+            while read -r sum name; do
+              curl -fsSL --retry 3 -o "$dir/$name.deb" "$base/${name}_$ver.deb"
+              echo "$sum  $dir/$name.deb" | sha256sum -c -
+            done <<'DEBS'
+          c1572263501841288014a1d160645ad87093b3b8c9bd419645b03566e24b90e7 libmdb3t64
+          5f8ecf104cf108d9af529978518c28eb0cce5f330603c54b93b5a30a6b5fc351 libmdbsql3t64
+          b1abc8087ad327543b70f96b9a6eeb3f37154dd2d6040d6d170a9a14637e4be2 mdbtools
+          DEBS
+            sudo dpkg -i "$dir"/libmdb3t64.deb "$dir"/libmdbsql3t64.deb "$dir"/mdbtools.deb
+          fi
           tools/mdb-fetch.sh
       - uses: taiki-e/install-action@v2
         with:
