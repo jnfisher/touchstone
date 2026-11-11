@@ -114,6 +114,7 @@ the orchestrator writes each card when its dependencies are close to merged.
 | R-001 | Realm characters: read, map, evaluate and compare with the game | #125 |
 | R-002 | Characters tab: realm list, sheet, sandbox, active-character picker | #126 |
 | R-003 | Calculators and simulations on realm characters | #127 |
+| W-001 | Weapon Simulator: best weapons for a character by simulated attack, bash and backstab rounds | #129 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -128,7 +129,7 @@ None.
 
 ## Next
 
-Released as 0.2.0 (realm characters, Chests tab). Candidates are the follow-ups below.
+Released as 0.3.0 (Weapon Simulator); 0.2.0 was realm characters and the Chests tab. Candidates are the follow-ups below.
 
 ## Follow-ups noted
 
@@ -150,3 +151,4 @@ Released as 0.2.0 (realm characters, Chests tab). Candidates are the follow-ups 
 - Realm: quest flags, stash and key ring not mapped; traps/thievery/tracking/disarm/martial shown but not compared (R-001).
 - Realm party: per-member attack choice, so casters get a real Magic out (R-003).
 - Chests tab: detail-grid columns clip below 1440 px wide (CH-001); light-theme DataGrid header shows extra filter-icon columns (R-002).
+- Weapon Simulator: Quicksilver stab round not checked end to end; monsters that need a magical weapon; hand-off from the Weapons list (W-001).
