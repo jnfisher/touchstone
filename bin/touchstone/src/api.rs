@@ -14,7 +14,7 @@ use crate::state::AppState;
 use crate::{
     calc, character, chests, class_race_builder, clipboard, combat_setup, compare, detail, equip,
     evaluate, item_manager, map, monster_damage, monster_sim, panes, paste, profile, reach, realm,
-    rooms, route, settings, spell_tools,
+    rooms, route, settings, spell_tools, weapon_sim,
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -32,6 +32,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/calc/mega-stat", post(calc::calc_mega_stat))
         .route("/api/calc/backstab", post(calc::calc_backstab))
         .route("/api/calc/hit", post(calc::calc_hit))
+        .route("/api/calc/weapon-sim", post(weapon_sim::route))
         .route("/api/calc/monster-sim", post(monster_sim::sim_route))
         .route(
             "/api/calc/monster-sim/defender",

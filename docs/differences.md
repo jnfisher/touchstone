@@ -708,3 +708,32 @@ is picked, and nothing is written to the realm or to the saved sandbox character
 - The paste dialog's Continue now writes the party boxes of the Monsters tab too (it only displayed them before).
 - The status chip and the Options items name the character or party the damage was calculated for; MME shows no name.
 - Reachability does not depend on a character, so there is nothing for it to follow.
+
+## Weapon simulator (W-001)
+
+Calculators > Weapon Simulator is a touchstone addition; MME has no such window. What it rolls is MME's:
+
+- **The blow.** For each weapon and attack the simulator calls `CalculateAttack` as the Weapons tab's maximum-effort
+  list does (the character's profile for that attack, the weapon swapped in for the one in hand, the target's AC, DR,
+  dodge and backstab defense) and rolls from its answer: the hit chance, the crit chance, a plain hit between the
+  minimum and maximum damage, a crit between the crit minimum and maximum. MME's quirks come along, among them damage
+  reduction taken off the ends of the range (a roll is never clamped on its own) and a bash that cannot crit. The
+  mean of the simulation therefore lands on MME's damage a round, within the rounding of MME's whole-number averages
+  and the dice's noise; the page shows both.
+- **A weapon's cast spell** fires on a landed blow with the chance `per-swing average / average when it fires` (the two
+  figures MME keeps) and then adds the latter. Its damage is not rolled.
+- **Quicksilver's opportunist** fires on a blow that dealt damage, at its percentage, for its mean bonus.
+- **Swings a round** follow frmSwingCalc's `CalcSwings`: a round has 1000 energy plus what the last round left, a swing
+  costs the attack's energy, and a round holds at most five. MME's damage a round multiplies by the fractional swings
+  instead; over many rounds the two agree.
+- **A backstab round** is an opening round on its own: the stab (in stock the whole round) and, under Quicksilver, the
+  whole normal blows the rest of the round pays for (`calc_stab_opener`). Only weapons with backstab accuracy
+  (ability 116) stab and only for a class or race with stealth, as in MME's weapon lists.
+- **Rounds to kill** are not an MME figure: fights to the target's hit points with no regeneration, the stab's
+  opening round followed by normal attacks in the backstab view. A fight that would take more than 60 rounds is not
+  rolled; the page shows hit points over the simulated damage a round, marked `~`.
+- **Which weapons.** `ItemIsUsableByChar` for the character's class, level and alignment, in-game weapons only; the
+  global filter's minimum item level is not applied. "Ignore level" tests a weapon at the higher of the character's
+  level and the weapon's minimum level, so a maximum-level rule still applies; the damage is still calculated with the
+  character's current level and stats. Weapons kept only because a restriction is ignored are greyed and say why.
+

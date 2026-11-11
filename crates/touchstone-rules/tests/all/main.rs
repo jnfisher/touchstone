@@ -63,3 +63,4 @@ mod spell_tools;
 mod spells;
 mod stats;
 mod textblock;
+mod weapon_sim;

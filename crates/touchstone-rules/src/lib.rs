@@ -45,6 +45,7 @@ pub mod spell_tools;
 pub mod spells;
 pub mod stats;
 pub mod textblock;
+pub mod weapon_sim;
 
 /// Which game rules a calculation follows.
 ///

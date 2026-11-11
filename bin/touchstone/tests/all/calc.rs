@@ -11,7 +11,7 @@ use touchstone_model::{
 };
 use tower::ServiceExt;
 
-fn item(number: i32, name: &str, price: i32, currency: i32) -> Item {
+pub(crate) fn item(number: i32, name: &str, price: i32, currency: i32) -> Item {
     Item {
         number,
         name: name.to_owned(),
@@ -46,7 +46,12 @@ fn item(number: i32, name: &str, price: i32, currency: i32) -> Item {
 }
 
 /// A weapon row with the stock database's values.
-fn weapon(number: i32, name: &str, stats: (i32, i32, i32, i32), abils: &[(i32, i32)]) -> Item {
+pub(crate) fn weapon(
+    number: i32,
+    name: &str,
+    stats: (i32, i32, i32, i32),
+    abils: &[(i32, i32)],
+) -> Item {
     let mut w = item(number, name, 0, 0);
     (w.min, w.max, w.speed, w.str_req) = stats;
     w.item_type = 1;
@@ -86,7 +91,7 @@ fn slot(item: i32, max: i32, time: i32, amount: i32, pct: i32) -> ShopSlot {
     }
 }
 
-fn race(number: i32, exp_table: i32) -> Race {
+pub(crate) fn race(number: i32, exp_table: i32) -> Race {
     Race {
         number,
         name: format!("race {number}"),
@@ -109,7 +114,7 @@ fn race(number: i32, exp_table: i32) -> Race {
     }
 }
 
-fn class(number: i32, exp_table: i32) -> Class {
+pub(crate) fn class(number: i32, exp_table: i32) -> Class {
     Class {
         number,
         name: format!("class {number}"),
