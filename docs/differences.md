@@ -779,7 +779,7 @@ ability (or AC + DR); the planner picks a whole set for a goal and differs from 
 ## Item popover
 
 Not in MME. Hovering an item's name where it appears outside its own list (the planning tools, chest contents,
-the item links of a detail pane) shows the item's numbers and the text of its MME detail pane for the active
+the item links of a detail pane, the Character tab's equipment slots and the rows of their pick lists) shows the item's numbers and the text of its MME detail pane for the active
 character: the damage line, abilities, casts, class limits and "Compared to" what is worn. The comparison is always
 with the header's active character, also in a planning tool that has borrowed another character.
 

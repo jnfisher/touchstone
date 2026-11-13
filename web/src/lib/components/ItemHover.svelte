@@ -28,11 +28,14 @@
 
 	function place() {
 		if (!anchor || !card) return;
-		const a = anchor.getBoundingClientRect();
+		const box = (r: DOMRect) => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+		// a row of an open pick list: the card goes beside the list
+		const list = anchor.closest('[role="listbox"]');
 		pos = placeCard(
-			{ left: a.left, top: a.top, width: a.width, height: a.height },
+			box(anchor.getBoundingClientRect()),
 			{ width: card.offsetWidth, height: card.offsetHeight },
-			{ width: window.innerWidth, height: window.innerHeight }
+			{ width: window.innerWidth, height: window.innerHeight },
+			list ? box(list.getBoundingClientRect()) : undefined
 		);
 	}
 

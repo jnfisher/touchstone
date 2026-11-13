@@ -229,5 +229,6 @@ holds), its abilities and damage line, and how it compares with what the active 
 `POST /api/detail/items/{n}`). One component, `ItemHover.svelte`, is mounted in the layout and listens on the
 document; a page opts in by marking a name with `data-item="<number>"`, or a grid whose row ids are item numbers with
 `data-item-rows` (the name cell then answers). Marked so far: the Gear Planner, the Weapon Simulator, the Chests
-tab's contents and the item links of the detail panes. No server change.
+tab's contents, the item links of the detail panes, and the Character tab's equipment (each slot's pick, the rows of
+its list, and a realm character's worn gear and inventory). No server change.
 

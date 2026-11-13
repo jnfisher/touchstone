@@ -88,6 +88,22 @@ describe('placing the card', () => {
 	});
 });
 
+describe('placing the card beside an open list', () => {
+	const card = { width: 340, height: 200 };
+	const view = { width: 1000, height: 700 };
+	const row = { left: 100, top: 300, width: 300, height: 24 };
+
+	it('goes to the right of the list, level with the row', () => {
+		expect(placeCard(row, card, view, { left: 100, top: 200, width: 300, height: 260 })).toEqual({ left: 406, top: 300 });
+	});
+
+	it('goes to the left when the right has no room, and stays inside the window', () => {
+		const list = { left: 600, top: 200, width: 300, height: 260 };
+		expect(placeCard({ ...row, left: 600 }, card, view, list)).toEqual({ left: 254, top: 300 });
+		expect(placeCard({ ...row, left: 600, top: 650 }, card, view, list)).toEqual({ left: 254, top: 492 });
+	});
+});
+
 describe('what the pointer is over', () => {
 	// the two things the lookup asks of an element, without a DOM
 	type Fake = { attrs: Record<string, string>; up: Record<string, Fake | undefined> };

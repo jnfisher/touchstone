@@ -119,6 +119,7 @@
 		<button type="button" class={btn} onclick={() => (showHelp = !showHelp)} data-testid="im-help" aria-expanded={showHelp}>Help</button>
 		<div class="ml-auto w-64">
 			<ItemPicker
+				hover
 				choices={addChoices}
 				value={0}
 				label="Add an item"

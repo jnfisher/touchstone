@@ -191,6 +191,7 @@
 					label="Equip any item (it picks its own slot)"
 					noneLabel="Search all armour and weapons..."
 					testid="equip-anywhere"
+					hover
 					onpick={(n) => {
 						if (n) void act(n, { unequip: toggleOff });
 					}}
@@ -207,6 +208,7 @@
 						value={store.doc.equipped[s.index]}
 						label={s.label}
 						flagged={flags[s.index]}
+						hover
 						testid="char-equip-{s.index}"
 						onpick={(n) => void act(n, { slot: s.index })}
 					/>

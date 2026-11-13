@@ -130,7 +130,7 @@ None.
 
 ## Next
 
-Released as 0.5.0 (item popover, CI actions on Node 24, #131); 0.4.0 was the Gear Planner, 0.3.0 the Weapon Simulator, 0.2.0 realm characters and the Chests tab. Candidates are the follow-ups below.
+Released as 0.5.1 (item popover on the Character tab); 0.5.0 was the item popover and CI actions on Node 24 (#131); 0.4.0 was the Gear Planner, 0.3.0 the Weapon Simulator, 0.2.0 realm characters and the Chests tab. Candidates are the follow-ups below.
 
 ## Follow-ups noted
 
@@ -154,4 +154,4 @@ Released as 0.5.0 (item popover, CI actions on Node 24, #131); 0.4.0 was the Gea
 - Chests tab: detail-grid columns clip below 1440 px wide (CH-001); light-theme DataGrid header shows extra filter-icon columns (R-002).
 - Weapon Simulator: Quicksilver stab round not checked end to end; monsters that need a magical weapon; hand-off from the Weapons list (W-001).
 - Gear Planner: shop prices in the shop list; exp/hr and damage-taken goals; apply a plan to the Sandbox; not run on a Quicksilver database (G-001).
-- Item popover: not yet on the explorer lists, the Character tab or shop stock; compares with the active character only (#131).
+- Item popover: not yet on the explorer lists or shop stock; compares with the active character only (#131).
