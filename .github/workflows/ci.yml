@@ -27,8 +27,8 @@ jobs:
       rust: ${{ steps.f.outputs.rust }}
       web: ${{ steps.f.outputs.web }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: f
         with:
           # A manual run has no diff to filter, so it runs everything.
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: tools/guard.sh
 
   rust:
@@ -62,13 +62,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       # The converted stock database the data tests read. The key is the pinned sha256 of the
       # source .mdb (see tools/mdb-fetch.sh); a miss installs mdbtools and converts it.
       - name: Stock database cache
         id: mdb
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/touchstone/mdb
           key: stock-mdb-eba20f06af8dc08df755eb6dcd9763b023794f12e809cbab6762236d64d7345f
@@ -109,8 +109,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
