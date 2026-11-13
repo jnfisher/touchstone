@@ -17,6 +17,7 @@
 	import { getInfoStore } from '$lib/info.svelte';
 	import ActivePicker from '$lib/components/character/ActivePicker.svelte';
 	import GlobalFilterBar from '$lib/components/GlobalFilterBar.svelte';
+	import ItemHover from '$lib/components/ItemHover.svelte';
 	import MenuDialogs from '$lib/components/MenuDialogs.svelte';
 	import ProfileBadge from '$lib/components/ProfileBadge.svelte';
 	import InfoPopover from '$lib/components/InfoPopover.svelte';
@@ -209,6 +210,7 @@
 	</div>
 	{/if}
 	<MenuDialogs />
+	<ItemHover />
 	{#if options.notice}
 		<div role="alert" class="bg-popover text-popover-foreground fixed right-3 bottom-3 z-[70] flex items-center gap-3 rounded-md border px-3 py-2 text-sm shadow-md" data-testid="options-notice">
 			<span>{options.notice}</span>

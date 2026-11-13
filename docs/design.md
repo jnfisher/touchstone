@@ -221,3 +221,13 @@ rest.
 
 A plan is a few hundred to a few thousand evaluations of about 50 microseconds each, on one core, in the same
 one-at-a-time queue as the Weapon Simulator.
+
+## Item popover
+
+Resting the pointer on an item's name shows a card with the item's own numbers (from the items table the page
+holds), its abilities and damage line, and how it compares with what the active character wears (the item's pane,
+`POST /api/detail/items/{n}`). One component, `ItemHover.svelte`, is mounted in the layout and listens on the
+document; a page opts in by marking a name with `data-item="<number>"`, or a grid whose row ids are item numbers with
+`data-item-rows` (the name cell then answers). Marked so far: the Gear Planner, the Weapon Simulator, the Chests
+tab's contents and the item links of the detail panes. No server change.
+

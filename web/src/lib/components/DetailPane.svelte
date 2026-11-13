@@ -111,6 +111,7 @@
 										type="button"
 										class="text-primary text-left hover:underline {c.bold ? 'font-semibold' : ''}"
 										data-testid="pane-link"
+										data-item={l.target.table === 'items' ? l.target.number : undefined}
 										onclick={() => onLink({ target: l.target })}
 									>
 										{c.text}
@@ -169,7 +170,7 @@
 										{#each refCells(r, cols) as cell, c (c)}
 											<td class="px-2 py-0.5 {c === 0 && cols > 1 ? 'text-muted-foreground tabular-nums' : ''}">
 												{#if cell && onLink && r.target && (linkable?.(r) ?? true) && c === cols - 1}
-													<button type="button" class="text-primary text-left hover:underline" onclick={() => onLink(r)}>
+													<button type="button" class="text-primary text-left hover:underline" data-item={r.target.table === 'items' ? r.target.number : undefined} onclick={() => onLink(r)}>
 														{cell}
 													</button>
 												{:else}

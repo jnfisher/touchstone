@@ -21,7 +21,7 @@ figure (an estimate from how reload works, not a measurement). The binary is abo
 Pick the newest version from the repository's Releases page; `VERSION` is the tag without the `v`.
 
 ```sh
-VERSION=0.4.0
+VERSION=0.5.0
 REPO=jnfisher/touchstone
 cd /tmp
 curl -fsSLO "https://github.com/$REPO/releases/download/v$VERSION/touchstone-$VERSION-aarch64-unknown-linux-musl.tar.gz"

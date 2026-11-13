@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -32,7 +32,7 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-build
           path: web/build
@@ -48,12 +48,12 @@ jobs:
       matrix:
         target: [aarch64-unknown-linux-musl, x86_64-unknown-linux-musl]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: web-build
           path: web/build
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # rust-toolchain.toml pins the compiler; rustup installs it on first use.
@@ -82,7 +82,7 @@ jobs:
           cp packaging/touchstone.example.toml packaging/touchstone.service packaging/README.txt "dist/${name}/"
           tar -C dist -czf "dist/${name}.tar.gz" "${name}"
           echo "archive=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: archive-${{ matrix.target }}
           path: ${{ steps.pack.outputs.archive }}
@@ -96,7 +96,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: archive-*
           path: dist
@@ -105,13 +105,13 @@ jobs:
         working-directory: dist
         run: sha256sum touchstone-*.tar.gz | tee SHA256SUMS
       # A manual run stops here: the archives and SHA256SUMS are on the run, not published.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.ref_type != 'tag'
         with:
           name: release-dry-run
           path: dist
           retention-days: 7
-      - uses: softprops/action-gh-release@v2.6.2
+      - uses: softprops/action-gh-release@v3.0.4
         if: github.ref_type == 'tag'
         with:
           files: |
