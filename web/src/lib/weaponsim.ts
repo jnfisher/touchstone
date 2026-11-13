@@ -63,7 +63,7 @@ function whole(text: string, min: number): number {
 	return Number.isFinite(n) ? Math.min(Math.max(n, min), 1_000_000) : 0;
 }
 
-export function targetOf(form: WeaponSimForm): SimTarget {
+export function targetOf(form: Pick<WeaponSimForm, 'target'>): SimTarget {
 	return {
 		ac: whole(form.target.ac, 0),
 		dr: whole(form.target.dr, 0),

@@ -12,6 +12,7 @@ pub mod config;
 mod detail;
 pub mod equip;
 pub mod evaluate;
+pub mod gear_plan;
 pub mod item_manager;
 pub mod map;
 pub mod monster_damage;
@@ -27,6 +28,7 @@ pub mod settings;
 pub mod source;
 pub mod spell_tools;
 pub mod state;
+mod usable;
 pub mod weapon_sim;
 mod web;
 

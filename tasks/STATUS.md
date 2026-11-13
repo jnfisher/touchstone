@@ -115,6 +115,7 @@ the orchestrator writes each card when its dependencies are close to merged.
 | R-002 | Characters tab: realm list, sheet, sandbox, active-character picker | #126 |
 | R-003 | Calculators and simulations on realm characters | #127 |
 | W-001 | Weapon Simulator: best weapons for a character by simulated attack, bash and backstab rounds | #129 |
+| G-001 | Gear Planner: best worn gear for a goal, with a kill and shop list; "Obtainable only" in both planners | (this PR) |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |

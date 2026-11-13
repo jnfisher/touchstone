@@ -18,7 +18,6 @@ use touchstone_rules::attack::{
     AttackDamage, AttackEnv, AttackRequest, calc_stab_opener, calculate_attack,
 };
 use touchstone_rules::character::AttackTypeMud;
-use touchstone_rules::gear::{Character as GlobalChar, item_is_usable_by_char};
 use touchstone_rules::pipeline::CharacterState;
 use touchstone_rules::stats::{compute_avg_level_max_stats, get_class_stealth, get_race_stealth};
 use touchstone_rules::weapon_sim::{
@@ -29,6 +28,7 @@ use touchstone_vb6 as vb;
 use crate::calc::{ApiResult, Body, bad, json};
 use crate::character::{CharacterDto, refresh};
 use crate::state::AppState;
+use crate::usable::{self, Allow, Verdict, level_req};
 
 /// Limits that keep one request small on a Raspberry Pi: at the worst (every limit reached) a run
 /// is a few hundred million dice, a couple of seconds of one core.
@@ -46,11 +46,8 @@ const LONG_FIGHT: f64 = 60.0;
 
 /// One simulation at a time: a second request waits its turn instead of taking a second core
 /// from the game server beside us.
-static GATE: Mutex<()> = Mutex::new(());
+pub(crate) static GATE: Mutex<()> = Mutex::new(());
 
-const fn yes() -> bool {
-    true
-}
 const fn default_rounds() -> u32 {
     5_000
 }
@@ -76,18 +73,8 @@ pub struct Target {
 #[derive(Debug, Deserialize)]
 pub struct WeaponSimReq {
     pub character: CharacterDto,
-    /// Keep weapons above the character's level (to plan ahead); damage still uses today's stats.
-    #[serde(default)]
-    pub ignore_level: bool,
-    #[serde(default)]
-    pub ignore_alignment: bool,
-    /// Limited items are the realm's rare ones; on by default, as a best-weapon list wants them.
-    #[serde(default = "yes")]
-    pub include_limited: bool,
-    /// Skip weapons nothing in the data yields (no room, shop, monster, chest or script): leftovers
-    /// such as test items, which a live database lists like any other row. On by default.
-    #[serde(default = "yes")]
-    pub only_obtainable: bool,
+    #[serde(flatten)]
+    pub allow: Allow,
     #[serde(default)]
     pub target: Target,
     #[serde(default = "default_rounds")]
@@ -248,13 +235,6 @@ struct Stab {
     expected: i32,
 }
 
-fn level_req(item: &Item) -> i32 {
-    item.abilities
-        .iter()
-        .find(|s| s.ability == 135)
-        .map_or(0, |s| s.value)
-}
-
 fn mode(a: &AttackDamage, expected: i32, sim: RoundStats, kill: Option<KillJson>) -> ModeJson {
     ModeJson {
         expected,
@@ -323,24 +303,7 @@ pub fn run(
     let race = ch.race.unwrap_or(0);
     let can_backstab =
         get_class_stealth(world.get_class(class)) || get_race_stealth(world.get_race(race));
-    let who = GlobalChar {
-        level: ch.level,
-        class,
-        race,
-        alignment: i32::from(ch.alignment),
-        min_item_level: 0,
-    };
-    let usable = |item: &Item, level: i32, skip_align: bool| {
-        item_is_usable_by_char(
-            profile,
-            world,
-            &GlobalChar { level, ..who },
-            &ch.equipped,
-            item.number,
-            true,
-            skip_align,
-        )
-    };
+    let who = usable::who(ch);
 
     let names = AbilityEnv::for_world(world, profile);
     let equipped = st.equipped_globals();
@@ -382,34 +345,24 @@ pub fn run(
     let equipped_weapon = equipped.hands[0].number;
     let mut scored = Vec::new();
     for item in &world.items {
-        if item.item_type != 1 || !item.in_game {
+        if item.item_type != 1 {
             continue;
         }
-        let is_equipped = item.number == equipped_weapon;
-        if !req.include_limited && item.limit != 0 && !is_equipped {
+        let Some(verdict) = usable::offered(
+            profile,
+            world,
+            &who,
+            item,
+            &req.allow,
+            item.number == equipped_weapon,
+            req.pinned.contains(&item.number),
+        ) else {
             continue;
-        }
-        let obtainable = item.obtained_from.as_deref().is_some_and(|s| !s.is_empty());
-        if req.only_obtainable && !obtainable && !is_equipped && !req.pinned.contains(&item.number)
-        {
-            continue;
-        }
-        let strict = usable(item, ch.level, false);
-        let mut needs_level = false;
-        let mut wrong_alignment = false;
-        if !strict && !is_equipped {
-            // a level above the character's own only ever lifts the minimum-level rule
-            let level = if req.ignore_level {
-                ch.level.max(level_req(item))
-            } else {
-                ch.level
-            };
-            if !usable(item, level, req.ignore_alignment) {
-                continue;
-            }
-            needs_level = !usable(item, ch.level, true);
-            wrong_alignment = !usable(item, level, false);
-        }
+        };
+        let Verdict {
+            needs_level,
+            wrong_alignment,
+        } = verdict;
         let n = item.number;
         // MME's weapon lists stab only with a weapon that has backstab accuracy (ability 116)
         let stabs = can_backstab && item.abilities.iter().any(|s| s.ability == 116);
@@ -517,11 +470,7 @@ pub fn run(
             pinned: req.pinned.contains(&n),
             needs_level: s.needs_level,
             wrong_alignment: s.wrong_alignment,
-            unobtainable: !s
-                .item
-                .obtained_from
-                .as_deref()
-                .is_some_and(|o| !o.is_empty()),
+            unobtainable: !usable::obtainable(s.item),
             attack: attack_mode,
             bash: bash_mode,
             backstab: backstab_mode,

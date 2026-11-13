@@ -10,6 +10,7 @@ mod detail;
 mod equip;
 mod evaluate;
 mod find_best;
+mod gear_plan;
 mod item_manager;
 mod map;
 mod monster_damage;

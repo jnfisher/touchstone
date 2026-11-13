@@ -240,7 +240,7 @@ describe('hit calculator', () => {
 	};
 
 	it('is the sixth entry of the calculators menu', () => {
-		expect(CALCULATORS.map((c) => c.slug)).toEqual(['exp', 'coin', 'swing', 'backstab', 'hit', 'monster-sim', 'weapon-sim']);
+		expect(CALCULATORS.map((c) => c.slug)).toEqual(['exp', 'coin', 'swing', 'backstab', 'hit', 'monster-sim', 'weapon-sim', 'gear-plan']);
 		expect(isCalc('hit')).toBe(true);
 	});
 
