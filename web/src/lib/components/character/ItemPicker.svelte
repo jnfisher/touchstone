@@ -11,7 +11,8 @@
 		testid,
 		onpick,
 		noneLabel = '(none)',
-		flagged = false
+		flagged = false,
+		hover = false
 	}: {
 		choices: ItemChoice[];
 		value: number;
@@ -21,6 +22,8 @@
 		noneLabel?: string;
 		/** MME paints the slot red: the character cannot use the item, or a two-hander meets an off-hand. */
 		flagged?: boolean;
+		/** The choices are items: the picked one and the rows of the list answer to the item popover. */
+		hover?: boolean;
 	} = $props();
 
 	const LIMIT = 100;
@@ -85,6 +88,7 @@
 		onkeydown={onKey}
 		data-testid={testid}
 		data-flagged={flagged}
+		data-item={hover && !open && value > 0 ? value : undefined}
 		class="{inputCls} {flagged ? 'border-destructive text-destructive' : ''}"
 	/>
 	{#if open}
@@ -98,6 +102,7 @@
 				<li
 					role="option"
 					aria-selected={c.number === value}
+					data-item={hover && c.number > 0 ? c.number : undefined}
 					class="cursor-pointer px-2 py-1 {i === active ? 'bg-accent text-accent-foreground' : ''} {c.number === 0
 						? 'text-muted-foreground'
 						: ''}"

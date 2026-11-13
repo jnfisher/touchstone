@@ -55,11 +55,23 @@ export interface Box {
 
 /**
  * Where the card goes: under the name, left edges aligned; above it when there is no room below; always
- * inside the window with a small margin.
+ * inside the window with a small margin. For a row of an open list (`list` is the list's box) it goes beside
+ * the list instead, level with the row, so it never covers the rows being chosen from.
  */
-export function placeCard(anchor: Box, card: { width: number; height: number }, view: { width: number; height: number }): { left: number; top: number } {
+export function placeCard(
+	anchor: Box,
+	card: { width: number; height: number },
+	view: { width: number; height: number },
+	list?: Box
+): { left: number; top: number } {
 	const gap = 6;
 	const margin = 8;
+	if (list) {
+		const right = list.left + list.width + gap;
+		const left = right + card.width <= view.width - margin ? right : Math.max(margin, list.left - gap - card.width);
+		const top = Math.max(margin, Math.min(anchor.top, view.height - margin - card.height));
+		return { left, top };
+	}
 	const below = anchor.top + anchor.height + gap;
 	const top = below + card.height <= view.height - margin ? below : Math.max(margin, anchor.top - gap - card.height);
 	const left = Math.max(margin, Math.min(anchor.left, view.width - margin - card.width));

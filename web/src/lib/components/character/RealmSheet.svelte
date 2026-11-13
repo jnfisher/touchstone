@@ -131,7 +131,7 @@
 			{#each worn as w (w.slot + w.item)}
 				<div class="flex justify-between gap-2 border-b py-0.5 text-sm">
 					<span class="text-muted-foreground">{w.slot}</span>
-					<button type="button" class={link} onclick={() => void openItem(w.item)}>{w.name}</button>
+					<button type="button" class={link} data-item={w.item} onclick={() => void openItem(w.item)}>{w.name}</button>
 				</div>
 			{:else}
 				<p class="text-muted-foreground text-sm">Nothing worn.</p>
@@ -141,7 +141,7 @@
 			<h3 class={headingCls}>Inventory ({detail.inventory.length})</h3>
 			{#each detail.inventory as it (it.slot)}
 				<div class="flex justify-between gap-2 border-b py-0.5 text-sm">
-					<button type="button" class={link} onclick={() => void openItem(it.item)}>{it.name}</button>
+					<button type="button" class={link} data-item={it.item} onclick={() => void openItem(it.item)}>{it.name}</button>
 					<span class="text-muted-foreground tabular-nums">{it.readied ? 'readied ' : ''}{it.uses >= 0 ? `${it.uses} uses` : ''}</span>
 				</div>
 			{:else}
