@@ -19,6 +19,7 @@ const AXE: i32 = 102;
 const UNHOLY: i32 = 103;
 const RARE: i32 = 104;
 const GONE: i32 = 105;
+const ORPHAN: i32 = 106;
 const THIEF: i32 = 2;
 
 fn test_app() -> axum::Router {
@@ -39,6 +40,26 @@ fn test_app() -> axum::Router {
         ability: 103,
         value: 0,
     };
+    let mut items = vec![
+        item(9, "iron ring", 5, 1),
+        // 116: backstab accuracy, 135: minimum level, 98: evil only
+        weapon(SWORD, "short sword", (4, 10, 1000, 0), &[(116, 10)]),
+        weapon(LONG, "long sword", (6, 16, 1500, 0), &[(135, 20)]),
+        axe,
+        weapon(
+            UNHOLY,
+            "unholy dagger",
+            (8, 20, 900, 0),
+            &[(98, 0), (116, 20)],
+        ),
+        rare,
+        gone,
+    ];
+    for i in &mut items {
+        i.obtained_from = Some("Shop #1".into());
+    }
+    // nothing yields this one: a leftover row, far stronger than anything real
+    items.push(weapon(ORPHAN, "bow of nowhere", (90, 900, 100, 0), &[]));
     let world = World::new(WorldParts {
         info: Info {
             nmr_version: "v1.8.3".into(),
@@ -51,21 +72,7 @@ fn test_app() -> axum::Router {
             disable_kai: false,
             update_url: String::new(),
         },
-        items: vec![
-            item(9, "iron ring", 5, 1),
-            // 116: backstab accuracy, 135: minimum level, 98: evil only
-            weapon(SWORD, "short sword", (4, 10, 1000, 0), &[(116, 10)]),
-            weapon(LONG, "long sword", (6, 16, 1500, 0), &[(135, 20)]),
-            axe,
-            weapon(
-                UNHOLY,
-                "unholy dagger",
-                (8, 20, 900, 0),
-                &[(98, 0), (116, 20)],
-            ),
-            rare,
-            gone,
-        ],
+        items,
         monsters: vec![],
         spells: vec![],
         rooms: vec![],
@@ -202,6 +209,14 @@ async fn restrictions_can_be_ignored_and_say_so() {
 
     let v = run(json!({ "include_limited": false })).await;
     assert_eq!(numbers(&v), [100, 101]);
+
+    // a weapon nothing yields is left out unless asked for, or pinned
+    let v = run(json!({ "only_obtainable": false })).await;
+    assert_eq!(numbers(&v), [100, 101, 104, 106]);
+    assert_eq!(row(&v, ORPHAN)["unobtainable"], true);
+    assert_eq!(row(&v, SWORD)["unobtainable"], false);
+    let v = run(json!({ "pinned": [ORPHAN] })).await;
+    assert_eq!(numbers(&v), [100, 101, 104, 106]);
 }
 
 #[tokio::test]

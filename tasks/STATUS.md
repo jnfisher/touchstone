@@ -115,6 +115,7 @@ the orchestrator writes each card when its dependencies are close to merged.
 | R-002 | Characters tab: realm list, sheet, sandbox, active-character picker | #126 |
 | R-003 | Calculators and simulations on realm characters | #127 |
 | W-001 | Weapon Simulator: best weapons for a character by simulated attack, bash and backstab rounds | #129 |
+| G-001 | Gear Planner: best worn gear for a goal, with a kill and shop list; "Obtainable only" in both planners | #130 |
 | P4-26 | Paste Character dialog | #71 |
 | P4-27a | Hit calculator panel | #52 |
 | P4-27b | Calculators use the current character; MegaMUD stat-line paste | #60 |
@@ -129,7 +130,7 @@ None.
 
 ## Next
 
-Released as 0.3.0 (Weapon Simulator); 0.2.0 was realm characters and the Chests tab. Candidates are the follow-ups below.
+Released as 0.4.0 (Gear Planner); 0.3.0 was the Weapon Simulator, 0.2.0 realm characters and the Chests tab. Candidates are the follow-ups below.
 
 ## Follow-ups noted
 
@@ -152,3 +153,4 @@ Released as 0.3.0 (Weapon Simulator); 0.2.0 was realm characters and the Chests 
 - Realm party: per-member attack choice, so casters get a real Magic out (R-003).
 - Chests tab: detail-grid columns clip below 1440 px wide (CH-001); light-theme DataGrid header shows extra filter-icon columns (R-002).
 - Weapon Simulator: Quicksilver stab round not checked end to end; monsters that need a magical weapon; hand-off from the Weapons list (W-001).
+- Gear Planner: shop prices in the shop list; exp/hr and damage-taken goals; apply a plan to the Sandbox; not run on a Quicksilver database (G-001).

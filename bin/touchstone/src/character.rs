@@ -893,7 +893,20 @@ pub(crate) fn refresh(
     if ch.class.is_none() || ch.race.is_none() {
         return Err(unprocessable("pick a class and race"));
     }
-    let opts = PipelineOptions {
+    let opts = pipeline_options(profile, world, dto, hide_record_numbers);
+    let st = refresh_all(profile, world, &ch, &opts)
+        .map_err(|e| unprocessable(format!("cannot evaluate this character: {e}")))?;
+    Ok((ch, st))
+}
+
+/// The options `RefreshAll` runs with for a character the page sent.
+pub(crate) fn pipeline_options(
+    profile: Profile,
+    world: &World,
+    dto: &CharacterDto,
+    hide_record_numbers: bool,
+) -> PipelineOptions {
+    PipelineOptions {
         hide_class_race: dto.options.hide_class_race,
         min_item_level: dto.options.min_item_level,
         item_manager: dto.gear_rows(world),
@@ -902,10 +915,7 @@ pub(crate) fn refresh(
         avg_level_max_all_stats: compute_avg_level_max_stats(profile, &world.races).all_stats,
         hide_record_numbers,
         ..PipelineOptions::default()
-    };
-    let st = refresh_all(profile, world, &ch, &opts)
-        .map_err(|e| unprocessable(format!("cannot evaluate this character: {e}")))?;
-    Ok((ch, st))
+    }
 }
 
 /// `RefreshAll` over the loaded world. Split out so tests can call it without HTTP.

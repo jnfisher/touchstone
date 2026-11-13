@@ -37,7 +37,7 @@
 	} from '$lib/weaponsim';
 	import DetailPane from '../DetailPane.svelte';
 	import SplitPane from '../SplitPane.svelte';
-	import CharacterDropdown from './CharacterDropdown.svelte';
+	import PlanHeader from './PlanHeader.svelte';
 	import { useCurrentCharacter } from './current.svelte';
 	import { live } from './live.svelte';
 	import { cardCls, headingCls, inputCls, labelCls } from './styles';
@@ -70,7 +70,6 @@
 	const monsterList = $derived<MonsterChoice[]>(monsterChoices(monsters));
 
 	const current = useCurrentCharacter();
-	const src = $derived(current.source);
 	// The evaluate body of the character in use; undefined until it has a class and a race.
 	const charBody = $derived(evalRequest($state.snapshot(current.doc), $state.snapshot(current.options)));
 
@@ -170,32 +169,7 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col gap-2" data-testid="calc-weapon-sim">
-	<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-		<h2 class="text-base font-semibold">Weapon Simulator</h2>
-		<span class="text-sm" data-testid="wsim-who">
-			{#if charBody}
-				<span class="font-medium">{src.name}</span><span class="text-muted-foreground">{src.kind ? `, ${src.kind}` : ''}, level {src.level}{src.via === 'override' ? ' (chosen here)' : ''}</span>
-				<button type="button" class="text-primary ml-1 underline" onclick={() => current.openSheet((p) => void goto(p))}>Open sheet</button>
-			{:else if current.override !== undefined}
-				<span class="text-muted-foreground">Loading {src.name}...</span>
-			{/if}
-		</span>
-		{#if current.realmAvailable}
-			<CharacterDropdown
-				characters={current.choices}
-				selected={current.override === undefined ? [] : [current.override]}
-				label="Use another character"
-				testid="wsim-use-another"
-				onpick={([id]) => void current.useAnother(id)}
-			/>
-			{#if current.override !== undefined}
-				<button type="button" class="border-input hover:bg-accent h-7 rounded-md border px-2 text-xs" onclick={() => current.clearOverride()}>
-					Back to the active character
-				</button>
-			{/if}
-			{#if current.overrideError}<span class="text-destructive text-xs" role="alert">{current.overrideError}</span>{/if}
-		{/if}
-	</div>
+	<PlanHeader title="Weapon Simulator" {current} ready={charBody !== undefined} testid="wsim" />
 
 	{#if !charBody && current.override === undefined}
 		<div class="{cardCls} text-sm" data-testid="wsim-no-character">
@@ -221,6 +195,10 @@
 						<label class={check} title="Limited items exist in small numbers in the realm">
 							<input type="checkbox" bind:checked={form.includeLimited} data-testid="wsim-limited" />
 							Limited items
+						</label>
+						<label class={check} title="Skip weapons that no room, shop, monster, chest or script in the data gives: leftovers such as test items">
+							<input type="checkbox" bind:checked={form.onlyObtainable} data-testid="wsim-obtainable" />
+							Obtainable only
 						</label>
 					</div>
 				</div>
@@ -359,7 +337,7 @@
 								selectedId={picked === undefined ? undefined : String(picked)}
 								quickFilter={search}
 								storageKey="weapon-sim-{view}"
-								rowState={(r: WeaponSimRow) => (r.needs_level || r.wrong_alignment ? 'muted' : undefined)}
+								rowState={(r: WeaponSimRow) => (r.needs_level || r.wrong_alignment || r.unobtainable ? 'muted' : undefined)}
 								onSelect={(r: WeaponSimRow) => (picked = r.number)}
 								onRowDoubleClick={(r: WeaponSimRow) => openInWeapons(r.number)}
 								onCount={(n) => (shown = n)}

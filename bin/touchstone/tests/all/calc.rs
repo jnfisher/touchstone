@@ -131,7 +131,7 @@ pub(crate) fn class(number: i32, exp_table: i32) -> Class {
 }
 
 /// A monster row with only the columns the hit calculator reads.
-fn monster(
+pub(crate) fn monster(
     number: i32,
     (armour_class, bs_defense, align): (i32, i32, i32),
     abils: &[(i32, i32)],

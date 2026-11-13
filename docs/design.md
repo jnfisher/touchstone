@@ -117,6 +117,8 @@ the UI fetches whole tables once and filters and sorts in the browser:
 - `POST /api/calc/{swing,hit,backstab,exp,coin,monster-attack-sim}`: the calculator windows.
 - `POST /api/calc/weapon-sim` with `{character, ignore_level, ignore_alignment, include_limited, target, rounds,
   candidates, seed, pinned}`: the Weapon Simulator, touchstone's own (see below).
+- `POST /api/calc/gear-plan` with `{character, goal, ignore_level, ignore_alignment, include_limited,
+  only_obtainable, second_wrist, target, min_ac, max_encum, locked, skipped}`: the Gear Planner, touchstone's own (see below).
 - `GET/PUT /api/settings`: the options that change results (exp/hr models and knobs, monster sim
   rounds, route waypoint interval, open-last-character), stored as `<data_dir>/settings.json`. PUT
   applies MME's Save rules (knob clamp, round and interval ranges, A+B+C when no model is ticked)
@@ -203,3 +205,19 @@ backstab rounds, and shows the selected weapon's numbers above its item pane.
 It is sized for a Raspberry Pi: scoring is a few hundred closed-form calls, the dice are integer arithmetic on one
 core, one request runs at a time, and the request's limits (50,000 rounds, 60 weapons an attack) bound the worst
 case to a few hundred million dice. `docs/differences.md` ("Weapon simulator") says how the dice follow MME's numbers.
+
+## Gear Planner (G-001)
+
+Calculators > Gear Planner fills the worn slots (every slot but the weapon) with the gear that does most for one goal:
+melee damage, backstab, armour class, dodge, spellcasting, mana regen, hit points or stealth. It is not an MME window;
+MME's Find Best ranks one slot's items by one ability. The server (`bin/touchstone/src/gear_plan.rs`) lists what each
+slot may hold under the request's switches (`usable.rs`, shared with the Weapon Simulator) and hands the search to
+`touchstone_rules::gear_plan`: a climb that tries each candidate of a slot in the set as it stands, scoring a set by
+evaluating the character wearing it, and repeats over each slot's best few until no swap helps. The answer has, per
+slot, the item worn, the item suggested, what that swap alone is worth, the runners-up, and for a suggested item its
+sources (`touchstone_rules::acquire`, read from the Obtained From line). The page shows the slots beside a
+before-and-after of the character's numbers, and "Where to get it" groups the sources into a kill list, shops and the
+rest.
+
+A plan is a few hundred to a few thousand evaluations of about 50 microseconds each, on one core, in the same
+one-at-a-time queue as the Weapon Simulator.

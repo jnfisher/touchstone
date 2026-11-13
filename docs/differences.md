@@ -732,8 +732,47 @@ Calculators > Weapon Simulator is a touchstone addition; MME has no such window.
 - **Rounds to kill** are not an MME figure: fights to the target's hit points with no regeneration, the stab's
   opening round followed by normal attacks in the backstab view. A fight that would take more than 60 rounds is not
   rolled; the page shows hit points over the simulated damage a round, marked `~`.
+- **Obtainable only** (on by default) leaves out a weapon whose Obtained From is empty: no room, shop, monster, chest
+  or script yields it. MME's database marks such leftovers "not in game", but a live silvermere or Quicksilver
+  database lists every row as in the game, so a test item (the stock "bow of silver", 90-900 damage) would
+  otherwise top the list. The weapon in hand and pinned weapons are kept either way.
 - **Which weapons.** `ItemIsUsableByChar` for the character's class, level and alignment, in-game weapons only; the
   global filter's minimum item level is not applied. "Ignore level" tests a weapon at the higher of the character's
   level and the weapon's minimum level, so a maximum-level rule still applies; the damage is still calculated with the
   character's current level and stats. Weapons kept only because a restriction is ignored are greyed and say why.
+
+## Gear planner (G-001)
+
+Calculators > Gear Planner is a touchstone addition. MME's Find Best picks, per slot, the item with the most of one
+ability (or AC + DR); the planner picks a whole set for a goal and differs from it in these ways:
+
+- **A set is scored on the character's sheet.** Each candidate set is put on the character and `RefreshAll` runs
+  (`CalcCharacterStats` and the panels), so an item's weight, strength, accuracy and the rest count for what they do
+  to the sheet. The damage goals then call `CalculateAttack` for the weapon in hand against the target typed in, as
+  the combat setup does; the backstab goal uses the surprise profile. The other goals read the sheet: armour class
+  (`lblInvenCharStat(2)`), dodge, the spellcasting, mana, mana regeneration and hit points the profile carries, and
+  stealth.
+- **Ties.** Sets the goal ranks alike are separated by a second figure (accuracy and crit for damage, damage
+  resistance for armour, and so on) and then by armour, but only among items that already do more for the goal than
+  what is worn: an item that merely ties is never swapped in. Damage against the default target (0 AC) does not
+  reward accuracy once every blow lands; type a target to make it count.
+- **The search is not exhaustive.** It improves one slot at a time (every candidate in the first pass, the slot's
+  best twelve after that, at most six passes) and stops when no swap helps. Two items that only pay off together can
+  be missed.
+- **Slots.** The weapon is never changed. A two-handed weapon closes the off-hand (MME leaves both equipped and
+  paints them red). The second wrist is filled only when asked, as with `bInvenUse2ndWrist`. The two fingers, and the
+  two wrists, never hold the same item, as in Find Best. An empty slot is a candidate: a heavy item can cost more
+  than it gives.
+- **Which items**: as the Weapon Simulator (`ItemIsUsableByChar`, in-game items, and its four switches).
+- **Next best** on a slot plans again without that slot's pick, for an item that cannot be had (a limited item
+  someone else holds) or to see what comes after it; each click goes one further down. The item is left out of every
+  slot, so a skipped ring does not move to the other finger, and the whole set is planned again, so other slots can
+  change too. MME's Next Best keeps a like list of excluded items. An item the character already wears is never
+  dropped this way.
+- **Where to get it** reads the item's Obtained From. `Monster #n(p%)` is a kill with chance p. `Item #n(p%)` is a
+  chest: its own Obtained From gives the monsters that drop it, and the chance shown is the chest's drop chance times
+  p (one level only; a chest in a chest is not followed, and a chest nothing drops is not listed). `Shop #n` and
+  `Shop(nogen) #n` (not restocked) are shops; `Shop(sell) #n` only buys the item and is left out. `Room`, `NPC` and
+  `Textblock` (a script) are listed as they are. "About N kills" is `100 / chance`, the average, with no allowance for
+  how often the monster spawns. At most six sources of each kind are listed for an item.
 

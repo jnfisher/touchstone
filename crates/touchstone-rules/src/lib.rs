@@ -6,6 +6,7 @@
 pub mod abilities;
 pub mod ability_text;
 pub mod accuracy;
+pub mod acquire;
 pub mod attack;
 pub mod calculators;
 pub mod char_panel;
@@ -22,6 +23,7 @@ pub mod filters;
 pub mod find_best;
 pub mod game_text;
 pub mod gear;
+pub mod gear_plan;
 pub mod hit_calc;
 pub mod item_manager;
 pub mod item_value;

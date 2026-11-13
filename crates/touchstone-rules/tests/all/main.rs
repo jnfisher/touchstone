@@ -5,6 +5,7 @@ mod fixture;
 mod abilities;
 mod ability_text;
 mod accuracy;
+mod acquire;
 mod attack;
 mod calculators;
 mod char_panel;

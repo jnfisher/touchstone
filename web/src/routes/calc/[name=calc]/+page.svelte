@@ -3,6 +3,7 @@
 	import BackstabCalc from '$lib/components/calc/BackstabCalc.svelte';
 	import CoinCalc from '$lib/components/calc/CoinCalc.svelte';
 	import ExpCalc from '$lib/components/calc/ExpCalc.svelte';
+	import GearPlanCalc from '$lib/components/calc/GearPlanCalc.svelte';
 	import HitCalc from '$lib/components/calc/HitCalc.svelte';
 	import MonsterSimCalc from '$lib/components/calc/MonsterSimCalc.svelte';
 	import SwingCalc from '$lib/components/calc/SwingCalc.svelte';
@@ -27,5 +28,7 @@
 		<MonsterSimCalc />
 	{:else if name === 'weapon-sim'}
 		<WeaponSimCalc />
+	{:else if name === 'gear-plan'}
+		<GearPlanCalc />
 	{/if}
 {/key}
