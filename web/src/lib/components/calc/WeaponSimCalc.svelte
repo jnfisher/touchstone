@@ -265,6 +265,7 @@
 								type="button"
 								class="bg-muted hover:bg-accent rounded-md border px-2 py-0.5 text-xs"
 								title="Stop including {p.name}"
+								data-item={p.number}
 								onclick={() => (form.pinned = form.pinned.filter((n) => n !== p.number))}
 							>
 								{p.name} ×
@@ -330,6 +331,7 @@
 				<SplitPane storageKey="touchstone.split.weapon-sim" autoWidth={gridWidth === undefined ? undefined : Math.min(gridWidth, 900)} bind:collapsed>
 					{#snippet left()}
 						{#key view}
+							<div class="h-full" data-item-rows>
 							<DataGrid
 								{rows}
 								columnDefs={columns}
@@ -343,6 +345,7 @@
 								onCount={(n) => (shown = n)}
 								onWidth={(w) => (gridWidth = w)}
 							/>
+							</div>
 						{/key}
 					{/snippet}
 					{#snippet right()}

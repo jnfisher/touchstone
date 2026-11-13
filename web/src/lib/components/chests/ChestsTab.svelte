@@ -132,7 +132,7 @@
 							</div>
 							<section class="flex min-h-0 flex-[3] flex-col gap-1">
 								<h3 class="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">Contents ({d.contents.length})</h3>
-								<div class="min-h-0 flex-1" data-testid="chest-contents">
+								<div class="min-h-0 flex-1" data-testid="chest-contents" data-item-rows>
 									<DataGrid
 										rows={d.contents}
 										columnDefs={contentDefs}

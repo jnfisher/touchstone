@@ -117,7 +117,7 @@
 
 {#snippet itemCell(i: PlanItem | null, level: number)}
 	{#if i}
-		<button type="button" class={link} onclick={(e) => (e.stopPropagation(), openItem(i.number))}>{i.name}</button>
+		<button type="button" class={link} data-item={i.number} onclick={(e) => (e.stopPropagation(), openItem(i.number))}>{i.name}</button>
 		{#if itemNote(i, level)}<span class="text-muted-foreground text-xs"> ({itemNote(i, level)})</span>{/if}
 	{:else}
 		<span class="text-muted-foreground">(nothing)</span>
@@ -235,6 +235,7 @@
 							type="button"
 							class="bg-muted hover:bg-accent rounded-md border px-2 py-0.5"
 							title="Allow {sk.name} again"
+							data-item={sk.number}
 							onclick={() => (form.skipped = form.skipped.filter((n) => n !== sk.number))}
 						>
 							{sk.name} ×
@@ -429,7 +430,7 @@
 										<td class="py-1">
 											{#each k.drops as d (d.item)}
 												<div>
-													<button type="button" class={link} onclick={() => openItem(d.item)}>{d.itemName}</button>
+													<button type="button" class={link} data-item={d.item} onclick={() => openItem(d.item)}>{d.itemName}</button>
 													<span class="text-muted-foreground">({d.slot})</span>:
 													<span class="tabular-nums">{chanceText(d)}</span>{#if d.chestName}<span class="text-muted-foreground">, in {d.chestName}</span>{/if}
 												</div>
@@ -454,7 +455,7 @@
 										<td class="py-1">
 											{#each s.items as i (i.item)}
 												<div>
-													<button type="button" class={link} onclick={() => openItem(i.item)}>{i.itemName}</button>
+													<button type="button" class={link} data-item={i.item} onclick={() => openItem(i.item)}>{i.itemName}</button>
 													<span class="text-muted-foreground">({i.slot}{i.oneTime ? ', not restocked' : ''})</span>
 												</div>
 											{/each}
@@ -475,7 +476,7 @@
 								{#each others as w (w.item)}
 									<tr class="border-b align-top last:border-0">
 										<td class="w-56 py-1 pr-3">
-											<button type="button" class={link} onclick={() => openItem(w.item)}>{w.itemName}</button>
+											<button type="button" class={link} data-item={w.item} onclick={() => openItem(w.item)}>{w.itemName}</button>
 											<span class="text-muted-foreground">({w.slot})</span>
 										</td>
 										<td class="py-1">
