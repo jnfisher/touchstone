@@ -245,6 +245,39 @@ async fn switches_locks_and_the_weapon_decide_what_is_offered() {
 }
 
 #[tokio::test]
+async fn skipping_an_item_walks_down_the_slots_list() {
+    // each "next best" drops the pick and plans again: anvil hat, crown, helm, then the cap stays
+    let mut skipped = vec![];
+    for want in [ANVIL_HAT, CROWN, HELM, CAP] {
+        let v = run(&[(HEAD, CAP)], json!({ "skipped": skipped })).await;
+        assert_eq!(
+            suggested(&v, HEAD),
+            i64::from(want),
+            "after skipping {skipped:?}"
+        );
+        let names: Vec<i64> = v["skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["number"].as_i64().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            skipped.iter().map(|n| i64::from(*n)).collect::<Vec<_>>()
+        );
+        skipped.push(want);
+    }
+    // the item worn is kept even when skipped, and a skipped ring leaves both fingers
+    let v = run(&[(HEAD, CAP)], json!({ "skipped": [CAP, RING_C, 99_999] })).await;
+    assert_eq!(v["slots"][HEAD]["current"]["number"], CAP);
+    let mut rings = [suggested(&v, FINGERS[0]), suggested(&v, FINGERS[1])];
+    rings.sort_unstable();
+    assert_eq!(rings, [i64::from(RING_A), i64::from(RING_B)]);
+    // an item that does not exist is not named back
+    assert_eq!(v["skipped"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn only_an_item_that_does_more_for_the_goal_is_swapped_in() {
     // armour does nothing for damage: the melee plan leaves it all alone and takes the war paint
     // (max damage), the one item that hits harder
@@ -339,6 +372,7 @@ async fn bad_requests_are_refused() {
         json!({ "min_ac": -1 }),
         json!({ "max_encum": 1e9 }),
         json!({ "target": { "ac": -5 } }),
+        json!({ "skipped": (0..201).collect::<Vec<i32>>() }),
     ] {
         let mut body = json!({ "character": character(&[]), "goal": "armour" });
         for (k, v) in over.as_object().unwrap() {

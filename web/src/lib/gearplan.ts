@@ -36,6 +36,16 @@ export interface GearPlanForm {
 	monster: number | null;
 	/** Slots to leave as they are. */
 	locked: number[];
+	/** Items the plan must do without, in the order they were skipped ("next best"). */
+	skipped: number[];
+}
+
+/** The most items a plan may skip (the server's limit). */
+export const MAX_SKIPPED = 200;
+
+/** "Next best": the list with `item` skipped too; unchanged if it already is or the list is full. */
+export function skipItem(skipped: number[], item: number): number[] {
+	return skipped.includes(item) || skipped.length >= MAX_SKIPPED ? skipped : [...skipped, item];
 }
 
 export const GEAR_PLAN_DEFAULTS: GearPlanForm = {
@@ -49,7 +59,8 @@ export const GEAR_PLAN_DEFAULTS: GearPlanForm = {
 	maxEncum: '',
 	target: { ac: '0', dr: '0', dodge: '0', bs_defense: '0', hp: '0' },
 	monster: null,
-	locked: []
+	locked: [],
+	skipped: []
 };
 
 /** A limit box: a number of 0 or more, or nothing. */
@@ -77,7 +88,8 @@ export function gearPlanRequest(form: GearPlanForm, character: object) {
 		target: goalSwings(form.goal) ? { ac, dr, dodge, bs_defense } : { ac: 0, dr: 0, dodge: 0, bs_defense: 0 },
 		...(minAc === undefined ? {} : { min_ac: minAc }),
 		...(maxEncum === undefined ? {} : { max_encum: maxEncum }),
-		locked: [...form.locked].sort((a, b) => a - b)
+		locked: [...form.locked].sort((a, b) => a - b),
+		...(form.skipped.length ? { skipped: form.skipped.slice(0, MAX_SKIPPED) } : {})
 	};
 }
 
@@ -144,6 +156,7 @@ export interface GearPlanResult {
 	evaluations: number;
 	passes: number;
 	level: number;
+	skipped: { number: number; name: string }[];
 	unmet: string[];
 	elapsed_ms: number;
 }

@@ -49,6 +49,8 @@ people and scripts. The Weapon Simulator also gains "Obtainable only", which thi
 - **Limits.** "AC at least" and "encumbrance at most" rule sets out before the goal is compared; a limit nothing
   meets is reported and the plan gets as close as it can. Slots can be locked. The weapon is never planned (that is
   the Weapon Simulator); a two-handed weapon closes the off-hand; the second wrist is opt-in as in MME.
+- **Next best.** A button on each suggested item plans again without it (the request's `skipped` list), so a
+  slot can be walked down its list; the skipped items show as chips that put them back.
 - **Which items**: the Weapon Simulator's switches (ignore level, ignore alignment, limited items, obtainable only),
   now in one place (`bin/touchstone/src/usable.rs`).
 - **Where to get it.** The suggested item's Obtained From line is read into sources. A chest is followed one level

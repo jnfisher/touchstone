@@ -764,6 +764,11 @@ ability (or AC + DR); the planner picks a whole set for a goal and differs from 
   two wrists, never hold the same item, as in Find Best. An empty slot is a candidate: a heavy item can cost more
   than it gives.
 - **Which items**: as the Weapon Simulator (`ItemIsUsableByChar`, in-game items, and its four switches).
+- **Next best** on a slot plans again without that slot's pick, for an item that cannot be had (a limited item
+  someone else holds) or to see what comes after it; each click goes one further down. The item is left out of every
+  slot, so a skipped ring does not move to the other finger, and the whole set is planned again, so other slots can
+  change too. MME's Next Best keeps a like list of excluded items. An item the character already wears is never
+  dropped this way.
 - **Where to get it** reads the item's Obtained From. `Monster #n(p%)` is a kill with chance p. `Item #n(p%)` is a
   chest: its own Obtained From gives the monsters that drop it, and the chance shown is the chest's drop chance times
   p (one level only; a chest in a chest is not followed, and a chest nothing drops is not listed). `Shop #n` and

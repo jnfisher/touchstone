@@ -26,6 +26,7 @@
 		otherWays,
 		shopList,
 		signed,
+		skipItem,
 		type GearPlanForm,
 		type PlanItem,
 		type SlotOrder,
@@ -83,6 +84,11 @@
 	function pickMonster() {
 		const m = monsters.find((x) => x.number === form.monster);
 		if (m) form.target = targetFromMonster(m);
+	}
+	/** "Next best": plan again without this slot's pick. */
+	function nextBest(slot: number, item: number) {
+		form.skipped = skipItem(form.skipped, item);
+		picked = slot;
 	}
 	function toggleLock(slot: number) {
 		form.locked = form.locked.includes(slot) ? form.locked.filter((s) => s !== slot) : [...form.locked, slot];
@@ -221,6 +227,22 @@
 					<Button size="sm" disabled={changes.length === 0} onclick={() => (showPlan = true)} data-testid="gear-where">Where to get it</Button>
 				</div>
 			</div>
+			{#if plan.skipped.length}
+				<div class="flex flex-wrap items-center gap-1.5 text-xs" data-testid="gear-skipped">
+					<span class="text-muted-foreground">Planned without:</span>
+					{#each plan.skipped as sk (sk.number)}
+						<button
+							type="button"
+							class="bg-muted hover:bg-accent rounded-md border px-2 py-0.5"
+							title="Allow {sk.name} again"
+							onclick={() => (form.skipped = form.skipped.filter((n) => n !== sk.number))}
+						>
+							{sk.name} ×
+						</button>
+					{/each}
+					<button type="button" class="text-primary underline" data-testid="gear-skipped-clear" onclick={() => (form.skipped = [])}>Allow all again</button>
+				</div>
+			{/if}
 			{#each plan.unmet as u (u)}
 				<p class="text-destructive text-sm" role="alert" data-testid="gear-unmet">Nothing this character can wear meets the limit: {u}.</p>
 			{/each}
@@ -260,7 +282,21 @@
 									<td class={td}>{@render itemCell(s.current, plan.level)}</td>
 									<td class={td}>
 										{#if s.changed}
-											<span class="text-foreground">{@render itemCell(s.suggested, plan.level)}</span>
+											<span class="flex items-start justify-between gap-2">
+												<span class="text-foreground">{@render itemCell(s.suggested, plan.level)}</span>
+												{#if s.suggested}
+													{@const pick = s.suggested}
+													<button
+														type="button"
+														class="border-input bg-background text-foreground hover:bg-accent shrink-0 rounded-md border px-1.5 py-0.5 text-xs whitespace-nowrap"
+														title="Plan again without {pick.name}: the next best for this slot. Click again to go further down the list."
+														data-testid="gear-next-{s.slot}"
+														onclick={(e) => (e.stopPropagation(), nextBest(s.slot, pick.number))}
+													>
+														Next best
+													</button>
+												{/if}
+											</span>
 										{:else if s.closed}
 											<span class="text-xs">{closedText(s.closed)}</span>
 										{:else}

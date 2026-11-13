@@ -16,6 +16,7 @@ import {
 	otherWays,
 	shopList,
 	signed,
+	skipItem,
 	type Acquisition,
 	type GearPlanForm,
 	type GearPlanResult,
@@ -78,6 +79,7 @@ const plan = (slots: PlanSlot[]): GearPlanResult => ({
 	evaluations: 500,
 	passes: 2,
 	level: 25,
+	skipped: [],
 	unmet: [],
 	elapsed_ms: 20
 });
@@ -106,6 +108,16 @@ describe('request', () => {
 		expect(body.locked).toEqual([0, 4, 9]);
 		expect(gearPlanRequest(form({ maxEncum: '33.5', minAc: '-2' }), {})).toMatchObject({ max_encum: 33.5 });
 		expect('min_ac' in gearPlanRequest(form({ minAc: '-2' }), {})).toBe(false);
+	});
+
+	it('skips items for "next best", once each', () => {
+		expect('skipped' in gearPlanRequest(form(), {})).toBe(false);
+		expect(gearPlanRequest(form({ skipped: [7, 3] }), {})).toMatchObject({ skipped: [7, 3] });
+		expect(skipItem([7], 3)).toEqual([7, 3]);
+		const same = [7, 3];
+		expect(skipItem(same, 3)).toBe(same);
+		const full = Array.from({ length: 200 }, (_, i) => i);
+		expect(skipItem(full, 999)).toBe(full);
 	});
 
 	it('sends the target only for a goal that swings at it', () => {

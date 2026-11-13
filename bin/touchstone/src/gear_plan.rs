@@ -75,6 +75,8 @@ const STAT_NAMES: [&str; REPORTED_STATS] = [
 /// Later passes and the alternatives look at this many of a slot's best items.
 const KEEP_TOP: usize = 12;
 const MAX_PASSES: usize = 6;
+/// Items a request may skip.
+pub const MAX_SKIPPED: usize = 200;
 /// Sources listed for one item, of each kind.
 const SOURCE_CAP: usize = 6;
 
@@ -150,6 +152,10 @@ pub struct GearPlanReq {
     /// Fill the second wrist (MME's `bInvenUse2ndWrist`).
     #[serde(default)]
     pub second_wrist: bool,
+    /// Items the plan must do without ("next best": one the user cannot get, or wants to see
+    /// past). An item the character already wears is kept all the same.
+    #[serde(default)]
+    pub skipped: Vec<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -197,6 +203,12 @@ pub struct StatJson {
 }
 
 #[derive(Debug, Serialize)]
+pub struct SkippedJson {
+    pub number: i32,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct GearPlanJson {
     pub goal: GoalDto,
     pub metric: &'static str,
@@ -210,6 +222,8 @@ pub struct GearPlanJson {
     pub evaluations: u32,
     pub passes: u32,
     pub level: i32,
+    /// The skipped items that exist, named, in the order they were skipped.
+    pub skipped: Vec<SkippedJson>,
     /// A limit the suggested set still breaks (nothing the character can wear meets it).
     pub unmet: Vec<String>,
     pub elapsed_ms: f64,
@@ -234,6 +248,9 @@ pub fn run(
     let started = Instant::now();
     if req.locked.iter().any(|s| *s >= EQUIP_SLOTS) {
         return Err(bad("locked holds a slot that does not exist"));
+    }
+    if req.skipped.len() > MAX_SKIPPED {
+        return Err(bad(format!("at most {MAX_SKIPPED} skipped items")));
     }
     let t = req.target;
     if [t.ac, t.dr, t.bs_defense]
@@ -278,6 +295,9 @@ pub fn run(
             continue;
         }
         let held = ch.equipped.contains(&item.number);
+        if !held && req.skipped.contains(&item.number) {
+            continue;
+        }
         let Some(v) = usable::offered(profile, world, &who, item, &req.allow, held, false) else {
             continue;
         };
@@ -402,6 +422,16 @@ pub fn run(
         evaluations: found.evaluations,
         passes: found.passes,
         level: ch.level,
+        skipped: req
+            .skipped
+            .iter()
+            .filter_map(|n| {
+                world.get_item(*n).map(|i| SkippedJson {
+                    number: *n,
+                    name: i.name.clone(),
+                })
+            })
+            .collect(),
         unmet,
         elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
     })

@@ -118,7 +118,7 @@ the UI fetches whole tables once and filters and sorts in the browser:
 - `POST /api/calc/weapon-sim` with `{character, ignore_level, ignore_alignment, include_limited, target, rounds,
   candidates, seed, pinned}`: the Weapon Simulator, touchstone's own (see below).
 - `POST /api/calc/gear-plan` with `{character, goal, ignore_level, ignore_alignment, include_limited,
-  only_obtainable, second_wrist, target, min_ac, max_encum, locked}`: the Gear Planner, touchstone's own (see below).
+  only_obtainable, second_wrist, target, min_ac, max_encum, locked, skipped}`: the Gear Planner, touchstone's own (see below).
 - `GET/PUT /api/settings`: the options that change results (exp/hr models and knobs, monster sim
   rounds, route waypoint interval, open-last-character), stored as `<data_dir>/settings.json`. PUT
   applies MME's Save rules (knob clamp, round and interval ranges, A+B+C when no model is ticked)
