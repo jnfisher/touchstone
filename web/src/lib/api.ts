@@ -236,6 +236,14 @@ export interface Info {
 	};
 }
 
+/** `POST /api/reload`: whether the live database was read again, and the load it left current. */
+export interface ReloadResult {
+	reloaded: boolean;
+	load_count: number;
+	loaded_at: string;
+	error: string | null;
+}
+
 export interface TableTypes {
 	items: Item;
 	monsters: Monster;
@@ -627,6 +635,13 @@ export function createApi(fetchFn: FetchFn = (...a) => fetch(...a)) {
 		},
 		async info(): Promise<Info> {
 			return (await shared('/api/info', false)) as Info;
+		},
+		/** `POST /api/reload`: read the live database again. A failure still answers with the reason. */
+		async reload(): Promise<ReloadResult> {
+			const res = await fetchFn('/api/reload', { method: 'POST' });
+			const body = (await res.json().catch(() => undefined)) as ReloadResult | undefined;
+			if (body && typeof body.reloaded === 'boolean') return body;
+			throw new ApiError(res.status, '/api/reload');
 		},
 		/** Test hook: whether the table is already held. */
 		has(name: TableName): boolean {

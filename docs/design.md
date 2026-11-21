@@ -58,8 +58,10 @@ same conversion (needs `mdbtools` installed: `apt install mdbtools`).
 (`mode=ro`). The game runs in WAL mode, so reads never block it; touchstone must run as the
 game's Unix user or with group read access to the data directory (WAL readers need the `-shm`
 file). On startup it checks the migration version it was built for and refuses with a clear
-message if the schema is unknown. It polls `PRAGMA data_version` (every 10 s by default) and,
-when it changes, rebuilds the `World` in the background and swaps it in (`arc-swap`). The adapter
+message if the schema is unknown. It reloads only when asked (`POST /api/reload`, the header's
+refresh button): it checks `PRAGMA data_version` and, if the game has committed since the last
+load, rebuilds the `World` and swaps it in (`arc-swap`). There is no timer: the game commits all
+the time, mostly to tables touchstone never reads, and each rebuild costs about a second of CPU. The adapter
 maps silvermere's normalised tables (items + item_abilities + ...) into the same `World`. Fields
 MME has and silvermere lacks (for example NMR's computed references) are listed in
 `docs/data-gaps.md`, not guessed.
@@ -100,6 +102,8 @@ axum, JSON. The game data is small (about 2k items, 1.1k monsters, 1.4k spells, 
 the UI fetches whole tables once and filters and sorts in the browser:
 
 - `GET /api/info`: data source, version, loaded-at, data_version.
+- `POST /api/reload`: read a live database again; `{reloaded, load_count, loaded_at, error}`
+  (409 for a static `.mdb` source, 500 with the reason when the rebuild fails and the old data stays).
 - `GET /api/{items,monsters,spells,rooms,shops,classes,races,lairs}`: full tables.
 - `GET /api/characters`, `GET/PUT/DELETE /api/characters/{name}`: saved characters as
   `<data_dir>/characters/<name>.json`, written atomically.

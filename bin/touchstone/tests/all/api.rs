@@ -1,10 +1,11 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, ETAG, IF_NONE_MATCH};
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::Value;
+use touchstone::AppState;
 use touchstone::config::Config;
 use touchstone::source;
 use tower::ServiceExt;
@@ -130,16 +131,64 @@ async fn poll_picks_up_changes_and_changes_the_etag() {
     assert_eq!(v["load_count"], 2);
 }
 
+async fn post_reload(app: axum::Router) -> (StatusCode, Value) {
+    let res = app
+        .oneshot(Request::post("/api/reload").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&body).unwrap())
+}
+
 #[tokio::test]
-async fn background_task_reloads() {
+async fn reload_is_manual_and_reads_only_after_a_commit() {
     let fx = Fixture::new();
-    source::spawn_reload(fx.live.clone(), fx.state.clone(), Duration::from_millis(20));
+    let (status, v) = post_reload(fx.app()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(v["reloaded"], false, "nothing committed yet");
+    assert_eq!(v["load_count"], 1);
+    // a commit is not picked up until someone asks
     add_item(&fx.writer, 8, "new charm");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while fx.state.current().info.counts[0].1 != 2 {
-        assert!(Instant::now() < deadline, "no reload within 10 s");
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(fx.state.current().info.load_count, 1);
+    let (status, v) = post_reload(fx.app()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(v["reloaded"], true);
+    assert_eq!(v["load_count"], 2);
+    assert!(v["error"].is_null());
+    let (_, _, info) = get(&fx, "/api/info").await;
+    let info: Value = serde_json::from_slice(&info).unwrap();
+    assert_eq!(info["counts"]["items"], 2);
+}
+
+#[tokio::test]
+async fn reload_reports_a_failure_and_keeps_the_old_world() {
+    let fx = Fixture::new();
+    fx.writer.execute_batch("DROP TABLE races").unwrap();
+    let (status, v) = post_reload(fx.app()).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(v["reloaded"], false);
+    assert_eq!(v["load_count"], 1);
+    assert!(!v["error"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn reload_needs_a_live_source() {
+    use touchstone::state::{Loaded, SourceInfo};
+    let fx = Fixture::new();
+    let world = fx.state.current().world.clone();
+    let info = SourceInfo {
+        kind: "mdb",
+        path: "test".into(),
+    };
+    let state = AppState::with_data_dir(
+        Loaded::build(world, info, None, 1).unwrap(),
+        fx.dir.path().to_owned(),
+    );
+    let (status, v) = post_reload(touchstone::app(state)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(v["error"].as_str().unwrap().contains("live"));
 }
 
 #[tokio::test]

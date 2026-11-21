@@ -33,11 +33,14 @@ async fn main() -> anyhow::Result<()> {
                 None => Config::default(),
             };
             let started = touchstone::source::start(&cfg)?;
-            if let (Some(live), Some(src)) = (started.live, &cfg.source) {
-                touchstone::source::spawn_reload(
-                    live,
-                    started.state.clone(),
-                    touchstone::source::reload_interval(src),
+            if cfg
+                .source
+                .as_ref()
+                .is_some_and(|s| s.reload_interval_secs.is_some())
+            {
+                eprintln!(
+                    "touchstone: reload_interval_secs is ignored: game data reloads only when \
+                     asked (the refresh button, or POST /api/reload)"
                 );
             }
             let addr = bind.unwrap_or(cfg.bind);

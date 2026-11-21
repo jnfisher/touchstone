@@ -193,6 +193,8 @@ pub struct AppState {
     evaluate_cache: Mutex<HashMap<String, (u64, Bytes)>>,
     /// The calculated monster damage (P4-30), reset by the load number it is tagged with.
     monster_damage: crate::monster_damage::MonsterDamage,
+    /// The live database `POST /api/reload` reads again; unset for a static `.mdb` source.
+    live: OnceLock<Arc<crate::source::LiveSource>>,
 }
 
 /// Lists kept for instant tab switches; the world is small, so a few dozen is plenty.
@@ -212,7 +214,17 @@ impl AppState {
             settings,
             evaluate_cache: Mutex::new(HashMap::new()),
             monster_damage: crate::monster_damage::MonsterDamage::default(),
+            live: OnceLock::new(),
         })
+    }
+
+    /// Make `POST /api/reload` read `live`. The first call wins; a source is set once, at start.
+    pub fn set_live(&self, live: Arc<crate::source::LiveSource>) {
+        let _ = self.live.set(live);
+    }
+
+    pub fn live(&self) -> Option<&Arc<crate::source::LiveSource>> {
+        self.live.get()
     }
 
     pub fn data_dir(&self) -> &Path {

@@ -1,12 +1,18 @@
-// The server's `/api/info` as one shared, live value. The badge, the info popover and the Quicksilver notice read it;
-// the server reloads a live database in the background (a new load number and created date), so it is read again
-// every 30 seconds while the tab is visible, and as soon as the tab becomes visible again.
-import { api, type Info } from './api';
+// The server's `/api/info` as one shared, live value. The badge, the info popover and the Quicksilver notice read it.
+// A live database is read again only when someone presses refresh (`POST /api/reload`); another open tab learns of the
+// new load number from the poll every 30 seconds while it is visible, and as soon as it becomes visible again.
+import { api, type Info, type ReloadResult } from './api';
 
 export const INFO_POLL_MS = 30_000;
 
 export interface InfoClient {
 	info(): Promise<Info>;
+	reload?(): Promise<ReloadResult>;
+}
+
+/** Whether the server reads a live database that the refresh button can read again. */
+export function isLive(i: Info | undefined): boolean {
+	return i?.source.kind === 'silvermere';
 }
 
 /** What makes two reads the same database: the load number, the created date and the profile. */
@@ -30,6 +36,8 @@ export function createInfoStore(client: InfoClient = api, opts: InfoStoreOptions
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let onVisible: (() => void) | undefined;
 	let inflight: Promise<void> | undefined;
+	let reloading = $state(false);
+	let reloadError = $state<string>();
 
 	function refresh(): Promise<void> {
 		inflight ??= (async () => {
@@ -67,10 +75,34 @@ export function createInfoStore(client: InfoClient = api, opts: InfoStoreOptions
 		onVisible = undefined;
 	}
 
+	/** Ask the server to read the live database again, then read the info so the load number moves for everyone here. */
+	async function reload(): Promise<ReloadResult | undefined> {
+		if (reloading || !client.reload) return undefined;
+		reloading = true;
+		try {
+			const r = await client.reload();
+			reloadError = r.error ?? undefined;
+			await refresh();
+			return r;
+		} catch (e) {
+			reloadError = e instanceof Error ? e.message : String(e);
+			return undefined;
+		} finally {
+			reloading = false;
+		}
+	}
+
 	return {
 		get current() {
 			return current;
 		},
+		get reloading() {
+			return reloading;
+		},
+		get reloadError() {
+			return reloadError;
+		},
+		reload,
 		get error() {
 			return error;
 		},

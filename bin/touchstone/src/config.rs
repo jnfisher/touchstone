@@ -8,7 +8,6 @@ use serde::Deserialize;
 use crate::profile::RulesConfig;
 
 pub const DEFAULT_BIND: &str = "0.0.0.0:8370";
-pub const DEFAULT_RELOAD_SECS: u64 = 10;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -44,15 +43,12 @@ impl SourceKind {
 pub struct SourceConfig {
     pub kind: SourceKind,
     pub path: PathBuf,
-    /// Silvermere only: how often to check for changed game data.
-    #[serde(default = "default_reload")]
-    pub reload_interval_secs: u64,
+    /// No longer read: a live source reloads only when asked (`POST /api/reload`). Still
+    /// accepted so a config written for an older release starts; the server warns that it is set.
+    #[serde(default)]
+    pub reload_interval_secs: Option<u64>,
     /// Mdb only: path to `mdb2sqlite.py` when it is not next to the binary or in `./tools`.
     pub converter: Option<PathBuf>,
-}
-
-fn default_reload() -> u64 {
-    DEFAULT_RELOAD_SECS
 }
 
 impl Default for Config {
@@ -103,13 +99,16 @@ mod tests {
     }
 
     #[test]
-    fn source_parses_with_default_interval() {
+    fn source_parses_and_still_accepts_the_old_interval() {
         let c =
             parse("bind = \"127.0.0.1:1\"\n[source]\nkind = \"silvermere\"\npath = \"/g/w.db\"\n");
         let s = c.source.unwrap();
         assert_eq!(c.bind, "127.0.0.1:1");
         assert_eq!(s.kind, SourceKind::Silvermere);
-        assert_eq!(s.reload_interval_secs, 10);
+        assert_eq!(s.reload_interval_secs, None);
+        let old =
+            parse("[source]\nkind = \"silvermere\"\npath = \"p\"\nreload_interval_secs = 10\n");
+        assert_eq!(old.source.unwrap().reload_interval_secs, Some(10));
     }
 
     #[test]
