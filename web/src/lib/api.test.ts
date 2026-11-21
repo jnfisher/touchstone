@@ -122,4 +122,18 @@ describe('computed endpoints', () => {
 		const api = createApi(f as unknown as typeof fetch);
 		await expect(api.expTable({ race: 9, class: 1 })).rejects.toBeInstanceOf(ApiError);
 	});
+
+	it('posts a reload and returns the outcome, failure included', async () => {
+		const f = vi
+			.fn()
+			.mockResolvedValueOnce(res(200, { reloaded: true, load_count: 2, loaded_at: 'x', error: null }))
+			.mockResolvedValueOnce(res(500, { reloaded: false, load_count: 2, loaded_at: 'x', error: 'boom' }))
+			.mockResolvedValueOnce(res(502, 'bad gateway'));
+		const api = createApi(f as unknown as typeof fetch);
+		expect((await api.reload()).reloaded).toBe(true);
+		expect(f.mock.calls[0]).toEqual(['/api/reload', { method: 'POST' }]);
+		expect((await api.reload()).error).toBe('boom');
+		await expect(api.reload()).rejects.toBeInstanceOf(ApiError);
+	});
 });
+

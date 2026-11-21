@@ -1,11 +1,10 @@
-//! Loading the World from the configured source, and keeping a live source fresh.
+//! Loading the World from the configured source, and reloading a live source when asked.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use anyhow::{Context, bail};
 use touchstone_data::silvermere::{self, Silvermere};
@@ -25,7 +24,7 @@ pub struct LiveSource {
 
 pub struct Started {
     pub state: Arc<AppState>,
-    /// Present for a silvermere source; drive it with [`spawn_reload`].
+    /// Present for a silvermere source; the state holds it too, for `POST /api/reload`.
     pub live: Option<Arc<LiveSource>>,
 }
 
@@ -64,15 +63,18 @@ pub fn start(cfg: &Config) -> anyhow::Result<Started> {
             };
             let loaded = Loaded::build_with(world, info.clone(), Some(version), 1, &rules)?
                 .with_realm(realm);
+            let live = Arc::new(LiveSource {
+                handle: Mutex::new(handle),
+                seen_version: AtomicI64::new(version),
+                loads: AtomicU64::new(1),
+                info,
+                rules,
+            });
+            let state = AppState::with_data_dir(loaded, cfg.data_dir.clone());
+            state.set_live(live.clone());
             Ok(Started {
-                state: AppState::with_data_dir(loaded, cfg.data_dir.clone()),
-                live: Some(Arc::new(LiveSource {
-                    handle: Mutex::new(handle),
-                    seen_version: AtomicI64::new(version),
-                    loads: AtomicU64::new(1),
-                    info,
-                    rules,
-                })),
+                state,
+                live: Some(live),
             })
         }
     }
@@ -108,29 +110,6 @@ impl LiveSource {
         self.loads.store(n, Ordering::Relaxed);
         Ok(true)
     }
-}
-
-/// Poll every `every` on a background task until the process ends.
-pub fn spawn_reload(live: Arc<LiveSource>, state: Arc<AppState>, every: Duration) {
-    tokio::spawn(async move {
-        let mut tick = tokio::time::interval(every);
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        tick.tick().await; // the first tick is immediate; the data was just loaded
-        loop {
-            tick.tick().await;
-            let (l, s) = (live.clone(), state.clone());
-            match tokio::task::spawn_blocking(move || l.poll(&s)).await {
-                Ok(Ok(true)) => eprintln!("touchstone: game data changed, reloaded"),
-                Ok(Ok(false)) => {}
-                Ok(Err(e)) => eprintln!("touchstone: reload failed, keeping old data: {e:#}"),
-                Err(e) => eprintln!("touchstone: reload task failed: {e}"),
-            }
-        }
-    });
-}
-
-pub fn reload_interval(src: &SourceConfig) -> Duration {
-    Duration::from_secs(src.reload_interval_secs.max(1))
 }
 
 /// The SQLite file to load for an `mdb` source: the path itself when it is already converted,

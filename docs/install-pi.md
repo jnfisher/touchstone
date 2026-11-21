@@ -12,8 +12,8 @@ besides the binary. Commands below run as a user with `sudo`.
 The Pi 4 has 4 GB, shared with the game. With the stock database (about 27,000 rooms, 1,100
 monsters, 1,950 items) a freshly started server uses about 41 MB resident (static musl build,
 measured on x86_64 after startup; the glibc build measured 49 MB). A live silvermere database with
-more content grows that in proportion. Each reload (every 10 seconds when the game has committed a
-change) briefly builds a second copy of the data before swapping, so budget about twice the
+more content grows that in proportion. Each reload (when someone presses the refresh button and the game
+has committed since the last load) briefly builds a second copy of the data before swapping, so budget about twice the
 figure (an estimate from how reload works, not a measurement). The binary is about 9 MB.
 
 ## Download and verify
@@ -21,7 +21,7 @@ figure (an estimate from how reload works, not a measurement). The binary is abo
 Pick the newest version from the repository's Releases page; `VERSION` is the tag without the `v`.
 
 ```sh
-VERSION=0.5.1
+VERSION=0.6.0
 REPO=jnfisher/touchstone
 cd /tmp
 curl -fsSLO "https://github.com/$REPO/releases/download/v$VERSION/touchstone-$VERSION-aarch64-unknown-linux-musl.tar.gz"

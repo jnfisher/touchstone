@@ -21,6 +21,7 @@
 	import MenuDialogs from '$lib/components/MenuDialogs.svelte';
 	import ProfileBadge from '$lib/components/ProfileBadge.svelte';
 	import InfoPopover from '$lib/components/InfoPopover.svelte';
+	import RefreshButton from '$lib/components/RefreshButton.svelte';
 	import OptionsMenu from '$lib/components/OptionsMenu.svelte';
 	import PasteDialog from '$lib/components/paste/PasteDialog.svelte';
 	import { getOptionsStore } from '$lib/options.svelte';
@@ -43,7 +44,7 @@
 	const character = getCharacterStore();
 	const activeChar = getActiveCharacter();
 	const infoStore = getInfoStore();
-	// the roster, the open sheet and the active character follow the server's live reloads (the load number)
+	// the roster, the open sheet and the active character follow a reload of the live database (the load number)
 	$effect(() => infoStore.use());
 	onMount(() => void activeChar.start());
 	let lastLoad: number | undefined;
@@ -183,6 +184,7 @@
 			</DropdownMenu.Root>
 			<OptionsMenu />
 			<ProfileBadge />
+			<RefreshButton />
 			<InfoPopover />
 			<Tooltip.Root>
 				<Tooltip.Trigger>

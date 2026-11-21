@@ -130,7 +130,7 @@ None.
 
 ## Next
 
-Released as 0.5.1 (item popover on the Character tab); 0.5.0 was the item popover and CI actions on Node 24 (#131); 0.4.0 was the Gear Planner, 0.3.0 the Weapon Simulator, 0.2.0 realm characters and the Chests tab. Candidates are the follow-ups below.
+Released as 0.6.0 (live data reloads only from the header's refresh button, no 10 s timer); 0.5.1 was the item popover on the Character tab; 0.5.0 was the item popover and CI actions on Node 24 (#131); 0.4.0 was the Gear Planner, 0.3.0 the Weapon Simulator, 0.2.0 realm characters and the Chests tab. Candidates are the follow-ups below.
 
 ## Follow-ups noted
 
@@ -155,3 +155,4 @@ Released as 0.5.1 (item popover on the Character tab); 0.5.0 was the item popove
 - Weapon Simulator: Quicksilver stab round not checked end to end; monsters that need a magical weapon; hand-off from the Weapons list (W-001).
 - Gear Planner: shop prices in the shop list; exp/hr and damage-taken goals; apply a plan to the Sandbox; not run on a Quicksilver database (G-001).
 - Item popover: not yet on the explorer lists or shop stock; compares with the active character only (#131).
+- Manual reload: the explorer lists keep the tables they first fetched, so a content change shows there only after a browser reload (the Character tab follows the load number); a cheap automatic refresh of realm characters alone if a live view is missed.

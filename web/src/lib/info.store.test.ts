@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Info } from './api';
-import { createInfoStore, INFO_POLL_MS } from './info.svelte';
+import { createInfoStore, INFO_POLL_MS, isLive } from './info.svelte';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -73,5 +73,45 @@ describe('the live info store', () => {
 		expect(store.current?.load_count).toBe(1);
 		expect(store.error).toBe('down');
 		stop();
+	});
+
+	it('reloads on request and reads the info at once, without waiting for the poll', async () => {
+		const client = {
+			info: vi.fn(async () => info(1)),
+			reload: vi.fn(async () => ({ reloaded: true, load_count: 2, loaded_at: '', error: null }))
+		};
+		const store = createInfoStore(client);
+		const stop = store.use();
+		await vi.advanceTimersByTimeAsync(0);
+		client.info.mockResolvedValue(info(2));
+		const r = await store.reload();
+		expect(r?.reloaded).toBe(true);
+		expect(store.current?.load_count).toBe(2);
+		expect(store.reloading).toBe(false);
+		expect(store.reloadError).toBeUndefined();
+		stop();
+	});
+
+	it('shows why a reload failed and keeps the old data', async () => {
+		const client = {
+			info: vi.fn(async () => info(1)),
+			reload: vi.fn(async () => ({ reloaded: false, load_count: 1, loaded_at: '', error: 'no such table: races' }))
+		};
+		const store = createInfoStore(client);
+		const stop = store.use();
+		await vi.advanceTimersByTimeAsync(0);
+		await store.reload();
+		expect(store.reloadError).toBe('no such table: races');
+		expect(store.current?.load_count).toBe(1);
+		client.reload.mockRejectedValue(new Error('offline'));
+		await store.reload();
+		expect(store.reloadError).toBe('offline');
+		stop();
+	});
+
+	it('offers a refresh only for a live database', () => {
+		expect(isLive(info(1))).toBe(false);
+		expect(isLive({ ...info(1), source: { kind: 'silvermere', path: 'q.db' } })).toBe(true);
+		expect(isLive(undefined)).toBe(false);
 	});
 });

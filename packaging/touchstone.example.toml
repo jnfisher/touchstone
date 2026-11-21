@@ -10,7 +10,7 @@ data_dir = "/var/lib/touchstone"
 
 [source]
 # "mdb": an MMUD Explorer database. "silvermere": a running silvermere/Quicksilver game's SQLite
-# file, read live and reloaded when the game changes it. The source is required.
+# file, read live; the web UI's refresh button reads it again. The source is required.
 kind = "silvermere"
 
 # mdb: either an already converted .sqlite (see tools/mdb-fetch.sh), or a .mdb, which is converted
@@ -24,9 +24,6 @@ kind = "silvermere"
 # Quicksilver-style path below; for a stock MME database use kind = "mdb" and, for example,
 # path = "/var/lib/touchstone/data-v1.11p.sqlite".
 path = "/opt/quicksilver/data/quicksilver.db"
-
-# silvermere only: seconds between checks for changed game data. Default 10.
-# reload_interval_secs = 10
 
 # mdb only, and only for a .mdb path: where mdb2sqlite.py is when it is not in a tools/ directory
 # next to the binary, its parent, or the working directory.

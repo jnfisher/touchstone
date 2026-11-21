@@ -251,7 +251,7 @@ The tab (Chests, next to Items) is a touchstone addition. The chances and the se
 ## Options menu and shell (P4-31)
 
 - Not ported: Import Character from NMR, Export Character to NMR and Reload MME. The web app imports `.mmec` files from
-  the Character tab and the server reloads its data on its own timer.
+  the Character tab, and the header's refresh button reads a live game database again.
 - Reset All Character Fields does not ask "Unload character file first (no save)?". The browser autosaves the open
   character, so a reset that stayed linked to the file would overwrite it; the port always starts a blank, unsaved
   character and leaves the stored file alone (MME's Yes answer). The other two questions are kept. MME asks the

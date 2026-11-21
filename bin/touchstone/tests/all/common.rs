@@ -64,7 +64,7 @@ pub fn config_for(path: &std::path::Path) -> SourceConfig {
     SourceConfig {
         kind: SourceKind::Silvermere,
         path: path.to_owned(),
-        reload_interval_secs: 10,
+        reload_interval_secs: None,
         converter: None,
     }
 }

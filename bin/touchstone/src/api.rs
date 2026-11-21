@@ -20,6 +20,7 @@ use crate::{
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/info", get(info))
+        .route("/api/reload", post(reload))
         .route("/api/settings", get(settings::get).put(settings::put))
         .route(
             "/api/races/{number}/stat-caps",
@@ -164,6 +165,51 @@ async fn info(State(state): State<Arc<AppState>>) -> Response {
         .collect::<serde_json::Map<_, _>>()
         .into();
     ([(CACHE_CONTROL, "no-cache")], axum::Json(v)).into_response()
+}
+
+/// Read a live database again now. Nothing reloads on its own: the game commits all the time,
+/// mostly to tables touchstone never reads, and a rebuild costs about a second of CPU.
+/// `reloaded` is false when the game has committed nothing since the last load; on an error the
+/// previous data stays and the reason is in `error`.
+async fn reload(State(state): State<Arc<AppState>>) -> Response {
+    let Some(live) = state.live().cloned() else {
+        return (
+            StatusCode::CONFLICT,
+            axum::Json(json!({ "error": "this source is not a live database" })),
+        )
+            .into_response();
+    };
+    let s = state.clone();
+    let outcome = tokio::task::spawn_blocking(move || live.poll(&s)).await;
+    let (status, reloaded, error) = match outcome {
+        Ok(Ok(changed)) => {
+            if changed {
+                eprintln!("touchstone: game data reloaded");
+            }
+            (StatusCode::OK, changed, None)
+        }
+        Ok(Err(e)) => {
+            eprintln!("touchstone: reload failed, keeping old data: {e:#}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                false,
+                Some(format!("{e:#}")),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            false,
+            Some(e.to_string()),
+        ),
+    };
+    let loaded = state.current();
+    let body = json!({
+        "reloaded": reloaded,
+        "load_count": loaded.info.load_count,
+        "loaded_at": loaded.info.loaded_at,
+        "error": error,
+    });
+    (status, [(CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
 }
 
 async fn table(
